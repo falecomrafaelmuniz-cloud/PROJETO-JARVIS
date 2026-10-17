@@ -1,10 +1,10 @@
 $ErrorActionPreference = 'Stop'
 
 $agentDirectory = $PSScriptRoot
-$agentFile = Join-Path $agentDirectory 'agent.py'
+$backendDirectory = Join-Path $agentDirectory 'backend'
+$agentFile = Join-Path $backendDirectory 'agent.py'
 $pythonExe = Join-Path $agentDirectory '.venv\Scripts\python.exe'
-$workspaceDirectory = Split-Path $agentDirectory -Parent
-$webDirectory = Join-Path $workspaceDirectory 'Layout Jarvis\agent-starter-react-main'
+$webDirectory = Join-Path $agentDirectory 'frontend'
 $webEnvFile = Join-Path $webDirectory '.env.local'
 $webUrl = 'http://localhost:3000'
 
@@ -52,7 +52,7 @@ try {
     else {
         Write-Host 'Starting Jarvis voice worker...'
         Start-Process -FilePath $pythonExe `
-            -ArgumentList @('".\agent.py"', 'dev') `
+            -ArgumentList @('"backend\agent.py"', 'dev') `
             -WorkingDirectory $agentDirectory `
             -WindowStyle Minimized | Out-Null
         Start-Sleep -Seconds 4

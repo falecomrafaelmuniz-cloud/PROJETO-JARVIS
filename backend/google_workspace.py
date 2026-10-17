@@ -42,7 +42,7 @@ class GoogleWorkspace:
             if not TOKEN_PATH.is_file():
                 raise GoogleWorkspaceError(
                     "OAuth ainda não foi configurado. Coloque credentials.json na pasta "
-                    "do projeto e execute: python configurar_google.py"
+                    "backend e execute: python backend/configurar_google.py"
                 )
 
             try:
@@ -52,13 +52,13 @@ class GoogleWorkspace:
                 )
             except (OSError, ValueError, GoogleAuthError) as error:
                 raise GoogleWorkspaceError(
-                    f"Não foi possível ler token.json; execute python configurar_google.py novamente: {error}"
+                    f"Não foi possível ler token.json; execute python backend/configurar_google.py novamente: {error}"
                 ) from error
 
             if not credentials.has_scopes(SCOPES):
                 raise GoogleWorkspaceError(
                     "O token não possui todos os escopos necessários. "
-                    "Execute python configurar_google.py novamente."
+                    "Execute python backend/configurar_google.py novamente."
                 )
 
             if credentials.expired and credentials.refresh_token:
@@ -72,7 +72,7 @@ class GoogleWorkspace:
 
             if not credentials.valid:
                 raise GoogleWorkspaceError(
-                    "A autorização Google expirou. Execute python configurar_google.py novamente."
+                    "A autorização Google expirou. Execute python backend/configurar_google.py novamente."
                 )
             return credentials
 

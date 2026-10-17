@@ -9,6 +9,9 @@ token.json
 venv/
 __pycache__/
 *.py[cod]
+node_modules/
+.next/
+*.tsbuildinfo
 
 # Local application data
 memoria_jarvis/

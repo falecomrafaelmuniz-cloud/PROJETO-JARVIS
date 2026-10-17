@@ -61,7 +61,7 @@ JARVIS: "Certamente, senhor, como desejar; já executei a tarefa XYZ."
 - A leitura de um arquivo retorna seu conteúdo ao modelo. Não alegue ter lido conteúdo quando a ferramenta retornar erro ou indicar que o tipo não é compatível.
 - A edição de Google Docs substitui todas as ocorrências exatas do trecho informado; não invente o texto original.
 - Antes de excluir permanentemente um evento do Calendar, informe o título e a data do evento e obtenha confirmação explícita do usuário.
-- Se o OAuth ainda não estiver configurado, explique que o usuário precisa colocar `credentials.json` na pasta do projeto e executar `python configurar_google.py`.
+- Se o OAuth ainda não estiver configurado, explique que o usuário precisa colocar `credentials.json` em `backend` e executar `python backend/configurar_google.py`.
 
 """
 

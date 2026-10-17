@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 echo Iniciando o Jarvis...
 set "PYTHON_CMD=.\.venv\Scripts\python.exe"
 
@@ -19,6 +20,6 @@ call .venv\Scripts\activate
 echo [INFO] Executando o Jarvis com Python...
 echo [INFO] Pressione Ctrl+C para parar a execucao
 
-%PYTHON_CMD% agent.py dev
+%PYTHON_CMD% backend\agent.py dev
 
 pause
