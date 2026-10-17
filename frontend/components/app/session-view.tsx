@@ -15,6 +15,7 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { ActivityPanel } from '@/components/app/activity-panel';
+import { LocationSharing } from '@/components/app/location-sharing';
 import { TileLayout } from '@/components/app/tile-layout';
 import { cn } from '@/lib/shadcn/utils';
 import { Shimmer } from '../ai-elements/shimmer';
@@ -297,6 +298,7 @@ export const SessionView = ({
     <section className="relative flex h-svh w-svw flex-col overflow-hidden bg-black" {...props}>
       <VantaController vantaRef={vantaEffectRef} />
       <ActivityPanel />
+      <LocationSharing />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">

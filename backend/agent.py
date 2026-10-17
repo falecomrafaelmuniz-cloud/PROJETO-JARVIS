@@ -91,8 +91,42 @@ colecao_memoria = cliente_chroma.get_or_create_collection(
 DISTANCIA_MAXIMA_MEMORIA = 0.85
 # --- FIM CONFIGURAÇÃO DA MEMÓRIA ---
 
+
+def _update_session_location(
+    data_packet: rtc.DataPacket, location_state: dict[str, float]
+):
+    if data_packet.topic != "jarvis.location":
+        return
+
+    try:
+        payload = json.loads(data_packet.data)
+        latitude = payload.get("latitude")
+        longitude = payload.get("longitude")
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        logger_memoria.warning("evento=localizacao status=erro motivo=payload_invalido")
+        return
+
+    if payload.get("type") != "jarvis_location":
+        return
+    if (
+        isinstance(latitude, bool)
+        or not isinstance(latitude, (int, float))
+        or not -90 <= latitude <= 90
+        or isinstance(longitude, bool)
+        or not isinstance(longitude, (int, float))
+        or not -180 <= longitude <= 180
+    ):
+        logger_memoria.warning("evento=localizacao status=erro motivo=coordenadas_invalidas")
+        return
+
+    location_state["latitude"] = latitude
+    location_state["longitude"] = longitude
+    logger_memoria.info("evento=localizacao status=disponivel_na_sessao")
+
+
 class Assistant(Agent):
-    def __init__(self) -> None:
+    def __init__(self, location_state: dict[str, float]) -> None:
+        self.location_state = location_state
         super().__init__(
             instructions=AGENT_INSTRUCTION,
             llm=google.beta.realtime.RealtimeModel(
@@ -149,6 +183,19 @@ class Assistant(Agent):
         return None
 
     # --- INÍCIO DAS FERRAMENTAS DO JARVIS ---
+
+    @function_tool(
+        description="Retorna as coordenadas da localização atual recebida nesta sessão. Use somente quando o pedido do usuário depender de onde ele está, como encontrar restaurantes ou outros lugares próximos. Se a localização não estiver disponível, diga isso e peça a cidade ou localização; nunca invente coordenadas."
+    )
+    async def obter_localizacao_atual(self) -> str:
+        latitude = self.location_state.get("latitude")
+        longitude = self.location_state.get("longitude")
+        if latitude is None or longitude is None:
+            return (
+                "A localização atual não está disponível nesta sessão. "
+                "Peça ao usuário uma cidade ou localização para continuar."
+            )
+        return f"Localização atual do usuário: latitude {latitude}, longitude {longitude}."
 
     @function_tool(description="Obrigatória quando o usuário pedir para lembrar, guardar, anotar ou gravar uma informação: salva localmente e acrescenta uma nova entrada numerada ao final do único arquivo Memorias_do_Jarvis.txt na pasta Memórias do Jarvis do Google Drive. Não recria, substitui, apaga nem cria outro arquivo de memória.")
     async def salvar_na_memoria(self, informacao_detalhada: str):
@@ -638,14 +685,19 @@ async def _publish_tool_activity(
 
 async def entrypoint(ctx: agents.JobContext):
     session = AgentSession()
+    location_state: dict[str, float] = {}
     activity_events: asyncio.Queue[ToolExecutionUpdatedEvent | None] = asyncio.Queue()
+    ctx.room.on(
+        "data_received",
+        lambda data_packet: _update_session_location(data_packet, location_state),
+    )
     session.on("tool_execution_updated", activity_events.put_nowait)
     session.on("close", lambda _: activity_events.put_nowait(None))
     asyncio.create_task(_publish_tool_activity(ctx.room, activity_events))
 
     await session.start( 
         room=ctx.room,
-        agent=Assistant(),
+        agent=Assistant(location_state),
         room_input_options=RoomInputOptions(
             video_enabled=True,
             noise_cancellation=noise_cancellation.BVC(),

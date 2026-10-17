@@ -24,5 +24,10 @@ Google Drive and Calendar OAuth files (`credentials.json` and `token.json`) belo
 `backend/`. To configure Google OAuth, run
 `.venv\Scripts\python.exe backend\configurar_google.py` from the repository root.
 
+The web interface requests the browser's current location once per connected Jarvis
+session. The browser may remember its permission choice. Coordinates are sent through
+the active LiveKit session and held in backend session memory only; they are not saved
+to disk or committed. Revoke location access in the browser's site settings at any time.
+
 Local environments, dependencies, build output, application memory, logs, and secrets
 are excluded from Git.

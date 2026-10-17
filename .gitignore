@@ -16,4 +16,5 @@ node_modules/
 # Local application data
 memoria_jarvis/
 memoria_jarvis_local_backup_*/
+Memorias_do_Jarvis.txt
 *.log
