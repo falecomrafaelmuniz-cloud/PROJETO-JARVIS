@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local application data
+memoria_jarvis/
+memoria_jarvis_local_backup_*/
+*.log
