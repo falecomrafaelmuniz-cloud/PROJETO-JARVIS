@@ -62,7 +62,9 @@ export function ActivityPanel() {
   const room = useRoomContext();
   const { state: agentState } = useVoiceAssistant();
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [totalActions, setTotalActions] = useState(0);
   const nextNumber = useRef(1);
+  const seenActivityIds = useRef(new Set<string>());
 
   useEffect(() => {
     const handleData = (
@@ -83,19 +85,17 @@ export function ActivityPanel() {
       if (packet.type !== 'jarvis_activity' || !packet.id) return;
 
       if (packet.event === 'started' && packet.tool) {
-        setActivities((current) => {
-          if (current.some((item) => item.id === packet.id)) return current;
-          const next = [
-            ...current,
-            {
-              id: packet.id!,
-              number: nextNumber.current++,
-              tool: packet.tool!,
-              status: 'running' as const,
-            },
-          ];
-          return next.slice(-MAX_ACTIVITIES);
-        });
+        if (seenActivityIds.current.has(packet.id)) return;
+        seenActivityIds.current.add(packet.id);
+
+        const activity: ActivityItem = {
+          id: packet.id,
+          number: nextNumber.current++,
+          tool: packet.tool,
+          status: 'running',
+        };
+        setActivities((current) => [...current, activity].slice(-MAX_ACTIVITIES));
+        setTotalActions((current) => current + 1);
       } else if (packet.event === 'ended') {
         const status: ActivityStatus =
           packet.status === 'done' ? 'done' : packet.status === 'cancelled' ? 'cancelled' : 'error';
@@ -122,7 +122,7 @@ export function ActivityPanel() {
           <p className="mt-0.5 text-[11px] text-white/50">Execuções desta sessão</p>
         </div>
         <span className="rounded-full border border-cyan-300/20 px-2 py-1 text-[10px] tracking-wider text-cyan-200/80 uppercase">
-          {activities.length} {activities.length === 1 ? 'ação' : 'ações'}
+          {totalActions} {totalActions === 1 ? 'ação' : 'ações'}
         </span>
       </div>
 
