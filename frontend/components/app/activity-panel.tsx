@@ -114,29 +114,29 @@ export function ActivityPanel() {
   return (
     <aside
       aria-label="Atividades do Jarvis"
-      className="pointer-events-auto absolute top-4 right-4 z-30 w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-cyan-400/20 bg-black/75 text-white shadow-2xl shadow-black/40 backdrop-blur-xl"
+      className="pointer-events-auto absolute top-3 right-3 z-30 w-[min(17rem,calc(100vw-1.5rem))] overflow-hidden rounded-lg border border-cyan-400/20 bg-black/75 text-white shadow-2xl shadow-black/40 backdrop-blur-xl"
     >
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
         <div>
-          <h2 className="text-[13px] font-semibold tracking-wide">Atividades do Jarvis</h2>
-          <p className="mt-0.5 text-[10px] text-white/50">Execuções desta sessão</p>
+          <h2 className="text-xs font-semibold tracking-wide">Atividades do Jarvis</h2>
+          <p className="mt-0.5 text-[9px] text-white/50">Execuções desta sessão</p>
         </div>
-        <span className="rounded-full border border-cyan-300/20 px-2 py-1 text-[9px] tracking-wider text-cyan-200/80 uppercase">
+        <span className="rounded-full border border-cyan-300/20 px-1.5 py-0.5 text-[8px] tracking-wider text-cyan-200/80 uppercase">
           {totalActions} {totalActions === 1 ? 'ação' : 'ações'}
         </span>
       </div>
 
       <ol
         aria-live="polite"
-        className="flex max-h-[min(45vh,24rem)] flex-col gap-2 overflow-y-auto p-3"
+        className="flex max-h-[min(40vh,20rem)] flex-col gap-1.5 overflow-y-auto p-2"
       >
         {agentState === 'thinking' && (
-          <li className="px-2 py-4 text-center text-[11px] text-white/45">
+          <li className="px-1.5 py-3 text-center text-[10px] text-white/45">
             Analisando solicitação...
           </li>
         )}
         {activities.length === 0 && agentState !== 'thinking' && (
-          <li className="px-2 py-4 text-center text-[11px] text-white/45">
+          <li className="px-1.5 py-3 text-center text-[10px] text-white/45">
             Aguardando ações do Jarvis...
           </li>
         )}
@@ -155,7 +155,7 @@ export function ActivityPanel() {
             <li
               key={activity.id}
               className={cn(
-                'flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
+                'flex items-start gap-2 rounded-md border px-2 py-1.5 transition-colors',
                 isRunning && 'border-red-400/40 bg-red-500/10',
                 isDone && 'border-emerald-400/30 bg-emerald-500/10',
                 activity.status === 'error' && 'border-red-500/40 bg-red-950/40',
@@ -164,7 +164,7 @@ export function ActivityPanel() {
             >
               <span
                 className={cn(
-                  'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-bold',
+                  'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded font-mono text-[10px] font-bold',
                   isRunning && 'bg-red-500/20 text-red-300',
                   isDone && 'bg-emerald-500/20 text-emerald-300',
                   activity.status === 'error' && 'bg-red-500/20 text-red-300',
@@ -174,10 +174,10 @@ export function ActivityPanel() {
                 {String(activity.number).padStart(2, '0')}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] leading-5 text-white/90">{getToolLabel(activity.tool)}</p>
+                <p className="text-[10px] leading-4 text-white/90">{getToolLabel(activity.tool)}</p>
                 <p
                   className={cn(
-                    'mt-0.5 text-[9px] font-medium tracking-wide uppercase',
+                    'mt-0.5 text-[8px] font-medium tracking-wide uppercase',
                     isRunning && 'text-red-300',
                     isDone && 'text-emerald-300',
                     activity.status === 'error' && 'text-red-300',
