@@ -1,17 +1,30 @@
 {
   "manifest_version": 3,
   "name": "Jarvis - Controle local de abas",
-  "version": "1.0.0",
-  "description": "Abre links da Jarvis em uma aba do Chrome já conectado.",
+  "version": "1.2.0",
+  "description": "Abre links da Jarvis em uma aba do Chrome já conectado e pula anúncios do YouTube automaticamente.",
   "permissions": [
     "alarms",
     "storage",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "*://*.youtube.com/*"
   ],
   "background": {
     "service_worker": "service_worker.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "youtube_autoskip.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

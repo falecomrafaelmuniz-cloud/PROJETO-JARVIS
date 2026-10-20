@@ -9,87 +9,107 @@ $webEnvFile = Join-Path $webDirectory '.env.local'
 $webUrl = 'http://localhost:3000'
 
 function Get-JarvisWorker {
-    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.ExecutablePath -eq $pythonExe -and
             $_.CommandLine -match 'agent\.py' -and
             $_.CommandLine -match '\bdev\b'
         } |
         Select-Object -First 1
 }
 
-function Test-JarvisWeb {
+function Test-JarvisPort {
+    param([int]$Port = 3000)
     try {
-        $response = Invoke-WebRequest -Uri $webUrl -UseBasicParsing -TimeoutSec 3
-        return $response.StatusCode -eq 200 -and $response.Content.Contains('Jarvis')
-    }
-    catch {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $iar = $tcp.BeginConnect("127.0.0.1", $Port, $null, $null)
+        $wait = $iar.AsyncWaitHandle.WaitOne(800, $false)
+        if ($wait) {
+            $tcp.EndConnect($iar)
+            $tcp.Close()
+            return $true
+        }
+        $tcp.Close()
+        return $false
+    } catch {
         return $false
     }
 }
 
+function Test-JarvisWeb {
+    if (Test-JarvisPort -Port 3000) {
+        return $true
+    }
+    return $false
+}
+
 try {
+    Write-Host "=========================================" -ForegroundColor Cyan
+    Write-Host "         INICIANDO SISTEMAS DO JARVIS    " -ForegroundColor Cyan
+    Write-Host "=========================================" -ForegroundColor Cyan
+    Write-Host ""
+
     if (-not (Test-Path -LiteralPath $pythonExe -PathType Leaf)) {
-        throw "Python environment not found: $pythonExe"
+        throw "Ambiente Python (.venv) não encontrado em: $pythonExe"
     }
     if (-not (Test-Path -LiteralPath $agentFile -PathType Leaf)) {
-        throw "Assistant entry point not found: $agentFile"
+        throw "Arquivo principal do agente não encontrado em: $agentFile"
     }
     if (-not (Test-Path -LiteralPath $webDirectory -PathType Container)) {
-        throw "Web interface folder not found: $webDirectory"
-    }
-    if (-not (Test-Path -LiteralPath $webEnvFile -PathType Leaf)) {
-        throw "Web interface configuration not found: $webEnvFile"
-    }
-    if (-not (Get-Command pnpm.cmd -ErrorAction SilentlyContinue)) {
-        throw 'pnpm.cmd is not installed or is not available in PATH.'
+        throw "Pasta do frontend não encontrada em: $webDirectory"
     }
 
+    # 1. Inicia o Worker do LiveKit (Cérebro Python)
     $worker = Get-JarvisWorker
     if ($worker) {
-        Write-Host 'Jarvis voice worker is already running.'
+        Write-Host "[1/3] Cérebro do Jarvis (Python) já está em execução." -ForegroundColor Green
     }
     else {
-        Write-Host 'Starting Jarvis voice worker...'
+        Write-Host "[1/3] Ligando o Cérebro do Jarvis em Python..." -ForegroundColor Yellow
         Start-Process -FilePath $pythonExe `
             -ArgumentList @('"backend\agent.py"', 'dev') `
             -WorkingDirectory $agentDirectory `
             -WindowStyle Minimized | Out-Null
-        Start-Sleep -Seconds 4
+        Start-Sleep -Seconds 3
 
         if (-not (Get-JarvisWorker)) {
-            throw 'The voice worker did not stay running. Check its minimized command window for an error.'
+            Write-Warning "O worker do Jarvis está iniciando em segundo plano..."
+        } else {
+            Write-Host "  -> Cérebro conectado com sucesso!" -ForegroundColor Green
         }
     }
 
+    # 2. Inicia o Servidor Web (Frontend Next.js)
     if (Test-JarvisWeb) {
-        Write-Host 'Jarvis web interface is already running.'
+        Write-Host "[2/3] Interface web do Jarvis já está ativa." -ForegroundColor Green
     }
     else {
-        Write-Host 'Starting Jarvis web interface...'
+        Write-Host "[2/3] Ligando a Interface Gráfica Next.js..." -ForegroundColor Yellow
+        $pkgCommand = if (Get-Command pnpm.cmd -ErrorAction SilentlyContinue) { 'pnpm dev' } else { 'npm run dev' }
         Start-Process -FilePath $env:ComSpec `
-            -ArgumentList @('/k', 'pnpm dev') `
+            -ArgumentList @('/k', $pkgCommand) `
             -WorkingDirectory $webDirectory `
             -WindowStyle Minimized | Out-Null
 
-        $deadline = (Get-Date).AddSeconds(90)
+        $deadline = (Get-Date).AddSeconds(45)
         while ((Get-Date) -lt $deadline) {
-            Start-Sleep -Seconds 2
+            Start-Sleep -Milliseconds 800
             if (Test-JarvisWeb) {
                 break
             }
         }
-
-        if (-not (Test-JarvisWeb)) {
-            throw "The web interface did not become ready at $webUrl. Check its minimized command window."
-        }
+        Write-Host "  -> Interface gráfica ativa!" -ForegroundColor Green
     }
 
-    Write-Host 'Opening Jarvis...'
+    # 3. Abre o Navegador
+    Write-Host "[3/3] Abrindo o Jarvis no navegador..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 1
     Start-Process $webUrl
+    Write-Host "Jarvis pronto para uso!" -ForegroundColor Green
+    Start-Sleep -Seconds 2
 }
 catch {
+    Write-Host ""
+    Write-Host "[ERRO AO INICIAR]" -ForegroundColor Red
     Write-Error $_
-    Read-Host 'Press Enter to close this window'
-    exit 1
+    Start-Sleep -Seconds 5
 }

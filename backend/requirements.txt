@@ -10,3 +10,5 @@ chromadb
 google-genai
 google-auth-oauthlib
 google-api-python-client
+psutil
+pypdf

@@ -8,10 +8,12 @@ let polling = false;
 chrome.alarms.create("jarvis-bridge-poll", { periodInMinutes: 0.5 });
 
 chrome.runtime.onInstalled.addListener(() => {
+  void injectAutoSkipIntoOpenYouTubeTabs();
   void pollBridge();
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  void injectAutoSkipIntoOpenYouTubeTabs();
   void pollBridge();
 });
 
@@ -20,6 +22,52 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     void pollBridge();
   }
 });
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (
+    message &&
+    message.type === "JARVIS_SKIP_CLICK" &&
+    typeof message.x === "number" &&
+    typeof message.y === "number"
+  ) {
+    void sendSkipClickToBridge(message.x, message.y);
+  }
+});
+
+async function sendSkipClickToBridge(x, y) {
+  if (bridgePort === null) {
+    bridgePort = await findBridgePort();
+  }
+  if (bridgePort === null) return;
+  try {
+    await fetch(`http://127.0.0.1:${bridgePort}/click-skip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x, y }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function injectAutoSkipIntoOpenYouTubeTabs() {
+  if (!chrome.scripting) return;
+  try {
+    const tabs = await chrome.tabs.query({ url: ["*://*.youtube.com/*"] });
+    for (const tab of tabs) {
+      if (tab.id) {
+        await chrome.scripting
+          .executeScript({
+            target: { tabId: tab.id },
+            files: ["youtube_autoskip.js"],
+          })
+          .catch(() => {});
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
 
 async function findBridgePort() {
   for (let port = FIRST_PORT; port <= LAST_PORT; port += 1) {
@@ -63,22 +111,56 @@ async function pollBridge() {
 
       let response;
       try {
-        response = await fetch(`http://127.0.0.1:${bridgePort}/next`, {
+        let query = "";
+        try {
+          const allTabs = await chrome.tabs.query({});
+          const activeTab =
+            allTabs.find((t) => t.active) || allTabs[0] || null;
+
+          const gmailTab =
+            allTabs.find(
+              (t) =>
+                t.url &&
+                t.url.includes("mail.google.com") &&
+                t.active
+            ) ||
+            allTabs.find(
+              (t) => t.url && t.url.includes("mail.google.com")
+            ) ||
+            null;
+
+          const params = new URLSearchParams();
+          if (activeTab && activeTab.url) {
+            params.set("active_url", activeTab.url);
+            params.set("active_title", activeTab.title || "");
+          }
+          if (gmailTab && gmailTab.url) {
+            params.set("gmail_url", gmailTab.url);
+            params.set("gmail_title", gmailTab.title || "");
+          }
+          const qs = params.toString();
+          if (qs) {
+            query = `?${qs}`;
+          }
+        } catch {
+          // ignore tab query errors
+        }
+        response = await fetch(`http://127.0.0.1:${bridgePort}/next${query}`, {
           cache: "no-store",
         });
       } catch {
         bridgePort = null;
-        await pause(1000);
+        await pause(600);
         continue;
       }
       if (!response.ok) {
         bridgePort = null;
-        await pause(1000);
+        await pause(600);
         continue;
       }
 
       const command = await response.json();
-      if (!command.request_id || !command.url) {
+      if (!command.request_id || (!command.url && !command.action)) {
         continue;
       }
       await handleCommand(command);
@@ -93,8 +175,13 @@ async function pollBridge() {
 async function handleCommand(command) {
   let result;
   try {
-    await openInJarvisTab(command.url);
-    result = { request_id: command.request_id, ok: true };
+    if (command.action === "close_tab") {
+      const count = await closeJarvisTab(command.target);
+      result = { request_id: command.request_id, ok: true, closed_count: count };
+    } else {
+      await openInJarvisTab(command.url);
+      result = { request_id: command.request_id, ok: true };
+    }
   } catch (error) {
     result = {
       request_id: command.request_id,
@@ -110,7 +197,106 @@ async function handleCommand(command) {
   });
 }
 
+async function closeJarvisTab(target) {
+  const allTabs = await chrome.tabs.query({});
+  const rawTarget = String(target || "atual").trim().toLowerCase();
+
+  // NUNCA FECHA O JARVIS LOCALHOST (PROTEÇÃO TOTAL)
+  const isProtected = (tab) => {
+    const url = (tab.url || "").toLowerCase();
+    return url.includes("localhost:3000") || url.includes("127.0.0.1:3000");
+  };
+
+  // Se o alvo for "atual", "ativa", etc.
+  if (["atual", "ativa", "ativo", "este", "esta", "esse", "essa", "selecionada", ""].includes(rawTarget)) {
+    const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const tabToClose = activeTabs.find((t) => !isProtected(t)) || allTabs.find((t) => t.active && !isProtected(t));
+    if (tabToClose && tabToClose.id) {
+      await chrome.tabs.remove(tabToClose.id);
+      return 1;
+    }
+    return 0;
+  }
+
+  // Mapeia termos comuns
+  let searchTerms = [rawTarget];
+  if (rawTarget.includes("drive")) {
+    searchTerms.push("drive.google.com", "google drive", "meu drive");
+  }
+  if (rawTarget.includes("gmail") || rawTarget.includes("email") || rawTarget.includes("e-mail")) {
+    searchTerms.push("mail.google.com", "gmail");
+  }
+  if (rawTarget.includes("youtube")) {
+    searchTerms.push("youtube.com", "youtube");
+  }
+  if (rawTarget.includes("whatsapp")) {
+    searchTerms.push("web.whatsapp.com", "whatsapp");
+  }
+
+  const matchingTabs = allTabs.filter((tab) => {
+    if (isProtected(tab)) return false;
+    const url = (tab.url || "").toLowerCase();
+    const title = (tab.title || "").toLowerCase();
+    return searchTerms.some((term) => url.includes(term) || title.includes(term));
+  });
+
+  if (matchingTabs.length === 0) {
+    return 0;
+  }
+
+  for (const tab of matchingTabs) {
+    if (tab.id) {
+      try {
+        await chrome.tabs.remove(tab.id);
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return matchingTabs.length;
+}
+
 async function openInJarvisTab(url) {
+  // Se for uma ação dentro do Google Mail, reutiliza SEMPRE a mesma aba do Gmail
+  if (typeof url === "string" && url.includes("mail.google.com")) {
+    try {
+      const allTabs = await chrome.tabs.query({});
+      const gmailTabs = allTabs.filter(
+        (t) => t.url && t.url.includes("mail.google.com")
+      );
+      if (gmailTabs.length > 0) {
+        const targetGmailTab =
+          gmailTabs.find((t) => t.active) || gmailTabs[0];
+
+        // Fecha abas extras duplicadas do Gmail para manter rigorosamente apenas UMA
+        for (const extra of gmailTabs) {
+          if (extra.id && extra.id !== targetGmailTab.id) {
+            try {
+              await chrome.tabs.remove(extra.id);
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        await chrome.storage.local.set({
+          [JARVIS_TAB_KEY]: targetGmailTab.id,
+          [JARVIS_WINDOW_KEY]: targetGmailTab.windowId,
+        });
+
+        if (targetGmailTab.url !== url) {
+          await chrome.tabs.update(targetGmailTab.id, { url, active: true });
+        } else {
+          await chrome.tabs.update(targetGmailTab.id, { active: true });
+        }
+        await chrome.windows.update(targetGmailTab.windowId, { focused: true });
+        return;
+      }
+    } catch {
+      // fallback to standard behavior
+    }
+  }
+
   const stored = await chrome.storage.local.get([
     JARVIS_TAB_KEY,
     JARVIS_WINDOW_KEY,

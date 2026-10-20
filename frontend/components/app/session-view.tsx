@@ -15,8 +15,13 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { ActivityPanel } from '@/components/app/activity-panel';
+import { ClockWidget } from '@/components/app/clock-widget';
+import { EmailComposer } from '@/components/app/email-composer';
 import { LocationSharing } from '@/components/app/location-sharing';
+import { SystemDashboard } from '@/components/app/system-dashboard';
+import { TeachingBoard } from '@/components/app/teaching-board';
 import { TileLayout } from '@/components/app/tile-layout';
+import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 import { Shimmer } from '../ai-elements/shimmer';
 
@@ -234,6 +239,19 @@ export const SessionView = ({
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const vantaEffectRef = useRef<VantaEffect | null>(null);
+  const {
+    style: controlBarDragStyle,
+    isDragging: isControlBarDragging,
+    isResizingEdge: isControlBarResizingEdge,
+    wasDragged: wasControlBarDragged,
+    dragHandlers: controlBarDragHandlers,
+  } = useDraggableFloating('jarvis-pos-control-bar-v1');
+  const {
+    style: orbDragStyle,
+    isDragging: isOrbDragging,
+    isResizingEdge: isOrbResizingEdge,
+    dragHandlers: orbDragHandlers,
+  } = useDraggableFloating('jarvis-pos-vanta-orb-v1', { circular: true });
 
   // Monitora participantes para detectar Persona (Alice/Járvis)
   const participants = useRemoteParticipants();
@@ -298,7 +316,11 @@ export const SessionView = ({
     <section className="relative flex h-svh w-svw flex-col overflow-hidden bg-black" {...props}>
       <VantaController vantaRef={vantaEffectRef} />
       <ActivityPanel />
+      <SystemDashboard />
+      <ClockWidget />
       <LocationSharing />
+      <TeachingBoard />
+      <EmailComposer />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
@@ -311,7 +333,20 @@ export const SessionView = ({
               transition={{ duration: 1.5, ease: 'easeInOut' }}
               className="p5-canvas-container absolute inset-0 flex items-center justify-center"
             >
-              <VantaOrb color={currentColor} vantaRef={vantaEffectRef} />
+              <div
+                style={orbDragStyle}
+                {...orbDragHandlers}
+                title="Arraste pelo centro para mover o Orb · Arraste pela borda circular para aumentar ou diminuir"
+                className={cn(
+                  'pointer-events-auto relative flex size-[360px] touch-none items-center justify-center rounded-full transition-shadow select-none',
+                  isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
+                  isOrbDragging ? 'cursor-grabbing' : 'cursor-grab'
+                )}
+              >
+                <div className="pointer-events-none flex items-center justify-center">
+                  <VantaOrb color={currentColor} vantaRef={vantaEffectRef} />
+                </div>
+              </div>
             </motion.div>
           </AnimatePresence>
         </div>
@@ -325,7 +360,7 @@ export const SessionView = ({
 
       <MotionBottom
         {...BOTTOM_VIEW_MOTION_PROPS}
-        className="relative z-10 mx-auto mb-4 w-full max-w-3xl px-3"
+        className="relative z-10 mx-auto mb-4 w-full max-w-3xl px-3 pb-3 md:pb-12"
       >
         {appConfig.isPreConnectBufferEnabled && (
           <AnimatePresence>
@@ -343,7 +378,22 @@ export const SessionView = ({
           </AnimatePresence>
         )}
 
-        <div className="relative mx-auto max-w-2xl bg-transparent pb-3 md:pb-12">
+        <div
+          style={controlBarDragStyle}
+          {...controlBarDragHandlers}
+          onClickCapture={(event) => {
+            if (wasControlBarDragged()) {
+              event.stopPropagation();
+              event.preventDefault();
+            }
+          }}
+          title="Arraste pelo centro para mover · Arraste pela borda para aumentar ou diminuir"
+          className={cn(
+            'relative mx-auto w-full max-w-2xl touch-none rounded-[31px] bg-transparent transition-shadow select-none',
+            isControlBarDragging || isControlBarResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
+            isControlBarDragging ? 'cursor-grabbing' : 'cursor-grab'
+          )}
+        >
           <AgentControlBar
             variant="livekit"
             controls={controls}

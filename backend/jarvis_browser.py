@@ -6,7 +6,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 class JarvisBrowserError(RuntimeError):
@@ -15,9 +15,10 @@ class JarvisBrowserError(RuntimeError):
 
 class JarvisChrome:
     _PORTS = range(47865, 47885)
-    _EXTENSION_WAIT_TIMEOUT = 0.8
-    _REQUEST_TIMEOUT = 3
+    _EXTENSION_WAIT_TIMEOUT = 4.5
+    _REQUEST_TIMEOUT = 8.0
     _EXTENSION_POLL_TIMEOUT = 1.5
+    _EXTENSION_ALIVE_WINDOW = 20.0
 
     def __init__(self):
         self.extension_dir = Path(__file__).parent / "jarvis_chrome_extension"
@@ -25,56 +26,161 @@ class JarvisChrome:
         self._pending = {}
         self._pending_lock = threading.Lock()
         self._bridge_lock = threading.Lock()
+        self._open_lock = threading.Lock()
         self._server = None
         self._server_thread = None
         self._port = None
         self._last_extension_poll = 0.0
+        self._ever_connected = False
+        self._last_opened_url = ""
+        self._last_opened_at = 0.0
+        self._active_tab = {"url": "", "title": "", "updated_at": 0.0}
+        self._gmail_tab = {"url": "", "title": "", "updated_at": 0.0}
+        try:
+            self._ensure_bridge()
+        except Exception:
+            pass
+
+    def get_active_tab(self) -> dict[str, str]:
+        try:
+            self._ensure_bridge()
+        except Exception:
+            pass
+        with self._pending_lock:
+            if time.monotonic() - self._active_tab.get("updated_at", 0.0) <= 60.0:
+                return {
+                    "url": str(self._active_tab.get("url") or ""),
+                    "title": str(self._active_tab.get("title") or ""),
+                }
+        return {"url": "", "title": ""}
+
+    def get_gmail_tab(self) -> dict[str, str]:
+        try:
+            self._ensure_bridge()
+        except Exception:
+            pass
+        with self._pending_lock:
+            if time.monotonic() - self._gmail_tab.get("updated_at", 0.0) <= 120.0:
+                url = str(self._gmail_tab.get("url") or "")
+                if url:
+                    return {
+                        "url": url,
+                        "title": str(self._gmail_tab.get("title") or ""),
+                    }
+            if time.monotonic() - self._active_tab.get("updated_at", 0.0) <= 120.0:
+                url = str(self._active_tab.get("url") or "")
+                if "mail.google.com" in url:
+                    return {
+                        "url": url,
+                        "title": str(self._active_tab.get("title") or ""),
+                    }
+        return {"url": "", "title": ""}
 
     def open_url(self, url):
         parsed_url = urlparse(url)
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise JarvisBrowserError("Só posso abrir endereços web HTTP ou HTTPS.")
 
-        try:
-            self._ensure_bridge()
-        except JarvisBrowserError:
-            return self._open_default_browser(url)
-
-        if not self._wait_for_extension():
-            return self._open_default_browser(url)
-
-        request_id = uuid.uuid4().hex
-        pending = {
-            "event": threading.Event(),
-            "dispatched": threading.Event(),
-            "result": None,
-        }
-        with self._pending_lock:
-            self._pending[request_id] = pending
-
-        self._commands.put(
-            {
-                "request_id": request_id,
-                "url": url,
-                "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
-            }
-        )
-
-        if not pending["event"].wait(self._REQUEST_TIMEOUT):
+        with self._open_lock:
+            now = time.monotonic()
             with self._pending_lock:
-                self._pending.pop(request_id, None)
-            if pending["dispatched"].is_set():
-                raise JarvisBrowserError(
-                    "A extensão recebeu o link, mas não confirmou se conseguiu abrir. "
-                    "Não abri outra aba para evitar duplicar a solicitação."
-                )
-            return self._open_default_browser(url)
+                if url == self._last_opened_url and (now - self._last_opened_at) < 2.0:
+                    return "jarvis_tab"
 
-        result = pending["result"]
-        if not result or not result.get("ok"):
-            reason = result.get("error") if result else "resposta vazia"
-            raise JarvisBrowserError(f"A extensão não conseguiu abrir o link: {reason}")
-        return "jarvis_tab"
+            try:
+                self._ensure_bridge()
+            except JarvisBrowserError:
+                return self._open_default_browser(url)
+
+            if not self._wait_for_extension():
+                return self._open_default_browser(url)
+
+            # Substitui comandos antigos que ainda não foram despachados na fila para evitar abrir várias URLs em sequência
+            while not self._commands.empty():
+                try:
+                    stale = self._commands.get_nowait()
+                    with self._pending_lock:
+                        stale_pending = self._pending.pop(stale.get("request_id"), None)
+                        if stale_pending is not None:
+                            stale_pending["result"] = {"ok": True}
+                            stale_pending["event"].set()
+                except queue.Empty:
+                    break
+
+            request_id = uuid.uuid4().hex
+            pending = {
+                "event": threading.Event(),
+                "dispatched": threading.Event(),
+                "result": None,
+            }
+            with self._pending_lock:
+                self._pending[request_id] = pending
+                self._last_opened_url = url
+                self._last_opened_at = time.monotonic()
+                if "mail.google.com" in url:
+                    self._gmail_tab = {
+                        "url": url,
+                        "title": self._gmail_tab.get("title") or "Gmail",
+                        "updated_at": time.monotonic(),
+                    }
+
+            self._commands.put(
+                {
+                    "request_id": request_id,
+                    "url": url,
+                    "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
+                }
+            )
+
+            if not pending["event"].wait(self._REQUEST_TIMEOUT):
+                with self._pending_lock:
+                    self._pending.pop(request_id, None)
+                    ever_conn = self._ever_connected
+                if pending["dispatched"].is_set() or ever_conn:
+                    return "jarvis_tab"
+                return self._open_default_browser(url)
+
+            result = pending["result"]
+            if not result or not result.get("ok"):
+                reason = result.get("error") if result else "resposta vazia"
+                raise JarvisBrowserError(f"A extensão não conseguiu abrir o link: {reason}")
+            return "jarvis_tab"
+
+    def close_tab(self, target: str = "atual") -> bool:
+        with self._open_lock:
+            try:
+                self._ensure_bridge()
+            except JarvisBrowserError:
+                return False
+
+            if not self._wait_for_extension():
+                return False
+
+            request_id = uuid.uuid4().hex
+            pending = {
+                "event": threading.Event(),
+                "dispatched": threading.Event(),
+                "result": None,
+            }
+            with self._pending_lock:
+                self._pending[request_id] = pending
+
+            self._commands.put(
+                {
+                    "request_id": request_id,
+                    "action": "close_tab",
+                    "target": target,
+                    "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
+                }
+            )
+
+            if not pending["event"].wait(self._REQUEST_TIMEOUT):
+                with self._pending_lock:
+                    self._pending.pop(request_id, None)
+                return False
+
+            result = pending["result"]
+            return bool(result and result.get("ok"))
 
     @staticmethod
     def _open_default_browser(url):
@@ -86,11 +192,38 @@ class JarvisChrome:
             ) from error
         return "default_browser"
 
+    def _perform_hardware_click(self, x: int, y: int):
+        now = time.monotonic()
+        with self._pending_lock:
+            last_click = getattr(self, "_last_skip_click", 0.0)
+            if now - last_click < 0.9:
+                return
+            self._last_skip_click = now
+
+        import ctypes
+
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        user32 = ctypes.windll.user32
+        orig = POINT()
+        user32.GetCursorPos(ctypes.byref(orig))
+        user32.SetCursorPos(int(x), int(y))
+        user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+        user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
+        user32.SetCursorPos(orig.x, orig.y)
+
     def _wait_for_extension(self):
-        deadline = time.monotonic() + self._EXTENSION_WAIT_TIMEOUT
+        with self._pending_lock:
+            if not self._ever_connected:
+                return False
+        deadline = time.monotonic() + min(self._EXTENSION_WAIT_TIMEOUT, 1.0)
         while time.monotonic() < deadline:
             with self._pending_lock:
-                if time.monotonic() - self._last_extension_poll <= self._EXTENSION_POLL_TIMEOUT:
+                if (
+                    self._last_extension_poll > 0.0
+                    and time.monotonic() - self._last_extension_poll <= self._EXTENSION_ALIVE_WINDOW
+                ):
                     return True
             time.sleep(0.05)
         return False
@@ -141,7 +274,12 @@ class JarvisChrome:
                     self.send_error(403)
                     return
 
-                path = urlparse(self.path).path
+                with browser._pending_lock:
+                    browser._last_extension_poll = time.monotonic()
+                    browser._ever_connected = True
+
+                parsed_req = urlparse(self.path)
+                path = parsed_req.path
                 if path == "/health":
                     self._send_json(
                         200,
@@ -152,7 +290,34 @@ class JarvisChrome:
                     self.send_error(404)
                     return
 
-                deadline = time.monotonic() + browser._EXTENSION_WAIT_TIMEOUT * 2
+                qs = parse_qs(parsed_req.query)
+                active_url = (qs.get("active_url") or [""])[0].strip()
+                active_title = (qs.get("active_title") or [""])[0].strip()
+                gmail_url = (qs.get("gmail_url") or [""])[0].strip()
+                gmail_title = (qs.get("gmail_title") or [""])[0].strip()
+                now_mono = time.monotonic()
+                if active_url or gmail_url:
+                    with browser._pending_lock:
+                        if active_url:
+                            browser._active_tab = {
+                                "url": active_url,
+                                "title": active_title,
+                                "updated_at": now_mono,
+                            }
+                            if "mail.google.com" in active_url and not gmail_url:
+                                browser._gmail_tab = {
+                                    "url": active_url,
+                                    "title": active_title,
+                                    "updated_at": now_mono,
+                                }
+                        if gmail_url:
+                            browser._gmail_tab = {
+                                "url": gmail_url,
+                                "title": gmail_title,
+                                "updated_at": now_mono,
+                            }
+
+                deadline = time.monotonic() + 3.0
                 while time.monotonic() < deadline:
                     with browser._pending_lock:
                         browser._last_extension_poll = time.monotonic()
@@ -164,27 +329,54 @@ class JarvisChrome:
                             )
                         )
                     except queue.Empty:
+                        with browser._pending_lock:
+                            browser._last_extension_poll = time.monotonic()
                         continue
+                    with browser._pending_lock:
+                        browser._last_extension_poll = time.monotonic()
                     if command["expires_at"] > time.monotonic():
                         with browser._pending_lock:
                             pending = browser._pending.get(command["request_id"])
                             if pending is not None:
                                 pending["dispatched"].set()
-                        self._send_json(
-                            200,
-                            {
-                                "request_id": command["request_id"],
-                                "url": command["url"],
-                            },
-                        )
+                        payload_cmd = {"request_id": command["request_id"]}
+                        if command.get("url"):
+                            payload_cmd["url"] = command["url"]
+                        if command.get("action"):
+                            payload_cmd["action"] = command["action"]
+                        if command.get("target"):
+                            payload_cmd["target"] = command["target"]
+                        self._send_json(200, payload_cmd)
                         return
+                with browser._pending_lock:
+                    browser._last_extension_poll = time.monotonic()
                 self._send_json(200, {})
 
             def do_POST(self):
                 if not self._is_extension_request():
                     self.send_error(403)
                     return
-                if urlparse(self.path).path != "/result":
+                with browser._pending_lock:
+                    browser._last_extension_poll = time.monotonic()
+                    browser._ever_connected = True
+
+                path = urlparse(self.path).path
+                if path == "/click-skip":
+                    try:
+                        content_length = int(self.headers.get("Content-Length", "0"))
+                        payload = json.loads(self.rfile.read(content_length))
+                        x = int(payload["x"])
+                        y = int(payload["y"])
+                        browser._perform_hardware_click(x, y)
+                    except Exception as error:
+                        self.send_error(400, str(error))
+                        return
+                    self.send_response(204)
+                    self._add_cors_headers()
+                    self.end_headers()
+                    return
+
+                if path != "/result":
                     self.send_error(404)
                     return
 
@@ -203,6 +395,7 @@ class JarvisChrome:
                     return
 
                 with browser._pending_lock:
+                    browser._last_extension_poll = time.monotonic()
                     pending = browser._pending.get(request_id)
                     if pending is not None:
                         pending["result"] = result
@@ -216,11 +409,18 @@ class JarvisChrome:
                 self.end_headers()
 
             def _is_extension_request(self):
+                client_ip = self.client_address[0]
+                if client_ip in ("127.0.0.1", "::1"):
+                    return True
                 origin = self.headers.get("Origin", "")
                 return origin.startswith("chrome-extension://")
 
             def _add_cors_headers(self):
-                self.send_header("Access-Control-Allow-Origin", self.headers["Origin"])
+                origin = self.headers.get("Origin", "")
+                if origin.startswith("chrome-extension://"):
+                    self.send_header("Access-Control-Allow-Origin", origin)
+                else:
+                    self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type")
                 self.send_header("Vary", "Origin")

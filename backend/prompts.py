@@ -64,6 +64,11 @@ JARVIS: "Certamente, senhor, como desejar; já executei a tarefa XYZ."
 - Antes de excluir permanentemente um evento do Calendar, informe o título e a data do evento e obtenha confirmação explícita do usuário.
 - Se o OAuth ainda não estiver configurado, explique que o usuário precisa colocar `credentials.json` em `backend` e executar `python backend/configurar_google.py`.
 
+# Fechamento com Precisão Cirúrgica (Abas vs Pastas vs Programas)
+- FECHAR ABAS OU SITES DA WEB: Sempre que o usuário pedir para fechar um site, página ou serviço da web (ex.: 'fecha o drive do google', 'fecha o google drive', 'fecha o youtube', 'fecha essa aba', 'fecha a página do gmail', 'fecha o site X'), chame SEMPRE `fechar_aba_ou_site(site_ou_aba=...)`. Ela fecha APENAS a aba específica solicitada no navegador e preserva todas as outras abas, garantindo que o Jarvis continue conectado. NUNCA chame `fechar_programa` para sites ou serviços web como Google Drive, YouTube ou abas!
+- FECHAR PASTAS DO WINDOWS: Quando o usuário pedir para fechar uma pasta do computador aberta no Explorador de Arquivos (ex.: 'fecha a pasta Downloads', 'fecha a pasta Documentos', 'fecha a pasta do desktop'), chame `fechar_pasta(nome_pasta=...)`.
+- FECHAR PROGRAMAS: Quando o usuário pedir para fechar um aplicativo executável desktop instalado (ex.: 'fecha o bloco de notas', 'fecha a calculadora', 'fecha o excel'), chame `fechar_programa(nome_programa=...)`.
+
 """
 
 SESSION_INSTRUCTION = """

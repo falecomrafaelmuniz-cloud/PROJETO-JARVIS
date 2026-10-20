@@ -320,12 +320,16 @@ export function AgentControlBar({
       <div
         aria-label="Controles do assistente de voz"
         className={cn(
-          'flex flex-col border border-[#1da3b9]/20 bg-black/40 p-3 shadow-2xl shadow-[#1da3b9]/5 backdrop-blur-xl',
+          'relative flex flex-col border border-cyan-400/30 bg-black/80 p-3 backdrop-blur-2xl transition-all duration-200',
+          'shadow-[0_0_20px_rgba(6,182,212,0.18)] shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 shadow-cyan-950/40 ring-cyan-500/20',
           variant === 'livekit' ? 'rounded-[31px]' : 'rounded-xl',
           className
         )}
         {...props}
       >
+        {/* Visual de linhas holográficas nos cantos superiores */}
+        <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+        <div className="pointer-events-none absolute -top-1 left-1/2 h-1.5 w-16 -translate-x-1/2 rounded-full bg-cyan-400/40 blur-xs" />
         <motion.div
           {...MOTION_PROPS}
           inert={!(isChatOpen || isChatOpenUncontrolled)}
