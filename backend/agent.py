@@ -86,9 +86,9 @@ cliente_pesquisa = genai.Client(
         retry_options=genai_types.HttpRetryOptions(attempts=1),
     ),
 )
-MODELO_PESQUISA = os.environ.get("GEMINI_RESEARCH_MODEL", "gemini-3.8-flash")
+MODELO_PESQUISA = os.environ.get("GEMINI_RESEARCH_MODEL", "gemini-3.5-flash-lite")
 MODELO_PESQUISA_FALLBACK = os.environ.get(
-    "GEMINI_RESEARCH_FALLBACK_MODEL", "gemini-3.5-flash-lite"
+    "GEMINI_RESEARCH_FALLBACK_MODEL", "gemini-flash-lite-latest"
 )
 
 class MemoriaGemini:
@@ -733,7 +733,7 @@ class Assistant(Agent):
         if img_otimizada.width > 1280 or img_otimizada.height > 720:
             img_otimizada.thumbnail((1280, 720), Image.Resampling.LANCZOS)
 
-        modelos = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+        modelos = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"]
         ultimo_erro = None
         for m in modelos:
             try:
@@ -967,16 +967,17 @@ class Assistant(Agent):
             f"como {arquivo_drive['nome']}."
         )
 
-    @function_tool(description="Busca informacoes do passado na memoria de longo prazo.")
+    @function_tool(description="Busca anotações ou fatos pessoais do usuário armazenados na memória de longo prazo. Chame apenas se o usuário perguntar explicitamente sobre algo gravado, anotado ou lembrado no passado.")
     async def buscar_na_memoria(self, assunto_ou_pergunta: str):
         logger_memoria.info("evento=buscar status=iniciado")
         try:
-            quantidade_memorias = colecao_memoria.count()
+            quantidade_memorias = await asyncio.to_thread(colecao_memoria.count)
             if quantidade_memorias == 0:
                 logger_memoria.info("evento=buscar status=sem_resultados resultados=0")
                 return "Nenhuma lembrança encontrada sobre esse assunto na memória."
 
-            resultados = colecao_memoria.query(
+            resultados = await asyncio.to_thread(
+                colecao_memoria.query,
                 query_texts=[assunto_ou_pergunta],
                 n_results=min(10, quantidade_memorias),
                 include=["documents", "distances"],
@@ -2364,7 +2365,7 @@ class Assistant(Agent):
                     f"Destaque o assunto principal, principais tópicos, datas, valores ou conclusões mais importantes.\n\n"
                     f"Conteúdo:\n{texto_doc[:35000]}"
                 )
-            for m in ("gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"):
+            for m in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"):
                 try:
                     resp = await asyncio.to_thread(client.models.generate_content, model=m, contents=prompt)
                     if resp and resp.text:
@@ -2419,7 +2420,7 @@ class Assistant(Agent):
                 f"Dados da Planilha ({len(linhas)} linhas):\n{tabela_texto[:30000]}"
             )
             client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
-            for m in ("gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3.8-flash"):
+            for m in ("gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"):
                 try:
                     resp = await asyncio.to_thread(client.models.generate_content, model=m, contents=prompt)
                     if resp and resp.text:
@@ -3999,6 +4000,8 @@ async def _monitorar_chegada_emails(session: AgentSession, assistant: Assistant)
 
     while True:
         await asyncio.sleep(15)
+        if not assistant._alertas_email:
+            continue
         try:
             atuais = await asyncio.to_thread(
                 google_workspace.list_gmail_messages,
