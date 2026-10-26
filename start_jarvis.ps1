@@ -9,11 +9,14 @@ $webDirectory = Join-Path $agentDirectory 'frontend'
 $webUrl = 'http://localhost:3000'
 
 function Get-JarvisWorkers {
-    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
+    $allPy = @(Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
         Where-Object {
             $_.CommandLine -match 'agent\.py' -and
             $_.CommandLine -match '\bdev\b'
-        }
+        })
+    $pyIds = $allPy | ForEach-Object { $_.ProcessId }
+    # Retorna apenas os processos-raiz (ignora o subprocesso filho criado pelo lançador do .venv no Windows)
+    return @($allPy | Where-Object { $pyIds -notcontains $_.ParentProcessId })
 }
 
 function Get-LiveKitProcesses {
@@ -105,11 +108,13 @@ try {
         Write-Host "  -> Servidor de Voz Local ativo!" -ForegroundColor Green
     }
 
-    # Limpa duplicatas do Python se houver mais de um worker rodando
+    # Limpa duplicatas reais do Python se houver mais de uma instância raiz rodando
     $workers = @(Get-JarvisWorkers)
     if ($workers.Count -gt 1) {
-        Write-Host "Detectados múltiplos processos do Python. Limpando duplicatas..." -ForegroundColor Yellow
-        $workers | Select-Object -Skip 1 | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Write-Host "Detectadas múltiplas instâncias do Jarvis (Python). Limpando fantasmas..." -ForegroundColor Yellow
+        $workers | Select-Object -Skip 1 | ForEach-Object {
+            & taskkill /F /T /PID $_.ProcessId 2>$null | Out-Null
+        }
         Start-Sleep -Milliseconds 500
         $workers = @(Get-JarvisWorkers)
     }
