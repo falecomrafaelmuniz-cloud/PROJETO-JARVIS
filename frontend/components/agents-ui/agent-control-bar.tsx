@@ -253,12 +253,65 @@ export function AgentControlBar({
   const publishPermissions = usePublishPermissions();
   const [isChatOpenUncontrolled, setIsChatOpenUncontrolled] = useState(isChatOpen);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const orderedMessagesRef = useRef<ReceivedMessage[]>([]);
+
+  // Mantém a ordem real de conversa: evita que a transcrição finalizada do usuário
+  // receba um novo streamInfo.id no fim do turno e pule para baixo da resposta do Jarvis.
+  const orderedMessages = (() => {
+    if (messages.length === 0) {
+      orderedMessagesRef.current = [];
+      return [];
+    }
+
+    const currentList = [...orderedMessagesRef.current];
+    const incomingIds = new Set(messages.map((m) => m.id));
+
+    for (const msg of messages) {
+      const existingIdx = currentList.findIndex((item) => item.id === msg.id);
+      if (existingIdx !== -1) {
+        currentList[existingIdx] = msg;
+        continue;
+      }
+
+      const isUser = msg.from?.isLocal === true;
+      // Verifica se uma mensagem parcial do mesmo autor acabou de trocar de streamInfo.id ao finalizar
+      const replacedIdx = currentList.findIndex(
+        (item) => (item.from?.isLocal === true) === isUser && !incomingIds.has(item.id)
+      );
+      if (replacedIdx !== -1) {
+        currentList[replacedIdx] = msg;
+        continue;
+      }
+
+      // Se a transcrição de voz do usuário chegou milissegundos depois do início da fala do Jarvis,
+      // posiciona a pergunta do usuário imediatamente antes da resposta atual do Jarvis.
+      const lastIdx = currentList.length - 1;
+      const lastItem = lastIdx >= 0 ? currentList[lastIdx] : undefined;
+      const prevItem = lastIdx >= 1 ? currentList[lastIdx - 1] : undefined;
+      if (
+        isUser &&
+        msg.type === 'userTranscript' &&
+        lastItem &&
+        lastItem.from?.isLocal !== true &&
+        (!prevItem || prevItem.from?.isLocal !== true)
+      ) {
+        currentList.splice(lastIdx, 0, msg);
+      } else {
+        currentList.push(msg);
+      }
+    }
+
+    // Remove itens antigos que não existem mais e não foram substituídos
+    const finalFiltered = currentList.filter((item) => incomingIds.has(item.id));
+    orderedMessagesRef.current = finalFiltered;
+    return finalFiltered;
+  })();
 
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
-  }, [messages, isChatOpen, isChatOpenUncontrolled]);
+  }, [orderedMessages, isChatOpen, isChatOpenUncontrolled]);
   const {
     micTrackRef, // Sync'ed with hook
     cameraToggle,
@@ -356,13 +409,13 @@ export function AgentControlBar({
           animate={isChatOpen || isChatOpenUncontrolled ? 'visible' : 'hidden'}
           className="border-input/50 flex w-full max-w-[340px] flex-col overflow-hidden border-b"
         >
-          {messages.length > 0 && (
+          {orderedMessages.length > 0 && (
             <div
               ref={chatScrollRef}
               onPointerDown={(e) => e.stopPropagation()}
               className="mb-2 flex max-h-36 w-full flex-col gap-1.5 overflow-y-auto px-1 pt-1 [scrollbar-width:thin]"
             >
-              {messages.map((msg) => {
+              {orderedMessages.map((msg) => {
                 const isUser = msg.from?.isLocal === true;
                 return (
                   <div
