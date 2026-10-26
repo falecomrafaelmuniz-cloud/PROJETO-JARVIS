@@ -4144,7 +4144,7 @@ async def entrypoint(ctx: agents.JobContext):
         agent=assistant,
         room_input_options=RoomInputOptions(
             video_enabled=True,
-            noise_cancellation=noise_cancellation.BVC(),
+            noise_cancellation=noise_cancellation.BVC() if '.livekit.cloud' in os.environ.get('LIVEKIT_URL', '') else None,
         ),
     )
 

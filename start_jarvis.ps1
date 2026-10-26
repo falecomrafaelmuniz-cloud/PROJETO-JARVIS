@@ -4,8 +4,8 @@ $agentDirectory = $PSScriptRoot
 $backendDirectory = Join-Path $agentDirectory 'backend'
 $agentFile = Join-Path $backendDirectory 'agent.py'
 $pythonExe = Join-Path $agentDirectory '.venv\Scripts\python.exe'
+$livekitExe = Join-Path $agentDirectory 'bin\livekit-server.exe'
 $webDirectory = Join-Path $agentDirectory 'frontend'
-$webEnvFile = Join-Path $webDirectory '.env.local'
 $webUrl = 'http://localhost:3000'
 
 function Get-JarvisWorkers {
@@ -14,6 +14,22 @@ function Get-JarvisWorkers {
             $_.CommandLine -match 'agent\.py' -and
             $_.CommandLine -match '\bdev\b'
         }
+}
+
+function Test-LiveKitServer {
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $async = $tcp.BeginConnect('127.0.0.1', 7880, $null, $null)
+        $wait = $async.AsyncWaitHandle.WaitOne(800, $false)
+        if ($wait -and $tcp.Connected) {
+            $tcp.Close()
+            return $true
+        }
+        $tcp.Close()
+        return $false
+    } catch {
+        return $false
+    }
 }
 
 function Test-JarvisWeb {
@@ -46,6 +62,27 @@ try {
         throw "Pasta do frontend não encontrada em: $webDirectory"
     }
 
+    # 0. Inicia o Servidor LiveKit Local (em segundo plano, sem limite de minutos)
+    if (Test-LiveKitServer) {
+        Write-Host "[0/3] Servidor de Voz Local (LiveKit) já está ativo na porta 7880." -ForegroundColor Green
+    }
+    elseif (Test-Path -LiteralPath $livekitExe -PathType Leaf) {
+        Write-Host "[0/3] Iniciando Servidor de Voz Local (LiveKit 127.0.0.1:7880)..." -ForegroundColor Yellow
+        Start-Process -FilePath $livekitExe `
+            -ArgumentList @('--dev', '--bind', '127.0.0.1', '--node-ip', '127.0.0.1', '--keys', 'APIJarvisLocal: JarvisLocalSecretKey32BytesMinimumLength2026') `
+            -WorkingDirectory $agentDirectory `
+            -WindowStyle Hidden | Out-Null
+
+        $lkDeadline = (Get-Date).AddSeconds(10)
+        while ((Get-Date) -lt $lkDeadline) {
+            Start-Sleep -Milliseconds 300
+            if (Test-LiveKitServer) {
+                break
+            }
+        }
+        Write-Host "  -> Servidor de Voz Local ativo!" -ForegroundColor Green
+    }
+
     # Limpa duplicatas do Python se houver mais de um worker rodando
     $workers = @(Get-JarvisWorkers)
     if ($workers.Count -gt 1) {
@@ -61,9 +98,8 @@ try {
     }
     else {
         Write-Host "[1/3] Ligando o Cérebro do Jarvis em Python..." -ForegroundColor Yellow
-        $backendArgs = "/k title [JARVIS 1/2] BACKEND (Python) && cd /d `"$agentDirectory`" && `"$pythonExe`" backend\agent.py dev"
         Start-Process -FilePath $env:ComSpec `
-            -ArgumentList $backendArgs `
+            -ArgumentList @('/k', 'title [JARVIS 1/2] BACKEND (Python) && .\.venv\Scripts\python.exe backend\agent.py dev') `
             -WorkingDirectory $agentDirectory `
             -WindowStyle Normal | Out-Null
         Start-Sleep -Seconds 3
@@ -82,9 +118,8 @@ try {
     else {
         Write-Host "[2/3] Ligando a Interface Gráfica Next.js..." -ForegroundColor Yellow
         $pkgCommand = if (Get-Command pnpm.cmd -ErrorAction SilentlyContinue) { 'pnpm dev' } else { 'npm run dev' }
-        $frontendArgs = "/k title [JARVIS 2/2] FRONTEND (Next.js) && cd /d `"$webDirectory`" && $pkgCommand"
         Start-Process -FilePath $env:ComSpec `
-            -ArgumentList $frontendArgs `
+            -ArgumentList @('/k', "title [JARVIS 2/2] FRONTEND (Next.js) && $pkgCommand") `
             -WorkingDirectory $webDirectory `
             -WindowStyle Normal | Out-Null
 
@@ -95,7 +130,11 @@ try {
                 break
             }
         }
-        Write-Host "  -> Interface gráfica ativa!" -ForegroundColor Green
+        if (Test-JarvisWeb) {
+            Write-Host "  -> Interface gráfica ativa!" -ForegroundColor Green
+        } else {
+            Write-Warning "A interface gráfica ainda está carregando em http://localhost:3000..."
+        }
     }
 
     # 3. Abre o Navegador

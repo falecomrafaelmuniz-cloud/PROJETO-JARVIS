@@ -14,6 +14,7 @@ node_modules/
 *.tsbuildinfo
 
 # Local application data
+bin/
 memoria_jarvis/
 memoria_jarvis_local_backup_*/
 Memorias_do_Jarvis.txt
