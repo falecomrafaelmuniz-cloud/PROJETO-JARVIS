@@ -102,15 +102,13 @@ class GoogleWorkspace:
                     credentials.refresh(Request())
                     TOKEN_PATH.write_text(credentials.to_json(), encoding="utf-8")
                     self._services.clear()
-                except (GoogleAuthError, OSError) as error:
-                    raise GoogleWorkspaceError(
-                        f"Não foi possível renovar a autorização Google: {error}"
-                    ) from error
+                except (GoogleAuthError, OSError):
+                    merged_scopes = list(dict.fromkeys([*(credentials.scopes or []), *CORE_SCOPES, GMAIL_SCOPE, *scopes_needed]))
+                    credentials = self._run_interactive_oauth(merged_scopes)
 
             if not credentials.valid:
-                raise GoogleWorkspaceError(
-                    "A autorização Google expirou. Execute python backend/configurar_google.py novamente."
-                )
+                merged_scopes = list(dict.fromkeys([*(credentials.scopes or []), *CORE_SCOPES, GMAIL_SCOPE, *scopes_needed]))
+                credentials = self._run_interactive_oauth(merged_scopes)
             return credentials
 
     def _service(self, api_name, version, required_scopes=None):
