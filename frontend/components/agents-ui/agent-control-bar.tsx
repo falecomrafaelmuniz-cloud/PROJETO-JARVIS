@@ -88,7 +88,7 @@ function AgentChatInput({ chatOpen, onSend = async () => {}, className }: AgentC
   const isDisabled = isSending || message.trim().length === 0;
 
   useEffect(() => {
-    if (chatOpen) return;
+    if (!chatOpen) return;
     // when not disabled refocus on input
     inputRef.current?.focus();
   }, [chatOpen]);
@@ -103,8 +103,16 @@ function AgentChatInput({ chatOpen, onSend = async () => {}, className }: AgentC
         ref={inputRef}
         value={message}
         disabled={!chatOpen}
-        placeholder="Digite algo..."
+        placeholder="Digite uma ordem ou mensagem (Enter para enviar)..."
         onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (!isDisabled) {
+              e.currentTarget.form?.requestSubmit();
+            }
+          }
+        }}
         className="field-sizing-content max-h-16 min-h-8 flex-1 [scrollbar-width:thin] py-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       />
       <Button

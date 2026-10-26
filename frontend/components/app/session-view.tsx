@@ -15,6 +15,7 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { ActivityPanel } from '@/components/app/activity-panel';
+import { ChatTranscript } from '@/components/app/chat-transcript';
 import { ClockWidget } from '@/components/app/clock-widget';
 import { EmailComposer } from '@/components/app/email-composer';
 import { LocationSharing } from '@/components/app/location-sharing';
@@ -356,6 +357,7 @@ export const SessionView = ({
       <LocationSharing />
       <TeachingBoard />
       <EmailComposer />
+      <ChatTranscript hidden={!chatOpen} messages={messages} />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
