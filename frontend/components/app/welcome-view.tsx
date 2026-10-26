@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { Power } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 function WelcomeImage() {
@@ -21,13 +23,51 @@ function WelcomeImage() {
 interface WelcomeViewProps {
   startButtonText: string;
   onStartCall: () => void;
+  initialShutDown?: boolean;
 }
 
 export const WelcomeView = ({
   startButtonText,
   onStartCall,
+  initialShutDown = false,
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
+  const [isShutDown, setIsShutDown] = useState(
+    () =>
+      initialShutDown ||
+      (typeof window !== 'undefined' &&
+        Boolean((window as unknown as { __jarvisShutDown?: boolean }).__jarvisShutDown))
+  );
+
+  const handleShutdownSystem = async () => {
+    setIsShutDown(true);
+    try {
+      await fetch('/api/shutdown', { method: 'POST' });
+    } catch {
+      // Servidor já encerrou
+    }
+    setTimeout(() => {
+      window.close();
+    }, 600);
+  };
+
+  if (isShutDown) {
+    return (
+      <div ref={ref}>
+        <section className="bg-background flex flex-col items-center justify-center px-4 text-center">
+          <Power className="mb-4 size-12 text-red-400/80" />
+          <p className="text-foreground max-w-md pt-1 text-base font-semibold">
+            Sistemas do Jarvis encerrados com segurança
+          </p>
+          <p className="text-muted-foreground mt-2 max-w-md text-xs leading-5">
+            Todos os processos em segundo plano (Python, LiveKit e servidor web) foram fechados. Você
+            já pode fechar esta aba do navegador.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div ref={ref}>
       <section className="bg-background flex flex-col items-center justify-center text-center">
@@ -43,6 +83,16 @@ export const WelcomeView = ({
           className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
         >
           {startButtonText}
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleShutdownSystem}
+          className="mt-3 w-64 rounded-full border-red-500/30 bg-red-500/10 font-mono text-[11px] font-semibold tracking-wider text-red-300 uppercase hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-200"
+        >
+          <Power className="mr-1.5 size-3.5" />
+          Desligar Tudo
         </Button>
       </section>
 
