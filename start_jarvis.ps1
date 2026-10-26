@@ -16,6 +16,10 @@ function Get-JarvisWorkers {
         }
 }
 
+function Get-LiveKitProcesses {
+    Get-CimInstance Win32_Process -Filter "Name = 'livekit-server.exe'" -ErrorAction SilentlyContinue
+}
+
 function Test-LiveKitServer {
     try {
         $tcp = New-Object System.Net.Sockets.TcpClient
@@ -46,6 +50,15 @@ function Test-JarvisWeb {
     }
 }
 
+function Test-JarvisWebConfig {
+    try {
+        $resp = Invoke-RestMethod -Uri "http://localhost:3000/api/connection-details" -Method Post -ContentType "application/json" -Body "{}" -TimeoutSec 3
+        return ($resp.serverUrl -eq "ws://127.0.0.1:7880")
+    } catch {
+        return $false
+    }
+}
+
 try {
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "         INICIANDO SISTEMAS DO JARVIS    " -ForegroundColor Cyan
@@ -62,6 +75,15 @@ try {
         throw "Pasta do frontend não encontrada em: $webDirectory"
     }
 
+    # Garante que qualquer livekit-server antigo sem livekit.yaml seja reiniciado
+    $lkProcs = @(Get-LiveKitProcesses)
+    foreach ($proc in $lkProcs) {
+        if ($proc.CommandLine -notmatch 'livekit\.yaml') {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 500
+        }
+    }
+
     # 0. Inicia o Servidor LiveKit Local (em segundo plano, sem limite de minutos)
     if (Test-LiveKitServer) {
         Write-Host "[0/3] Servidor de Voz Local (LiveKit) já está ativo na porta 7880." -ForegroundColor Green
@@ -69,7 +91,7 @@ try {
     elseif (Test-Path -LiteralPath $livekitExe -PathType Leaf) {
         Write-Host "[0/3] Iniciando Servidor de Voz Local (LiveKit 127.0.0.1:7880)..." -ForegroundColor Yellow
         Start-Process -FilePath $livekitExe `
-            -ArgumentList @('--dev', '--bind', '127.0.0.1', '--node-ip', '127.0.0.1', '--keys', 'APIJarvisLocal: JarvisLocalSecretKey32BytesMinimumLength2026') `
+            -ArgumentList '--config "bin\livekit.yaml"' `
             -WorkingDirectory $agentDirectory `
             -WindowStyle Hidden | Out-Null
 
@@ -109,6 +131,15 @@ try {
         } else {
             Write-Host "  -> Cérebro conectado com sucesso!" -ForegroundColor Green
         }
+    }
+
+    # Se o frontend estiver rodando com configuração antiga (LiveKit Cloud), reinicia o node
+    if ((Test-JarvisWeb) -and (-not (Test-JarvisWebConfig))) {
+        Write-Host "Atualizando configuração do servidor web para o LiveKit Local..." -ForegroundColor Yellow
+        Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match 'next' -or $_.CommandLine -match 'pnpm' } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
     }
 
     # 2. Inicia o Servidor Web (Frontend Next.js) em janela CMD visível
