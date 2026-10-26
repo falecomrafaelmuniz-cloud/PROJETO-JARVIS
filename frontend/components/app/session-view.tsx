@@ -98,11 +98,22 @@ interface SessionViewProps {
   onManualDisconnect?: () => void;
 }
 
+interface P5Instance {
+  pixelDensity?: (val: number) => void;
+  frameRate?: (fps: number) => void;
+  noLoop?: () => void;
+  loop?: () => void;
+}
+
 interface VantaEffect {
   options: { chaos: number };
+  p5?: P5Instance;
   setOptions(options: { chaos: number }): void;
   destroy(): void;
 }
+
+// Mude para false se quiser voltar exatamente ao comportamento original do Orbe
+const ORB_MODO_LEVE = true;
 
 interface VantaTrunkOptions {
   el: HTMLDivElement;
@@ -142,7 +153,11 @@ const VantaController = ({ vantaRef }: { vantaRef: React.RefObject<VantaEffect |
     const finalChaos = baseChaos + voiceChaos;
 
     if (Math.abs(effect.options.chaos - finalChaos) > 0.05) {
-      effect.setOptions({ chaos: finalChaos });
+      if (ORB_MODO_LEVE) {
+        effect.options.chaos = finalChaos;
+      } else {
+        effect.setOptions({ chaos: finalChaos });
+      }
     }
   }, [volume, vantaRef]);
 
@@ -163,6 +178,19 @@ const VantaOrb = ({
     let vantaEffect: VantaEffect | null = null;
     let attempts = 0;
     let initTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const handleVisibilityChange = () => {
+      if (!ORB_MODO_LEVE || !vantaEffect?.p5) return;
+      try {
+        if (document.hidden) {
+          vantaEffect.p5.noLoop?.();
+        } else {
+          vantaEffect.p5.loop?.();
+        }
+      } catch {
+        // ignora se o p5 ainda estiver inicializando
+      }
+    };
 
     const tryInitVanta = () => {
       const el = localRef.current;
@@ -188,6 +216,14 @@ const VantaOrb = ({
             spacing: 0.0,
             chaos: 3.0,
           });
+          if (ORB_MODO_LEVE && vantaEffect?.p5) {
+            try {
+              vantaEffect.p5.pixelDensity?.(1);
+              vantaEffect.p5.frameRate?.(36);
+            } catch {
+              // fallback silencioso
+            }
+          }
           vantaRef.current = vantaEffect;
         } catch (error) {
           console.error('Vanta Orb Init Error:', error);
@@ -201,9 +237,15 @@ const VantaOrb = ({
     };
 
     tryInitVanta();
+    if (ORB_MODO_LEVE && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     return () => {
       clearTimeout(initTimer);
+      if ( typeof document !== 'undefined' ) {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       if (vantaEffect) {
         try {
           if (vantaRef.current === vantaEffect) {
