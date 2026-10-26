@@ -112,9 +112,6 @@ interface VantaEffect {
   destroy(): void;
 }
 
-// Mude para false se quiser voltar exatamente ao comportamento original do Orbe
-const ORB_MODO_LEVE = true;
-
 interface VantaTrunkOptions {
   el: HTMLDivElement;
   p5: unknown;
@@ -153,11 +150,7 @@ const VantaController = ({ vantaRef }: { vantaRef: React.RefObject<VantaEffect |
     const finalChaos = baseChaos + voiceChaos;
 
     if (Math.abs(effect.options.chaos - finalChaos) > 0.05) {
-      if (ORB_MODO_LEVE) {
-        effect.options.chaos = finalChaos;
-      } else {
-        effect.setOptions({ chaos: finalChaos });
-      }
+      effect.options.chaos = finalChaos;
     }
   }, [volume, vantaRef]);
 
@@ -180,7 +173,7 @@ const VantaOrb = ({
     let initTimer: ReturnType<typeof setTimeout> | undefined;
 
     const handleVisibilityChange = () => {
-      if (!ORB_MODO_LEVE || !vantaEffect?.p5) return;
+      if (!vantaEffect?.p5) return;
       try {
         if (document.hidden) {
           vantaEffect.p5.noLoop?.();
@@ -216,7 +209,7 @@ const VantaOrb = ({
             spacing: 0.0,
             chaos: 3.0,
           });
-          if (ORB_MODO_LEVE && vantaEffect?.p5) {
+          if (vantaEffect?.p5) {
             try {
               vantaEffect.p5.pixelDensity?.(1);
               vantaEffect.p5.frameRate?.(36);
@@ -237,13 +230,13 @@ const VantaOrb = ({
     };
 
     tryInitVanta();
-    if (ORB_MODO_LEVE && typeof document !== 'undefined') {
+    if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
     return () => {
       clearTimeout(initTimer);
-      if ( typeof document !== 'undefined' ) {
+      if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
       if (vantaEffect) {
