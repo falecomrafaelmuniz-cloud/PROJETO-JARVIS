@@ -283,22 +283,7 @@ export function AgentControlBar({
         continue;
       }
 
-      // Se a transcrição de voz do usuário chegou milissegundos depois do início da fala do Jarvis,
-      // posiciona a pergunta do usuário imediatamente antes da resposta atual do Jarvis.
-      const lastIdx = currentList.length - 1;
-      const lastItem = lastIdx >= 0 ? currentList[lastIdx] : undefined;
-      const prevItem = lastIdx >= 1 ? currentList[lastIdx - 1] : undefined;
-      if (
-        isUser &&
-        msg.type === 'userTranscript' &&
-        lastItem &&
-        lastItem.from?.isLocal !== true &&
-        (!prevItem || prevItem.from?.isLocal !== true)
-      ) {
-        currentList.splice(lastIdx, 0, msg);
-      } else {
-        currentList.push(msg);
-      }
+      currentList.push(msg);
     }
 
     // Remove itens antigos que não existem mais e não foram substituídos
