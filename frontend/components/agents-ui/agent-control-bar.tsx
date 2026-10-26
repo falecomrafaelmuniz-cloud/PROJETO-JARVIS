@@ -4,7 +4,7 @@ import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import { Track } from 'livekit-client';
 import { Loader, MessageSquareTextIcon, Pin, SendHorizontal } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useChat } from '@livekit/components-react';
+import { type ReceivedMessage, useChat } from '@livekit/components-react';
 import { AgentDisconnectButton } from '@/components/agents-ui/agent-disconnect-button';
 import { AgentTrackControl } from '@/components/agents-ui/agent-track-control';
 import {
@@ -207,6 +207,10 @@ export interface AgentControlBarProps extends UseInputControlsProps {
    * The callback for when a device error occurs.
    */
   onDeviceError?: (error: { source: Track.Source; error: Error }) => void;
+  /**
+   * Messages to display inside the compact control bar chat drawer.
+   */
+  messages?: ReceivedMessage[];
 }
 
 /**
@@ -241,12 +245,20 @@ export function AgentControlBar({
   onDisconnect,
   onDeviceError,
   onIsChatOpenChange,
+  messages = [],
   className,
   ...props
 }: AgentControlBarProps & ComponentProps<'div'>) {
   const { send } = useChat();
   const publishPermissions = usePublishPermissions();
   const [isChatOpenUncontrolled, setIsChatOpenUncontrolled] = useState(isChatOpen);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [messages, isChatOpen, isChatOpenUncontrolled]);
   const {
     micTrackRef, // Sync'ed with hook
     cameraToggle,
@@ -342,8 +354,32 @@ export function AgentControlBar({
           {...MOTION_PROPS}
           inert={!(isChatOpen || isChatOpenUncontrolled)}
           animate={isChatOpen || isChatOpenUncontrolled ? 'visible' : 'hidden'}
-          className="border-input/50 flex w-full items-start overflow-hidden border-b"
+          className="border-input/50 flex w-full max-w-[340px] flex-col overflow-hidden border-b"
         >
+          {messages.length > 0 && (
+            <div
+              ref={chatScrollRef}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="mb-2 flex max-h-36 w-full flex-col gap-1.5 overflow-y-auto px-1 pt-1 [scrollbar-width:thin]"
+            >
+              {messages.map((msg) => {
+                const isUser = msg.from?.isLocal === true;
+                return (
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      'max-w-[88%] rounded-2xl px-2.5 py-1.5 text-xs leading-snug break-words',
+                      isUser
+                        ? 'ml-auto border border-cyan-400/35 bg-[#1da3b9]/25 text-cyan-50'
+                        : 'mr-auto border border-white/10 bg-white/5 text-white/90'
+                    )}
+                  >
+                    {msg.message}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <AgentChatInput
             chatOpen={isChatOpen || isChatOpenUncontrolled}
             onSend={handleSendMessage}
