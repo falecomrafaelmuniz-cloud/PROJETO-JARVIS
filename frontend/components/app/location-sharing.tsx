@@ -162,6 +162,26 @@ export function LocationSharing() {
             toast.success(`Localização atual: ${place}`);
           } catch (error) {
             console.warn('Não foi possível identificar o nome da localização.', error);
+            try {
+              const res = await fetch('/api/location/ip');
+              if (res.ok) {
+                const ipData = await res.json();
+                if (ipData.city) {
+                  currentLocation.current = {
+                    ...currentLocation.current,
+                    city: ipData.city,
+                    state: ipData.state,
+                    country: ipData.country,
+                  };
+                  await publishLocation();
+                  setDashboardCoordinates(currentLocation.current);
+                  const place = [ipData.city, ipData.state, ipData.country].filter(Boolean).join(', ');
+                  notifyDashboard('Localização identificada', 'info', place);
+                  toast.success(`Localização atual: ${place}`);
+                  return;
+                }
+              }
+            } catch {}
             notifyDashboard(
               'Cidade e estado indisponíveis',
               'warning',
@@ -180,7 +200,38 @@ export function LocationSharing() {
           toast.error('Não foi possível compartilhar a localização com o Jarvis.');
         }
       },
-      (error) => {
+      async (error) => {
+        try {
+          const res = await fetch('/api/location/ip');
+          if (res.ok) {
+            const ipData = await res.json();
+            if (ipData.city) {
+              currentLocation.current = {
+                latitude: ipData.latitude,
+                longitude: ipData.longitude,
+                city: ipData.city,
+                state: ipData.state,
+                country: ipData.country,
+              };
+              await room.localParticipant.publishData(
+                new TextEncoder().encode(
+                  JSON.stringify({
+                    type: 'jarvis_location',
+                    ...currentLocation.current,
+                  })
+                ),
+                { reliable: true, topic: LOCATION_TOPIC }
+              );
+              setDashboardLocationStatus('shared');
+              setDashboardCoordinates(currentLocation.current);
+              const place = [ipData.city, ipData.state, ipData.country].filter(Boolean).join(', ');
+              notifyDashboard('Localização identificada via rede', 'info', place);
+              toast.success(`Localização atual: ${place}`);
+              return;
+            }
+          }
+        } catch {}
+
         setDashboardLocationStatus('unavailable');
         if (error.code === error.PERMISSION_DENIED) {
           notifyDashboard(

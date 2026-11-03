@@ -869,6 +869,26 @@ class Assistant(Agent):
     async def obter_localizacao_atual(self) -> str:
         latitude = self.location_state.get("latitude")
         longitude = self.location_state.get("longitude")
+        cidade = self.location_state.get("city")
+
+        if not cidade or not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+            try:
+                async with httpx.AsyncClient(timeout=2.5) as client:
+                    resp = await client.get("http://ip-api.com/json/?fields=status,country,regionName,city,lat,lon")
+                    if resp.status_code == 200:
+                        dados = resp.json()
+                        if dados.get("status") == "success":
+                            self.location_state["latitude"] = dados.get("lat")
+                            self.location_state["longitude"] = dados.get("lon")
+                            self.location_state["city"] = dados.get("city")
+                            self.location_state["state"] = dados.get("regionName")
+                            pais = "Brasil" if dados.get("country") == "Brazil" else dados.get("country")
+                            self.location_state["country"] = pais
+                            latitude = self.location_state["latitude"]
+                            longitude = self.location_state["longitude"]
+            except Exception:
+                pass
+
         if (
             isinstance(latitude, bool)
             or not isinstance(latitude, (int, float))
