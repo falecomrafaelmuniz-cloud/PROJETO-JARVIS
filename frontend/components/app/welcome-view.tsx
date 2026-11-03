@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Power } from 'lucide-react';
+import { Check, Power, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 function WelcomeImage() {
@@ -38,6 +38,35 @@ export const WelcomeView = ({
       (typeof window !== 'undefined' &&
         Boolean((window as unknown as { __jarvisShutDown?: boolean }).__jarvisShutDown))
   );
+  const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  const handleUpdateJarvis = async () => {
+    if (updateState === 'updating') return;
+    setUpdateState('updating');
+    setUpdateMessage('Buscando melhorias no GitHub e atualizando sistemas...');
+
+    try {
+      const response = await fetch('/api/update', { method: 'POST' });
+      const data = await response.json();
+
+      if (!response.ok || data.status === 'error') {
+        throw new Error(data.message || 'Falha ao atualizar o Jarvis.');
+      }
+
+      setUpdateState('success');
+      setUpdateMessage(data.message || 'Jarvis atualizado com sucesso!');
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      setUpdateState('error');
+      setUpdateMessage(
+        error instanceof Error ? error.message : 'Erro ao buscar atualizações do Jarvis.'
+      );
+    }
+  };
 
   const handleShutdownSystem = async () => {
     setIsShutDown(true);
@@ -80,6 +109,7 @@ export const WelcomeView = ({
         <Button
           size="lg"
           onClick={onStartCall}
+          disabled={updateState === 'updating'}
           className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
         >
           {startButtonText}
@@ -88,12 +118,52 @@ export const WelcomeView = ({
         <Button
           variant="outline"
           size="sm"
+          onClick={handleUpdateJarvis}
+          disabled={updateState === 'updating'}
+          className="mt-3 w-64 rounded-full border-cyan-500/30 bg-cyan-500/10 font-mono text-[11px] font-semibold tracking-wider text-cyan-300 uppercase hover:border-cyan-500/50 hover:bg-cyan-500/20 hover:text-cyan-200"
+        >
+          {updateState === 'updating' ? (
+            <>
+              <RefreshCw className="mr-1.5 size-3.5 animate-spin" />
+              Atualizando...
+            </>
+          ) : updateState === 'success' ? (
+            <>
+              <Check className="mr-1.5 size-3.5 text-emerald-400" />
+              Jarvis Atualizado!
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-1.5 size-3.5" />
+              Atualizar Jarvis
+            </>
+          )}
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
           onClick={handleShutdownSystem}
+          disabled={updateState === 'updating'}
           className="mt-3 w-64 rounded-full border-red-500/30 bg-red-500/10 font-mono text-[11px] font-semibold tracking-wider text-red-300 uppercase hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-200"
         >
           <Power className="mr-1.5 size-3.5" />
           Desligar Tudo
         </Button>
+
+        {updateMessage && (
+          <p
+            className={`mt-3 max-w-xs text-xs font-medium ${
+              updateState === 'error'
+                ? 'text-red-400'
+                : updateState === 'success'
+                  ? 'text-emerald-400'
+                  : 'text-cyan-300'
+            }`}
+          >
+            {updateMessage}
+          </p>
+        )}
       </section>
 
       <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
