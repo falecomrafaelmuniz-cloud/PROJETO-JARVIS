@@ -62,8 +62,9 @@
   🟠 5.4. substituir_texto_google_slides: Substitui ocorrências de texto em uma apresentação.
   🟠 5.5. excluir_slide_google_slides: Remove um slide de uma Apresentação Google.
   🟠 5.6. executar_operacoes_google_slides: Executa alterações avançadas de layout e formatação nos slides.
-  🟠 5.7. iniciar_selecao_google_photos: Inicia sessão do Google Photos Picker para escolha de fotos/vídeos.
-  🟠 5.8. listar_fotos_selecionadas_google_photos: Lista as fotos e vídeos selecionados no Google Photos.
+  🟠 5.7. iniciar_selecao_google_photos: Abre automaticamente a janela do Google Photos Picker no navegador para escolha de fotos/vídeos.
+  🟠 5.8. listar_fotos_selecionadas_google_photos: Lista e baixa automaticamente as fotos e vídeos selecionados no Google Photos.
+  🟠 5.9. usar_fotos_selecionadas_google_photos: Salva as fotos selecionadas em qualquer pasta do PC, anexa no e-mail do Gmail, analisa com IA ou exibe na Lousa interativa.
 
 --------------------------------------------------------------------------------
 

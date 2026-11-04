@@ -3198,18 +3198,174 @@ class Assistant(Agent):
             operacoes_json,
         )
 
-    @function_tool(description="Inicia uma sessão oficial do Google Photos Picker. Retorna um link para o usuário escolher explicitamente as fotos ou vídeos que deseja compartilhar com o Jarvis.")
-    async def iniciar_selecao_google_photos(self):
-        return await self._executar_google(
-            google_workspace.create_photos_picker_session,
+    @function_tool(
+        description=(
+            "Inicia uma sessão oficial do Google Photos Picker e ABRE AUTOMATICAMENTE a janela/aba do seletor do Google Fotos na tela do usuário "
+            "para que ele escolha as fotos ou vídeos que deseja compartilhar com o Jarvis."
         )
+    )
+    async def iniciar_selecao_google_photos(self):
+        try:
+            resultado = await asyncio.to_thread(google_workspace.create_photos_picker_session)
+        except GoogleWorkspaceError as erro:
+            return f"Aviso: {erro}"
 
-    @function_tool(description="Consulta os itens escolhidos pelo usuário em uma sessão do Google Photos Picker. Só retorna mídia após a seleção explícita ser concluída.")
-    async def listar_fotos_selecionadas_google_photos(self, id_sessao: str):
+        id_sessao = str(resultado.get("id_sessao") or "").strip()
+        url_selecao = str(resultado.get("url_selecao") or "").strip()
+        if id_sessao:
+            self._ultima_sessao_photos_id = id_sessao
+
+        if url_selecao:
+            print(f"[AÇÃO] O Jarvis está abrindo o seletor do Google Fotos na tela: {url_selecao}")
+            try:
+                await asyncio.to_thread(jarvis_chrome.open_url, url_selecao)
+                resultado["aberto_no_navegador"] = True
+            except Exception:
+                try:
+                    os.startfile(url_selecao)
+                    resultado["aberto_no_navegador"] = True
+                except Exception as erro_nav:
+                    resultado["aberto_no_navegador"] = False
+                    resultado["aviso_navegador"] = str(erro_nav)
+
+        resultado["instrucao"] = (
+            "A janela do Google Photos Picker já foi aberta na tela do usuário. "
+            "Peça para ele selecionar as fotos desejadas e clicar em Concluir. "
+            "Não precisa ler o ID longo da sessão em voz alta."
+        )
+        return json.dumps(resultado, ensure_ascii=False)
+
+    @function_tool(
+        description=(
+            "Consulta e baixa os itens escolhidos pelo usuário na sessão do Google Photos Picker. "
+            "Se `id_sessao` não for informado ou for 'atual', usa automaticamente a última sessão aberta. "
+            "Se `pasta_destino` for informada, já salva as fotos selecionadas diretamente nessa pasta do computador."
+        )
+    )
+    async def listar_fotos_selecionadas_google_photos(
+        self,
+        id_sessao: str = "",
+        pasta_destino: str = "Downloads",
+    ):
+        sessao_alvo = (id_sessao or "").strip()
+        if not sessao_alvo or sessao_alvo.lower() in {"atual", "ultima", "última", "recente"}:
+            sessao_alvo = getattr(self, "_ultima_sessao_photos_id", "")
+        pasta_final = await asyncio.to_thread(self._resolver_pasta_destino_print, pasta_destino or "Downloads")
         return await self._executar_google(
             google_workspace.list_photos_picker_items,
-            id_sessao,
+            sessao_alvo,
+            pasta_final,
         )
+
+    @function_tool(
+        description=(
+            "Executa ações com as fotos/vídeos que o usuário acabou de selecionar no Google Photos Picker: "
+            "- `acao='salvar'`: baixa e salva as fotos selecionadas na pasta escolhida (`pasta_destino`, ex.: 'Downloads', 'Área de Trabalho', 'pasta Viagem'). "
+            "- `acao='email'`: anexa automaticamente as fotos selecionadas no rascunho de e-mail do Gmail na tela. "
+            "- `acao='analisar'`: analisa visualmente a foto selecionada com IA (descreve a imagem, lê textos/comprovantes ou responde à `pergunta_ou_legenda`). "
+            "- `acao='lousa'`: coloca a foto selecionada diretamente na Lousa interativa na tela."
+        )
+    )
+    async def usar_fotos_selecionadas_google_photos(
+        self,
+        acao: str = "salvar",
+        pasta_destino: str = "Downloads",
+        pergunta_ou_legenda: str = "",
+        id_sessao: str = "",
+    ) -> str:
+        import base64
+        import io
+
+        sessao_alvo = (id_sessao or "").strip()
+        if not sessao_alvo or sessao_alvo.lower() in {"atual", "ultima", "última", "recente"}:
+            sessao_alvo = getattr(self, "_ultima_sessao_photos_id", "")
+        if not sessao_alvo:
+            return "Aviso: Nenhuma sessão ativa do Google Photos encontrada. Peça para iniciar a seleção do Google Fotos primeiro."
+
+        pasta_final = await asyncio.to_thread(self._resolver_pasta_destino_print, pasta_destino or "Downloads")
+        try:
+            dados = await asyncio.to_thread(
+                google_workspace.list_photos_picker_items,
+                sessao_alvo,
+                pasta_final,
+            )
+        except GoogleWorkspaceError as erro:
+            return f"Aviso: {erro}"
+
+        if not dados.get("selecao_concluida"):
+            return "Aviso: A seleção no Google Fotos ainda não foi concluída. Selecione as fotos na janela aberta e clique no botão 'Concluir'."
+
+        itens = dados.get("itens") or []
+        caminhos_locais = [str(it.get("caminho_local") or "") for it in itens if it.get("caminho_local") and os.path.isfile(str(it.get("caminho_local")))]
+        if not caminhos_locais:
+            return "Aviso: Não foi possível baixar os arquivos selecionados da sessão do Google Fotos."
+
+        acao_norm = (acao or "salvar").strip().lower()
+
+        # 1. Anexar no e-mail do Gmail
+        if any(k in acao_norm for k in ("email", "e-mail", "anexar", "gmail")):
+            self._rascunho_email["aberto"] = True
+            nomes_anexados = []
+            for cam in caminhos_locais:
+                nome_arq = os.path.basename(cam)
+                nomes_anexados.append(nome_arq)
+                self._rascunho_email["anexos"].append(
+                    {
+                        "id": f"local-{uuid.uuid4().hex[:8]}",
+                        "tipo": "local",
+                        "nome": nome_arq,
+                        "caminho_ou_id": cam,
+                    }
+                )
+            await self._publicar_rascunho_email()
+            return (
+                f"{len(nomes_anexados)} foto(s) do Google Fotos baixada(s) e anexada(s) com SUCESSO ao rascunho de e-mail na tela: "
+                + ", ".join(nomes_anexados)
+            )
+
+        # 2. Analisar visualmente com Gemini Vision
+        if any(k in acao_norm for k in ("analis", "ler", "descrev", "ver", "olhar", "explicar")):
+            prompt_visao = (
+                pergunta_ou_legenda.strip()
+                or "Descreva detalhadamente o que aparece nesta imagem e leia qualquer texto relevante visível."
+            )
+
+            def _analisar_primeira_foto() -> str:
+                im = Image.open(caminhos_locais[0]).convert("RGB")
+                return self._chamar_gemini_visao(im, prompt_visao)
+
+            resposta_ia = await asyncio.to_thread(_analisar_primeira_foto)
+            return f"Análise da foto '{os.path.basename(caminhos_locais[0])}' (salva em {pasta_final}):\n{resposta_ia}"
+
+        # 3. Colocar na Lousa interativa
+        if "lousa" in acao_norm or "quadro" in acao_norm:
+            def _gerar_data_uri(caminho_img: str) -> str:
+                im = Image.open(caminho_img).convert("RGB")
+                im.thumbnail((800, 600), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, format="JPEG", quality=82)
+                b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                return f"data:image/jpeg;base64,{b64}"
+
+            data_uri = await asyncio.to_thread(_gerar_data_uri, caminhos_locais[0])
+            await self.abrir_lousa()
+            legenda = pergunta_ou_legenda.strip() or os.path.basename(caminhos_locais[0])
+            element = {
+                "id": str(uuid.uuid4()),
+                "type": "image",
+                "x": 380,
+                "y": 140,
+                "width": 420,
+                "height": 300,
+                "src": data_uri,
+                "label": legenda[:300],
+            }
+            await self._publicar_na_lousa("add", element)
+            return f"Foto '{os.path.basename(caminhos_locais[0])}' adicionada com SUCESSO à Lousa na tela (e salva em {pasta_final})."
+
+        # 4. Padrão: Salvar na pasta especificada
+        nomes_salvos = ", ".join(os.path.basename(c) for c in caminhos_locais)
+        return f"{len(caminhos_locais)} arquivo(s) do Google Fotos baixado(s) e salvo(s) com SUCESSO na pasta '{pasta_final}': {nomes_salvos}"
 
     @function_tool(description="Renomeia um arquivo ou pasta do Google Drive usando o ID.")
     async def renomear_item_google_drive(self, id_item: str, novo_nome: str):

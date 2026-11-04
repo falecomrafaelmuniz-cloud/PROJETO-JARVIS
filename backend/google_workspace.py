@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import re
 import threading
 import uuid
@@ -164,7 +165,7 @@ class GoogleWorkspace:
             ),
         }
 
-    def list_photos_picker_items(self, session_id):
+    def list_photos_picker_items(self, session_id, dest_dir=None):
         if not session_id.strip():
             raise GoogleWorkspaceError("Informe o ID da sessão do Google Photos Picker.")
         session_id = session_id.strip()
@@ -180,6 +181,12 @@ class GoogleWorkspace:
                 "mensagem": "A seleção ainda não foi concluída no Google Photos.",
             }
 
+        auth_session = AuthorizedSession(
+            self._credentials(required_scopes=[PHOTOS_PICKER_SCOPE])
+        )
+        pasta_destino = dest_dir or os.path.join(os.path.expanduser("~"), "Downloads")
+        os.makedirs(pasta_destino, exist_ok=True)
+
         items = []
         page_token = None
         while True:
@@ -191,15 +198,39 @@ class GoogleWorkspace:
                 "mediaItems",
                 params=params,
             )
-            for item in page.get("mediaItems", []):
+            for idx, item in enumerate(page.get("mediaItems", []), start=1):
                 media_file = item.get("mediaFile", {})
+                base_url = str(media_file.get("baseUrl") or "").strip()
+                filename = str(media_file.get("filename") or f"GooglePhotos_{idx}.jpg").strip()
+                mime_type = str(media_file.get("mimeType") or "image/jpeg").strip()
+                item_type = str(item.get("type") or "PHOTO").strip()
+
+                caminho_local = ""
+                if base_url:
+                    sufixo_dl = "=dv" if (item_type == "VIDEO" or mime_type.startswith("video/")) else "=d"
+                    try:
+                        resp_dl = auth_session.get(f"{base_url}{sufixo_dl}", timeout=60)
+                        if not resp_dl.ok and sufixo_dl == "=dv":
+                            resp_dl = auth_session.get(f"{base_url}=d", timeout=60)
+                        if resp_dl.ok and resp_dl.content:
+                            nome_seguro = re.sub(r'[<>:"/\\|?*]', "_", filename).strip() or f"GooglePhotos_{idx}.jpg"
+                            if "." not in nome_seguro:
+                                ext_pad = ".mp4" if mime_type.startswith("video/") else ".jpg"
+                                nome_seguro = f"{nome_seguro}{ext_pad}"
+                            caminho_cand = os.path.join(pasta_destino, nome_seguro)
+                            with open(caminho_cand, "wb") as f_out:
+                                f_out.write(resp_dl.content)
+                            caminho_local = os.path.abspath(caminho_cand)
+                    except Exception:
+                        pass
+
                 items.append(
                     {
                         "id": item.get("id"),
-                        "tipo": item.get("type"),
-                        "nome_arquivo": media_file.get("filename"),
-                        "mime_type": media_file.get("mimeType"),
-                        "url_temporaria": media_file.get("baseUrl"),
+                        "tipo": item_type,
+                        "nome_arquivo": filename,
+                        "mime_type": mime_type,
+                        "caminho_local": caminho_local,
                     }
                 )
             page_token = page.get("nextPageToken")
@@ -208,6 +239,7 @@ class GoogleWorkspace:
         return {
             "id_sessao": session_id,
             "selecao_concluida": True,
+            "pasta_salva": os.path.abspath(pasta_destino),
             "itens": items,
         }
 
