@@ -130,6 +130,7 @@ async function pollBridge() {
             null;
 
           const params = new URLSearchParams();
+          params.set("v", "2");
           if (activeTab && activeTab.url) {
             params.set("active_url", activeTab.url);
             params.set("active_title", activeTab.title || "");
@@ -178,6 +179,12 @@ async function handleCommand(command) {
     if (command.action === "close_tab") {
       const count = await closeJarvisTab(command.target);
       result = { request_id: command.request_id, ok: true, closed_count: count };
+    } else if (command.action === "minimize_tab") {
+      const mode = await minimizeJarvisTab(command.target);
+      result = { request_id: command.request_id, ok: Boolean(mode), mode };
+    } else if (command.action === "focus_tab") {
+      const mode = await focusOrMaximizeJarvisTab(command.target);
+      result = { request_id: command.request_id, ok: Boolean(mode), mode };
     } else {
       await openInJarvisTab(command.url);
       result = { request_id: command.request_id, ok: true };
@@ -254,6 +261,128 @@ async function closeJarvisTab(target) {
     }
   }
   return matchingTabs.length;
+}
+
+async function minimizeJarvisTab(target) {
+  const allTabs = await chrome.tabs.query({});
+  const rawTarget = String(target || "atual").trim().toLowerCase();
+
+  const isJarvisTab = (tab) => {
+    const url = (tab.url || "").toLowerCase();
+    const title = (tab.title || "").toLowerCase();
+    return (
+      url.includes("localhost:3000") ||
+      url.includes("127.0.0.1:3000") ||
+      title.includes("jarvis - assistente")
+    );
+  };
+
+  const jarvisTab = allTabs.find((t) => isJarvisTab(t));
+
+  // Se pediu para minimizar a janela inteira do navegador
+  if (["navegador", "chrome", "google chrome", "janela"].includes(rawTarget)) {
+    const win = await chrome.windows.getLastFocused();
+    if (win && win.id) {
+      await chrome.windows.update(win.id, { state: "minimized" });
+      return "window_minimized";
+    }
+  }
+
+  let searchTerms = [rawTarget];
+  if (rawTarget.includes("drive")) {
+    searchTerms.push("drive.google.com", "google drive", "meu drive");
+  }
+  if (rawTarget.includes("gmail") || rawTarget.includes("email") || rawTarget.includes("e-mail")) {
+    searchTerms.push("mail.google.com", "gmail");
+  }
+  if (rawTarget.includes("youtube")) {
+    searchTerms.push("youtube.com", "youtube");
+  }
+  if (rawTarget.includes("whatsapp")) {
+    searchTerms.push("web.whatsapp.com", "whatsapp");
+  }
+
+  let targetTab = null;
+  if (["atual", "ativa", "ativo", "este", "esta", "esse", "essa", "aba", "guia", "site", ""].includes(rawTarget)) {
+    const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    targetTab = activeTabs[0] || allTabs.find((t) => t.active);
+  } else {
+    targetTab = allTabs.find((tab) => {
+      if (isJarvisTab(tab)) return false;
+      const url = (tab.url || "").toLowerCase();
+      const title = (tab.title || "").toLowerCase();
+      return searchTerms.some((term) => url.includes(term) || title.includes(term));
+    });
+  }
+
+  if (!targetTab) {
+    return "";
+  }
+
+  // Se a aba alvo está na MESMA janela de outras abas, destaca apenas essa aba para uma janela própria e minimiza SÓ ela (preservando todas as outras abas abertas na tela!)
+  const tabsInSameWindow = allTabs.filter((t) => t.windowId === targetTab.windowId);
+  if (tabsInSameWindow.length > 1 && targetTab.id) {
+    const newWin = await chrome.windows.create({ tabId: targetTab.id, focused: false });
+    if (newWin && newWin.id) {
+      await chrome.windows.update(newWin.id, { state: "minimized" });
+      return "detached_and_minimized";
+    }
+  }
+
+  // Se a aba já está sozinha em uma janela separada (e não é a janela do Jarvis), minimiza aquela janela!
+  if (targetTab.windowId && (!jarvisTab || targetTab.windowId !== jarvisTab.windowId)) {
+    await chrome.windows.update(targetTab.windowId, { state: "minimized" });
+    return "window_minimized";
+  }
+
+  return "";
+}
+
+async function focusOrMaximizeJarvisTab(target) {
+  const allTabs = await chrome.tabs.query({});
+  const rawTarget = String(target || "atual").trim().toLowerCase();
+
+  if (["navegador", "chrome", "google chrome", "janela", "atual", "ativa", ""].includes(rawTarget)) {
+    const wins = await chrome.windows.getAll({ populate: false });
+    const targetWin = wins.find((w) => w.state === "minimized") || wins[0];
+    if (targetWin && targetWin.id) {
+      await chrome.windows.update(targetWin.id, { state: "maximized", focused: true });
+      return "window_maximized";
+    }
+  }
+
+  let searchTerms = [rawTarget];
+  if (rawTarget.includes("drive")) {
+    searchTerms.push("drive.google.com", "google drive", "meu drive");
+  }
+  if (rawTarget.includes("gmail") || rawTarget.includes("email") || rawTarget.includes("e-mail")) {
+    searchTerms.push("mail.google.com", "gmail");
+  }
+  if (rawTarget.includes("youtube")) {
+    searchTerms.push("youtube.com", "youtube");
+  }
+  if (rawTarget.includes("whatsapp")) {
+    searchTerms.push("web.whatsapp.com", "whatsapp");
+  }
+  if (rawTarget.includes("jarvis")) {
+    searchTerms.push("localhost:3000", "127.0.0.1:3000", "jarvis - assistente");
+  }
+
+  const targetTab = allTabs.find((tab) => {
+    const url = (tab.url || "").toLowerCase();
+    const title = (tab.title || "").toLowerCase();
+    return searchTerms.some((term) => url.includes(term) || title.includes(term));
+  });
+
+  if (!targetTab || !targetTab.id) {
+    return "";
+  }
+
+  if (targetTab.windowId) {
+    await chrome.windows.update(targetTab.windowId, { state: "maximized", focused: true });
+  }
+  await chrome.tabs.update(targetTab.id, { active: true });
+  return "tab_focused_and_maximized";
 }
 
 async function openInJarvisTab(url) {

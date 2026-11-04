@@ -213,6 +213,7 @@ class Assistant(Agent):
             llm=google.beta.realtime.RealtimeModel(
                 voice="Charon",
                 temperature=0.6,
+                thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
             ),
         )
 
@@ -1806,14 +1807,39 @@ class Assistant(Agent):
 
             target_hwnd = None
             chrome_fallback_hwnd = None
-            alvo_lower = (alvo or "atual").strip().lower()
+            alvo_lower = (
+                (alvo or "atual")
+                .strip()
+                .lower()
+                .replace("fechar", "")
+                .replace("fecha", "")
+                .replace("a aba do", "")
+                .replace("a aba da", "")
+                .replace("a aba", "")
+                .replace("aba do", "")
+                .replace("aba da", "")
+                .replace("o site do", "")
+                .replace("o site da", "")
+                .replace("o site", "")
+                .strip()
+            )
+            if not alvo_lower:
+                alvo_lower = "atual"
+
             termos_busca = [alvo_lower]
+            termo_pesquisa_aba = alvo_lower
             if "drive" in alvo_lower:
                 termos_busca.extend(["drive", "google drive", "meu drive"])
+                termo_pesquisa_aba = "drive"
             if "youtube" in alvo_lower:
                 termos_busca.extend(["youtube", "yt"])
-            if "gmail" in alvo_lower or "email" in alvo_lower:
+                termo_pesquisa_aba = "youtube"
+            if "gmail" in alvo_lower or "email" in alvo_lower or "e-mail" in alvo_lower:
                 termos_busca.extend(["gmail", "mail.google.com"])
+                termo_pesquisa_aba = "gmail"
+            if "whatsapp" in alvo_lower:
+                termos_busca.extend(["whatsapp"])
+                termo_pesquisa_aba = "whatsapp"
 
             def enum_cb(hwnd, _):
                 nonlocal target_hwnd, chrome_fallback_hwnd
@@ -1823,13 +1849,14 @@ class Assistant(Agent):
                         buff = ctypes.create_unicode_buffer(length + 1)
                         user32.GetWindowTextW(hwnd, buff, length + 1)
                         title = buff.value.lower()
-                        # PROTEÇÃO ABSOLUTA: Nunca fecha a janela do Jarvis / localhost
-                        if any(prot in title for prot in ["localhost:3000", "127.0.0.1", "jarvis - assistente"]):
-                            return True
 
                         if any(b in title for b in ["chrome", "edge", "brave", "firefox"]):
                             if not chrome_fallback_hwnd:
                                 chrome_fallback_hwnd = hwnd
+
+                        # PROTEÇÃO ABSOLUTA: Nunca define a aba ativa do Jarvis como target_hwnd direto de Ctrl+W
+                        if any(prot in title for prot in ["localhost:3000", "127.0.0.1", "jarvis - assistente"]):
+                            return True
 
                         # Se for "atual" ou termo genérico em um navegador
                         if alvo_lower in {"atual", "esta", "essa", "aba", "guia", "navegador"}:
@@ -1846,9 +1873,12 @@ class Assistant(Agent):
 
             # Caso 1: Encontrou a janela cuja aba ativa bate com o alvo (ou termo genérico atual)
             if target_hwnd:
-                user32.ShowWindow(target_hwnd, 9)  # SW_RESTORE
-                user32.SwitchToThisWindow(target_hwnd, True)
-                time.sleep(0.12)
+                # NUNCA chama SW_RESTORE (9) se a janela já estiver maximizada/visível, pois SW_RESTORE tira o Chrome da tela cheia!
+                if user32.IsIconic(target_hwnd):
+                    user32.ShowWindow(target_hwnd, 3)  # SW_SHOWMAXIMIZED
+                if user32.GetForegroundWindow() != target_hwnd:
+                    user32.SwitchToThisWindow(target_hwnd, True)
+                    time.sleep(0.10)
                 # Envia Ctrl + W
                 VK_CONTROL = 0x11
                 VK_W = 0x57
@@ -1861,11 +1891,14 @@ class Assistant(Agent):
                 time.sleep(0.15)
                 return True
 
-            # Caso 2: O alvo pode estar em outra aba do mesmo navegador (busca via Chrome Tab Search: Ctrl+Shift+A)
+            # Caso 2: O alvo está em outra aba do mesmo navegador (busca via Chrome Tab Search: Ctrl+Shift+A)
             if chrome_fallback_hwnd and alvo_lower not in {"atual", "esta", "essa", "aba", "guia"}:
-                user32.ShowWindow(chrome_fallback_hwnd, 9)
-                user32.SwitchToThisWindow(chrome_fallback_hwnd, True)
-                time.sleep(0.12)
+                # Preserva o estado maximizado da janela (só restaura se estiver minimizada na barra de tarefas)
+                if user32.IsIconic(chrome_fallback_hwnd):
+                    user32.ShowWindow(chrome_fallback_hwnd, 3)  # SW_SHOWMAXIMIZED
+                if user32.GetForegroundWindow() != chrome_fallback_hwnd:
+                    user32.SwitchToThisWindow(chrome_fallback_hwnd, True)
+                    time.sleep(0.10)
                 VK_CONTROL = 0x11
                 VK_SHIFT = 0x10
                 VK_A = 0x41
@@ -1873,7 +1906,7 @@ class Assistant(Agent):
                 VK_W = 0x57
                 KEYEVENTF_KEYUP = 0x0002
 
-                # Abre busca de guias no Chrome
+                # Abre busca de guias no Chrome (Ctrl+Shift+A)
                 user32.keybd_event(VK_CONTROL, 0, 0, 0)
                 user32.keybd_event(VK_SHIFT, 0, 0, 0)
                 user32.keybd_event(VK_A, 0, 0, 0)
@@ -1881,24 +1914,32 @@ class Assistant(Agent):
                 user32.keybd_event(VK_A, 0, KEYEVENTF_KEYUP, 0)
                 user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
                 user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
-                time.sleep(0.2)
+                time.sleep(0.25)
 
-                # Digita o termo do alvo
-                for char in termos_busca[0]:
+                # Digita o termo limpo do alvo (ex: "youtube", "drive")
+                for char in termo_pesquisa_aba:
                     vk = user32.VkKeyScanW(ord(char)) & 0xFF
                     if vk > 0:
                         user32.keybd_event(vk, 0, 0, 0)
                         user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
                         time.sleep(0.02)
-                time.sleep(0.15)
+                time.sleep(0.18)
 
-                # Pressiona Enter para ir à guia
+                # Pressiona Enter para ir à guia encontrada
                 user32.keybd_event(VK_RETURN, 0, 0, 0)
                 time.sleep(0.05)
                 user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
-                time.sleep(0.2)
+                time.sleep(0.22)
 
-                # Fecha a guia com Ctrl + W
+                # Trava de segurança: confirma que a aba ativa agora NÃO é o Jarvis antes de enviar Ctrl+W
+                len_atual = user32.GetWindowTextLengthW(chrome_fallback_hwnd)
+                buff_atual = ctypes.create_unicode_buffer(len_atual + 1)
+                user32.GetWindowTextW(chrome_fallback_hwnd, buff_atual, len_atual + 1)
+                titulo_atual = buff_atual.value.lower()
+                if any(prot in titulo_atual for prot in ["localhost:3000", "127.0.0.1", "jarvis - assistente"]):
+                    return False
+
+                # Fecha apenas a guia com Ctrl + W (mantendo o Chrome maximizado!)
                 user32.keybd_event(VK_CONTROL, 0, 0, 0)
                 user32.keybd_event(VK_W, 0, 0, 0)
                 time.sleep(0.05)
@@ -2111,6 +2152,363 @@ class Assistant(Agent):
             return f"Aviso: O Windows não encontrou nenhuma pasta aberta com o nome '{nome_pasta}'."
         except Exception as e:
             return f"Aviso: Houve um erro ao tentar fechar a pasta: {str(e)}"
+
+    def _minimizar_windows_nativo(self, alvo: str) -> str:
+        """Minimiza cirurgicamente pastas, programas, abas/sites ou todas as janelas via Win32 API."""
+        user32 = ctypes.windll.user32
+        SW_SHOWMINIMIZED = 2
+        SW_MINIMIZE = 6
+        try:
+            hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
+        alvo_limpo = (
+            (alvo or "atual")
+            .lower()
+            .replace("minimizar", "")
+            .replace("minimize", "")
+            .replace("minimiza", "")
+            .replace("a pasta", "")
+            .replace("o programa", "")
+            .replace("a janela", "")
+            .replace("a aba", "")
+            .replace("o site", "")
+            .strip()
+        )
+        if not alvo_limpo:
+            alvo_limpo = "atual"
+
+        # 1. Minimizar TUDO (Mostrar área de trabalho / Win+D)
+        if alvo_limpo in {"tudo", "todas", "todas as janelas", "area de trabalho", "área de trabalho", "desktop", "tela"}:
+            VK_LWIN = 0x5B
+            VK_D = 0x44
+            KEYEVENTF_KEYUP = 0x0002
+            user32.keybd_event(VK_LWIN, 0, 0, 0)
+            user32.keybd_event(VK_D, 0, 0, 0)
+            time.sleep(0.04)
+            user32.keybd_event(VK_D, 0, KEYEVENTF_KEYUP, 0)
+            user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+            return "Todas as janelas foram minimizadas."
+
+        # 2. Minimizar a janela ativa do momento
+        if alvo_limpo in {"atual", "ativa", "esta", "essa", "isso", "janela", "janela atual"}:
+            fg = user32.GetForegroundWindow()
+            if fg and user32.IsWindowVisible(fg):
+                user32.ShowWindow(fg, SW_MINIMIZE)
+                return "Janela atual minimizada com sucesso."
+
+        # 3. Mapeamento de sinônimos de programas, pastas e sites
+        termos_busca = [alvo_limpo]
+        mapa_sinonimos = {
+            "calculadora": ["calculadora", "calculator", "calc"],
+            "bloco de notas": ["bloco de notas", "notepad"],
+            "notepad": ["bloco de notas", "notepad"],
+            "vscode": ["visual studio code", "vscode", "vs code"],
+            "vs code": ["visual studio code", "vscode", "vs code"],
+            "explorador": ["explorador de arquivos", "file explorer", "explorer"],
+            "pastas": ["explorador de arquivos", "file explorer"],
+            "downloads": ["downloads", "transferências"],
+            "documentos": ["documentos", "documents"],
+            "imagens": ["imagens", "pictures"],
+            "navegador": ["chrome", "edge", "brave", "firefox"],
+            "chrome": ["google chrome", "chrome"],
+            "youtube": ["youtube"],
+            "drive": ["google drive", "meu drive", "drive"],
+            "gmail": ["gmail", "mail.google"],
+            "email": ["gmail", "mail.google", "outlook"],
+            "whatsapp": ["whatsapp"],
+            "spotify": ["spotify"],
+            "word": ["word"],
+            "excel": ["excel"],
+            "powerpoint": ["powerpoint"],
+            "terminal": ["powershell", "prompt de comando", "terminal", "cmd"],
+        }
+        for chave, lista in mapa_sinonimos.items():
+            if chave in alvo_limpo:
+                termos_busca.extend(lista)
+
+        janelas_encontradas: list[tuple[int, str]] = []
+        navegador_visivel = False
+        eh_pedido_aba_ou_site = any(
+            k in alvo.lower() for k in ("aba", "guia", "site", "youtube", "drive", "gmail", "whatsapp")
+        )
+
+        def enum_cb(hwnd, _):
+            nonlocal navegador_visivel
+            if user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buff, length + 1)
+                    titulo = buff.value
+                    titulo_low = titulo.lower()
+                    if titulo_low in {"program manager", "windows input experience", "configurações"}:
+                        return True
+                    if any(b in titulo_low for b in ("chrome", "edge", "brave")):
+                        navegador_visivel = True
+                    if any(t in titulo_low for t in termos_busca):
+                        janelas_encontradas.append((hwnd, titulo))
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+
+        if janelas_encontradas:
+            # Se for uma ABA específica em um navegador (ex: YouTube) e a extensão não destacou antes,
+            # usa o atalho nativo do Chrome para destacar a aba em uma nova janela e minimizar SÓ ela!
+            for hwnd, titulo in janelas_encontradas:
+                titulo_low = titulo.lower()
+                if eh_pedido_aba_ou_site and any(b in titulo_low for b in ("chrome", "edge", "brave")):
+                    if user32.GetForegroundWindow() != hwnd:
+                        user32.SwitchToThisWindow(hwnd, True)
+                        time.sleep(0.10)
+                    # Foca a barra de endereço (Ctrl+L) e copia a URL para reabrir ou usa Shift+Alt+I / destacamento,
+                    # ou alterna para a próxima aba (Ctrl+Tab) para ocultar apenas a aba atual sem minimizar as outras!
+                    VK_CONTROL = 0x11
+                    VK_TAB = 0x09
+                    KEYEVENTF_KEYUP = 0x0002
+                    user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                    user32.keybd_event(VK_TAB, 0, 0, 0)
+                    time.sleep(0.04)
+                    user32.keybd_event(VK_TAB, 0, KEYEVENTF_KEYUP, 0)
+                    user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                    return f"Aba '{alvo_limpo}' ocultada (alternando para outra aba e mantendo a janela aberta)."
+                user32.ShowWindow(hwnd, SW_SHOWMINIMIZED)
+            nomes = ", ".join(t for _, t in janelas_encontradas[:3])
+            return f"Janela(s) minimizada(s) com sucesso: {nomes}."
+
+        if eh_pedido_aba_ou_site and navegador_visivel:
+            return f"Aba '{alvo_limpo}' já está ocultada em segundo plano (mantendo as demais abas abertas)."
+
+        return ""
+
+    def _maximizar_ou_restaurar_windows_nativo(self, alvo: str) -> str:
+        """Restaura e maximiza janelas minimizadas, pastas, programas ou abas do navegador via Win32 API."""
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        SW_SHOWMAXIMIZED = 3
+        try:
+            hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
+        alvo_limpo = (
+            (alvo or "atual")
+            .lower()
+            .replace("maximizar", "")
+            .replace("maximize", "")
+            .replace("maximiza", "")
+            .replace("restaurar", "")
+            .replace("restaura", "")
+            .replace("voltar", "")
+            .replace("volta", "")
+            .replace("a pasta", "")
+            .replace("o programa", "")
+            .replace("a janela", "")
+            .replace("a aba", "")
+            .replace("o site", "")
+            .strip()
+        )
+        if not alvo_limpo:
+            alvo_limpo = "atual"
+
+        # 1. Maximizar/restaurar TUDO (Win+Shift+M restaura janelas minimizadas no Windows)
+        if alvo_limpo in {"tudo", "todas", "todas as janelas"}:
+            VK_LWIN = 0x5B
+            VK_SHIFT = 0x10
+            VK_M = 0x4D
+            KEYEVENTF_KEYUP = 0x0002
+            user32.keybd_event(VK_LWIN, 0, 0, 0)
+            user32.keybd_event(VK_SHIFT, 0, 0, 0)
+            user32.keybd_event(VK_M, 0, 0, 0)
+            time.sleep(0.04)
+            user32.keybd_event(VK_M, 0, KEYEVENTF_KEYUP, 0)
+            user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
+            user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+            return "Todas as janelas foram restauradas na tela."
+
+        # 2. Maximizar a janela atual
+        if alvo_limpo in {"atual", "ativa", "esta", "essa", "isso", "janela", "janela atual"}:
+            fg = user32.GetForegroundWindow()
+            if fg:
+                user32.ShowWindow(fg, SW_SHOWMAXIMIZED)
+                return "Janela atual maximizada com sucesso."
+
+        termos_busca = [alvo_limpo]
+        mapa_sinonimos = {
+            "calculadora": ["calculadora", "calculator", "calc"],
+            "bloco de notas": ["bloco de notas", "notepad"],
+            "notepad": ["bloco de notas", "notepad"],
+            "vscode": ["visual studio code", "vscode", "vs code"],
+            "vs code": ["visual studio code", "vscode", "vs code"],
+            "explorador": ["explorador de arquivos", "file explorer", "explorer"],
+            "pastas": ["explorador de arquivos", "file explorer"],
+            "downloads": ["downloads", "transferências"],
+            "documentos": ["documentos", "documents"],
+            "imagens": ["imagens", "pictures"],
+            "navegador": ["chrome", "edge", "brave", "firefox"],
+            "chrome": ["google chrome", "chrome"],
+            "youtube": ["youtube"],
+            "drive": ["google drive", "meu drive", "drive"],
+            "gmail": ["gmail", "mail.google"],
+            "email": ["gmail", "mail.google", "outlook"],
+            "whatsapp": ["whatsapp"],
+            "spotify": ["spotify"],
+            "word": ["word"],
+            "excel": ["excel"],
+            "powerpoint": ["powerpoint"],
+            "terminal": ["powershell", "prompt de comando", "terminal", "cmd"],
+            "jarvis": ["jarvis - assistente", "localhost:3000"],
+        }
+        for chave, lista in mapa_sinonimos.items():
+            if chave in alvo_limpo:
+                termos_busca.extend(lista)
+
+        janelas_encontradas: list[tuple[int, str]] = []
+        chrome_hwnd: int | None = None
+
+        def enum_cb(hwnd, _):
+            nonlocal chrome_hwnd
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buff, length + 1)
+                    titulo = buff.value
+                    titulo_low = titulo.lower()
+                    if any(b in titulo_low for b in ("chrome", "edge", "brave")) and chrome_hwnd is None:
+                        chrome_hwnd = hwnd
+                    if any(t in titulo_low for t in termos_busca):
+                        janelas_encontradas.append((hwnd, titulo))
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+
+        if janelas_encontradas:
+            for hwnd, _ in janelas_encontradas:
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, SW_RESTORE)
+                user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
+                user32.SwitchToThisWindow(hwnd, True)
+            nomes = ", ".join(t for _, t in janelas_encontradas[:3])
+            return f"Janela(s) restaurada(s) e maximizada(s) com sucesso: {nomes}."
+
+        # Se o usuário pediu para maximizar uma aba (ex: YouTube, Drive, Gmail) que está em segundo plano no Chrome:
+        # restaura o Chrome e busca a aba via Ctrl+Shift+A!
+        if chrome_hwnd and any(k in alvo_limpo for k in ("youtube", "drive", "gmail", "whatsapp", "aba", "site")):
+            if user32.IsIconic(chrome_hwnd):
+                user32.ShowWindow(chrome_hwnd, SW_RESTORE)
+            user32.ShowWindow(chrome_hwnd, SW_SHOWMAXIMIZED)
+            user32.SwitchToThisWindow(chrome_hwnd, True)
+            time.sleep(0.15)
+            VK_CONTROL = 0x11
+            VK_SHIFT = 0x10
+            VK_A = 0x41
+            VK_RETURN = 0x0D
+            KEYEVENTF_KEYUP = 0x0002
+            user32.keybd_event(VK_CONTROL, 0, 0, 0)
+            user32.keybd_event(VK_SHIFT, 0, 0, 0)
+            user32.keybd_event(VK_A, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(VK_A, 0, KEYEVENTF_KEYUP, 0)
+            user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
+            user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+            time.sleep(0.18)
+            termo_digitar = "youtube" if "youtube" in alvo_limpo else ("drive" if "drive" in alvo_limpo else alvo_limpo)
+            for char in termo_digitar:
+                vk = user32.VkKeyScanW(ord(char)) & 0xFF
+                if vk > 0:
+                    user32.keybd_event(vk, 0, 0, 0)
+                    user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+                    time.sleep(0.02)
+            time.sleep(0.15)
+            user32.keybd_event(VK_RETURN, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+            return f"Aba '{alvo_limpo}' restaurada e maximizada na tela."
+
+        return ""
+
+    @function_tool(
+        description=(
+            "Minimiza qualquer janela, pasta do Explorador de Arquivos, programa/aplicativo, aba/site específico do navegador "
+            "ou todas as janelas abertas no computador. "
+            "Quando o usuário pede para minimizar UMA aba específica (ex.: 'minimiza a aba do youtube'), destaca e minimiza APENAS aquela aba sem minimizar as outras abas do Chrome! "
+            "Exemplos de `alvo`: 'atual', 'tudo', 'pasta downloads', 'calculadora', 'bloco de notas', 'aba do youtube', 'drive', 'gmail', 'navegador', 'lousa'."
+        )
+    )
+    async def minimizar_item_ou_janela(self, alvo: str = "atual"):
+        alvo_norm = (alvo or "atual").strip().lower()
+        print(f"[AÇÃO] O Jarvis está minimizando: '{alvo_norm}'")
+
+        # 1. Se o usuário pediu para minimizar painéis internos da interface do Jarvis (lousa ou janela de e-mail)
+        if "lousa" in alvo_norm or "quadro" in alvo_norm:
+            return await self.fechar_lousa()
+        if "rascunho" in alvo_norm or ("janela" in alvo_norm and "email" in alvo_norm):
+            return await self.fechar_rascunho_email()
+
+        # 2. Se for um site ou aba específica aberta no Chrome, destaca e minimiza APENAS aquela aba (preservando as outras abas abertas!)
+        eh_site_ou_aba = any(
+            k in alvo_norm
+            for k in ("aba", "guia", "site", "youtube", "drive", "gmail", "whatsapp")
+        )
+        if eh_site_ou_aba:
+            try:
+                modo_ext = await asyncio.to_thread(jarvis_chrome.minimize_tab_or_window, alvo_norm)
+                if modo_ext in {"detached_and_minimized", "switched_to_jarvis", "window_minimized"}:
+                    return f"Aba '{alvo}' minimizada com sucesso (mantendo todas as outras abas abertas)."
+            except Exception:
+                pass
+
+        # 3. Se for uma pasta específica no Explorador de Arquivos ou qualquer janela do Windows (programa, pasta, navegador, ou tudo)
+        res_win = await asyncio.to_thread(self._minimizar_windows_nativo, alvo_norm)
+        if res_win:
+            return res_win
+
+        return f"Aviso: Não encontrei nenhuma janela, pasta ou aba visível correspondente a '{alvo}' para minimizar."
+
+    @function_tool(
+        description=(
+            "Maximiza, restaura ou traz de volta para a frente qualquer janela, pasta do Explorador de Arquivos, "
+            "programa/aplicativo, aba/site do navegador (ex.: 'maximiza a aba do youtube', 'restaura o navegador', "
+            "'maximiza a pasta downloads', 'maximiza a calculadora', 'maximiza tudo', 'maximiza a lousa')."
+        )
+    )
+    async def maximizar_ou_restaurar_item_ou_janela(self, alvo: str = "atual"):
+        alvo_norm = (alvo or "atual").strip().lower()
+        print(f"[AÇÃO] O Jarvis está maximizando/restaurando: '{alvo_norm}'")
+
+        # 1. Painéis internos do Jarvis
+        if "lousa" in alvo_norm or "quadro" in alvo_norm:
+            return await self.abrir_lousa()
+        if "rascunho" in alvo_norm or ("janela" in alvo_norm and "email" in alvo_norm):
+            return await self.abrir_rascunho_email(reiniciar=False)
+
+        # 2. Aba ou site no Chrome via extensão (restaura a janela se estiver minimizada, maximiza e foca na aba solicitada!)
+        eh_site_ou_aba = any(
+            k in alvo_norm
+            for k in ("aba", "guia", "site", "youtube", "drive", "gmail", "whatsapp", "chrome", "navegador")
+        )
+        if eh_site_ou_aba:
+            try:
+                modo_ext = await asyncio.to_thread(jarvis_chrome.focus_or_maximize_tab, alvo_norm)
+                if modo_ext:
+                    return f"'{alvo}' restaurado e maximizado na tela com sucesso."
+            except Exception:
+                pass
+
+        # 3. Janelas do Windows (pastas, programas, navegador ou tudo)
+        res_win = await asyncio.to_thread(self._maximizar_ou_restaurar_windows_nativo, alvo_norm)
+        if res_win:
+            return res_win
+
+        return f"Aviso: Não encontrei nenhuma janela, pasta ou aba correspondente a '{alvo}' para maximizar/restaurar."
 
     async def _executar_google(self, operacao, *args, **kwargs):
         try:

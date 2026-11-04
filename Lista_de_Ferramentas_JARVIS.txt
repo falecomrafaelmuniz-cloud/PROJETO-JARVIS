@@ -1,0 +1,122 @@
+================================================================================
+                        LISTA DE FERRAMENTAS DO JARVIS
+================================================================================
+
+🔵 [AZUL - 1. Gerenciamento de Sistema e Arquivos Locais]
+  🔵 1.1. abrir_pasta: Abre uma pasta no computador.
+  🔵 1.2. criar_pasta: Cria uma nova pasta no computador.
+  🔵 1.3. apagar_pasta: Apaga uma pasta inteira.
+  🔵 1.4. fechar_pasta: Fecha uma pasta ou janela do Explorador de Arquivos aberta.
+  🔵 1.5. organizar_mover_item: Move arquivos ou pastas locais.
+  🔵 1.6. abrir_programa: Abre um programa ou aplicativo no computador.
+  🔵 1.7. fechar_programa: Fecha um programa executável do Windows em execução.
+  🔵 1.8. minimizar_item_ou_janela: Minimiza qualquer janela, pasta, programa, aba/site específico ou todas as janelas.
+  🔵 1.9. maximizar_ou_restaurar_item_ou_janela: Maximiza, restaura ou traz para frente qualquer janela, pasta, programa, aba/site específico ou todas as janelas.
+  🔵 1.10. executar_comando_terminal: Executa comandos no terminal do Windows.
+
+--------------------------------------------------------------------------------
+
+🌐 [CIANO - 2. Navegador Web, Mídia e Visão de Tela]
+  🌐 2.1. abrir_site: Abre um endereço web no Chrome (reutilizando a aba do Jarvis).
+  🌐 2.2. fechar_aba_ou_site: Fecha uma aba ou site específico no navegador.
+  🌐 2.3. tocar_musica: Busca e toca música/vídeo automaticamente no YouTube ou YouTube Music.
+  🌐 2.4. controlar_midia: Controla reprodução de mídia (pausar, continuar, próxima, anterior, volume, mutar).
+  🌐 2.5. analisar_tela_ou_janela_ativa: Analisa visualmente em tempo real o que está aberto na tela.
+  🌐 2.6. ler_ou_resumir_documento_ou_pdf: Lê, analisa ou resume documentos e PDFs locais ou do Drive.
+
+--------------------------------------------------------------------------------
+
+🟢 [VERDE - 3. Google Drive e Google Docs]
+  🟢 3.1. buscar_no_google_drive: Busca arquivos e pastas por nome ou texto indexado.
+  🟢 3.2. listar_pasta_google_drive: Lista o conteúdo de uma pasta do Google Drive.
+  🟢 3.3. ler_arquivo_google_drive: Lê texto de arquivos e documentos do Google Drive.
+  🟢 3.4. criar_pasta_google_drive: Cria uma pasta no Google Drive.
+  🟢 3.5. criar_arquivo_texto_google_drive: Cria um arquivo de texto UTF-8 no Google Drive.
+  🟢 3.6. atualizar_arquivo_texto_google_drive: Substitui o conteúdo de um arquivo de texto no Drive.
+  🟢 3.7. renomear_item_google_drive: Renomeia um arquivo ou pasta no Google Drive.
+  🟢 3.8. mover_item_google_drive: Move um item para outra pasta no Google Drive.
+  🟢 3.9. enviar_item_google_drive_para_lixeira: Move um item do Google Drive para a lixeira.
+  🟢 3.10. criar_documento_google_docs: Cria um documento nativo do Google Docs.
+  🟢 3.11. substituir_trecho_google_docs: Substitui ocorrências de texto em um Google Docs.
+
+--------------------------------------------------------------------------------
+
+🟩 [VERDE-ESMERALDA - 4. Google Sheets (Planilhas)]
+  🟩 4.1. criar_planilha_google_sheets: Cria uma Planilha Google com título e dados iniciais.
+  🟩 4.2. ler_planilha_google_sheets: Lê valores de uma Planilha Google por nome ou ID.
+  🟩 4.3. atualizar_planilha_google_sheets: Atualiza células de uma Planilha Google.
+  🟩 4.4. acrescentar_linhas_google_sheets: Acrescenta novas linhas ao final de uma Planilha Google.
+  🟩 4.5. limpar_intervalo_google_sheets: Limpa valores de um intervalo sem remover a estrutura.
+  🟩 4.6. executar_operacoes_google_sheets: Executa formatações e operações avançadas na planilha.
+  🟩 4.7. consultar_e_adicionar_em_planilha: Consulta dados ou adiciona linhas por comando de voz natural.
+
+--------------------------------------------------------------------------------
+
+🟠 [LARANJA - 5. Google Slides (Apresentações) e Google Fotos]
+  🟠 5.1. criar_apresentacao_google_slides: Cria uma Apresentação Google no Drive.
+  🟠 5.2. ler_apresentacao_google_slides: Lê a estrutura e os textos de uma Apresentação Google.
+  🟠 5.3. adicionar_slide_google_slides: Adiciona um novo slide e insere texto opcionalmente.
+  🟠 5.4. substituir_texto_google_slides: Substitui ocorrências de texto em uma apresentação.
+  🟠 5.5. excluir_slide_google_slides: Remove um slide de uma Apresentação Google.
+  🟠 5.6. executar_operacoes_google_slides: Executa alterações avançadas de layout e formatação nos slides.
+  🟠 5.7. iniciar_selecao_google_photos: Inicia sessão do Google Photos Picker para escolha de fotos/vídeos.
+  🟠 5.8. listar_fotos_selecionadas_google_photos: Lista as fotos e vídeos selecionados no Google Photos.
+
+--------------------------------------------------------------------------------
+
+🟡 [AMARELO - 6. Google Calendar (Agenda)]
+  🟡 6.1. listar_eventos_google_calendar: Lista compromissos e eventos da agenda.
+  🟡 6.2. criar_evento_google_calendar: Cria um novo evento no Google Calendar.
+  🟡 6.3. editar_evento_google_calendar: Edita informações de um evento existente.
+  🟡 6.4. excluir_evento_google_calendar: Exclui um evento do Google Calendar.
+
+--------------------------------------------------------------------------------
+
+🔴 [VERMELHO - 7. Gmail (E-mails, Anexos, Marcadores e Alertas)]
+  🔴 7.1. listar_emails_gmail: Lista e busca e-mails na conta do Gmail.
+  🔴 7.2. ler_email_gmail: Lê o conteúdo completo de um e-mail.
+  🔴 7.3. abrir_rascunho_email: Abre imediatamente a janela visual de Novo E-mail na tela.
+  🔴 7.4. abrir_ou_atualizar_rascunho_email: Atualiza em tempo real os campos do e-mail na tela.
+  🔴 7.5. abrir_explorador_para_anexar: Abre o Explorador de Arquivos para escolher um anexo.
+  🔴 7.6. anexar_selecao_ou_contexto_atual: Anexa o arquivo selecionado ou o conteúdo visível na tela.
+  🔴 7.7. anexar_arquivo_no_email: Anexa um arquivo local, do Google Drive ou URL ao rascunho.
+  🔴 7.8. remover_anexo_do_email: Remove um anexo do rascunho de e-mail.
+  🔴 7.9. confirmar_e_enviar_email: Envia o e-mail montado na janela de rascunho.
+  🔴 7.10. fechar_rascunho_email: Fecha ou cancela a janela de rascunho de e-mail.
+  🔴 7.11. enviar_email_gmail: Envia um novo e-mail diretamente pelo Gmail.
+  🔴 7.12. responder_email_gmail: Responde a um e-mail mantendo a mesma conversa (thread).
+  🔴 7.13. marcar_email_como_lido_gmail: Marca um e-mail como lido.
+  🔴 7.14. enviar_email_para_lixeira_gmail: Move um e-mail do Gmail para a lixeira.
+  🔴 7.15. navegar_ou_pesquisar_no_gmail: Navega ou pesquisa termos/pastas na aba do Gmail.
+  🔴 7.16. analisar_e_sugerir_organizacao_emails: Analisa a caixa de entrada e sugere organização por marcadores.
+  🔴 7.17. aprovar_ou_rejeitar_sugestoes_email: Executa as sugestões de organização de e-mails aprovadas.
+  🔴 7.18. listar_marcadores_gmail: Lista todos os Marcadores (etiquetas/pastas) do Gmail.
+  🔴 7.19. abrir_ou_listar_marcador_gmail: Abre um Marcador no Gmail e lista seus e-mails.
+  🔴 7.20. organizar_remetente_no_marcador_gmail: Cria Marcador e move todos os e-mails de um remetente para ele.
+  🔴 7.21. apagar_marcador_ou_emails_gmail: Remove etiqueta, manda e-mails para a lixeira ou exclui um Marcador.
+  🔴 7.22. configurar_aviso_chegada_email: Ativa alerta por voz (e etiqueta automática) quando chegar novo e-mail.
+  🔴 7.23. listar_avisos_chegada_email: Lista todos os alertas ativos de chegada de e-mails.
+  🔴 7.24. remover_aviso_chegada_email: Desativa alertas de chegada de e-mail.
+
+--------------------------------------------------------------------------------
+
+🟣 [ROXO - 8. Lousa de Ensino Interativa e Aulas]
+  🟣 8.1. pesquisar_assunto_para_aula: Pesquisa um tema na web e monta uma aula ilustrada na lousa.
+  🟣 8.2. abrir_lousa: Abre a janela da lousa de ensino na tela.
+  🟣 8.3. fechar_lousa: Fecha/oculta a janela da lousa mantendo o conteúdo salvo.
+  🟣 8.4. escrever_na_lousa: Escreve um texto explicativo na lousa.
+  🟣 8.5. desenhar_esquema_na_lousa: Desenha retângulos, círculos ou setas na lousa.
+  🟣 8.6. desenhar_linha_na_lousa: Desenha traços e linhas livres na lousa.
+  🟣 8.7. adicionar_imagem_na_lousa: Adiciona uma imagem pública por URL HTTPS à lousa.
+  🟣 8.8. editar_item_na_lousa: Edita texto, cor ou posição de um item já existente na lousa.
+  🟣 8.9. apagar_item_da_lousa: Apaga um item específico ou desfaz o último item da lousa.
+  🟣 8.10. limpar_lousa: Apaga todo o conteúdo atual da lousa de ensino.
+
+--------------------------------------------------------------------------------
+
+⚪ [BRANCO - 9. Memória de Longo Prazo, Horário e Localização]
+  ⚪ 9.1. salvar_na_memoria: Salva informações importantes na memória local e no Google Drive.
+  ⚪ 9.2. buscar_na_memoria: Busca informações e fatos pessoais gravados na memória de longo prazo.
+  ⚪ 9.3. obter_horario_brasilia: Consulta a data e o horário exato de Brasília (America/Sao_Paulo).
+  ⚪ 9.4. obter_localizacao_atual: Obtém a localização atual compartilhada na sessão (cidade, estado, país e coordenadas).
+

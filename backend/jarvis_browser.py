@@ -36,6 +36,7 @@ class JarvisChrome:
         self._last_opened_at = 0.0
         self._active_tab = {"url": "", "title": "", "updated_at": 0.0}
         self._gmail_tab = {"url": "", "title": "", "updated_at": 0.0}
+        self._ext_version = ""
         try:
             self._ensure_bridge()
         except Exception:
@@ -182,6 +183,86 @@ class JarvisChrome:
             result = pending["result"]
             return bool(result and result.get("ok"))
 
+    def minimize_tab_or_window(self, target: str = "atual") -> str:
+        with self._open_lock:
+            try:
+                self._ensure_bridge()
+            except JarvisBrowserError:
+                return ""
+
+            if not self._wait_for_extension():
+                return ""
+            if self._ext_version != "2":
+                return ""
+
+            request_id = uuid.uuid4().hex
+            pending = {
+                "event": threading.Event(),
+                "dispatched": threading.Event(),
+                "result": None,
+            }
+            with self._pending_lock:
+                self._pending[request_id] = pending
+
+            self._commands.put(
+                {
+                    "request_id": request_id,
+                    "action": "minimize_tab",
+                    "target": target,
+                    "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
+                }
+            )
+
+            if not pending["event"].wait(self._REQUEST_TIMEOUT):
+                with self._pending_lock:
+                    self._pending.pop(request_id, None)
+                return ""
+
+            result = pending["result"]
+            if result and result.get("ok") and result.get("mode"):
+                return str(result["mode"])
+            return ""
+
+    def focus_or_maximize_tab(self, target: str = "atual") -> str:
+        with self._open_lock:
+            try:
+                self._ensure_bridge()
+            except JarvisBrowserError:
+                return ""
+
+            if not self._wait_for_extension():
+                return ""
+            if self._ext_version != "2":
+                return ""
+
+            request_id = uuid.uuid4().hex
+            pending = {
+                "event": threading.Event(),
+                "dispatched": threading.Event(),
+                "result": None,
+            }
+            with self._pending_lock:
+                self._pending[request_id] = pending
+
+            self._commands.put(
+                {
+                    "request_id": request_id,
+                    "action": "focus_tab",
+                    "target": target,
+                    "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
+                }
+            )
+
+            if not pending["event"].wait(self._REQUEST_TIMEOUT):
+                with self._pending_lock:
+                    self._pending.pop(request_id, None)
+                return ""
+
+            result = pending["result"]
+            if result and result.get("ok") and result.get("mode"):
+                return str(result["mode"])
+            return ""
+
     @staticmethod
     def _open_default_browser(url):
         try:
@@ -291,31 +372,33 @@ class JarvisChrome:
                     return
 
                 qs = parse_qs(parsed_req.query)
+                ext_v = (qs.get("v") or [""])[0].strip()
                 active_url = (qs.get("active_url") or [""])[0].strip()
                 active_title = (qs.get("active_title") or [""])[0].strip()
                 gmail_url = (qs.get("gmail_url") or [""])[0].strip()
                 gmail_title = (qs.get("gmail_title") or [""])[0].strip()
                 now_mono = time.monotonic()
-                if active_url or gmail_url:
-                    with browser._pending_lock:
-                        if active_url:
-                            browser._active_tab = {
+                with browser._pending_lock:
+                    if ext_v:
+                        browser._ext_version = ext_v
+                    if active_url:
+                        browser._active_tab = {
+                            "url": active_url,
+                            "title": active_title,
+                            "updated_at": now_mono,
+                        }
+                        if "mail.google.com" in active_url and not gmail_url:
+                            browser._gmail_tab = {
                                 "url": active_url,
                                 "title": active_title,
                                 "updated_at": now_mono,
                             }
-                            if "mail.google.com" in active_url and not gmail_url:
-                                browser._gmail_tab = {
-                                    "url": active_url,
-                                    "title": active_title,
-                                    "updated_at": now_mono,
-                                }
-                        if gmail_url:
-                            browser._gmail_tab = {
-                                "url": gmail_url,
-                                "title": gmail_title,
-                                "updated_at": now_mono,
-                            }
+                    if gmail_url:
+                        browser._gmail_tab = {
+                            "url": gmail_url,
+                            "title": gmail_title,
+                            "updated_at": now_mono,
+                        }
 
                 deadline = time.monotonic() + 3.0
                 while time.monotonic() < deadline:
