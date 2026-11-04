@@ -651,8 +651,137 @@ class Assistant(Agent):
                 for file in files:
                     if file.lower().endswith('.lnk') and nome_lower in file.lower():
                         return os.path.join(root, file)
-    def _capturar_imagem_tela(self) -> Image.Image | None:
-        # 1. Tenta captura nativa GDI BitBlt com anexação ao Desktop interativo (~15ms)
+    def _obter_retangulo_monitor_alvo(self, alvo_tela: str = "atual") -> tuple[int, int, int, int, str]:
+        """Retorna (x, y, largura, altura, descricao) do monitor desejado suportando múltiplos monitores."""
+        user32 = ctypes.windll.user32
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        monitores_raw: list[tuple[int, int, int, int]] = []
+
+        def _monitor_enum_proc(hMonitor, hdcMonitor, lprcMonitor, dwData):
+            if lprcMonitor:
+                r = lprcMonitor.contents
+                monitores_raw.append((int(r.left), int(r.top), int(r.right), int(r.bottom)))
+            return True
+
+        MONITORENUMPROC = ctypes.WINFUNCTYPE(
+            ctypes.c_int,
+            wintypes.HMONITOR,
+            wintypes.HDC,
+            ctypes.POINTER(RECT),
+            wintypes.LPARAM,
+        )
+        try:
+            user32.EnumDisplayMonitors(0, 0, MONITORENUMPROC(_monitor_enum_proc), 0)
+        except Exception:
+            pass
+
+        # Ordena monitores da esquerda para a direita, de cima para baixo
+        monitores = sorted(monitores_raw, key=lambda m: (m[0], m[1]))
+        if not monitores:
+            w_pad = user32.GetSystemMetrics(0) or 1920
+            h_pad = user32.GetSystemMetrics(1) or 1080
+            return (0, 0, w_pad, h_pad, "Tela Principal")
+
+        alvo = (alvo_tela or "atual").strip().lower()
+
+        # 1. Todas as telas juntas (Desktop Virtual Completo)
+        if any(t in alvo for t in ("todas", "tudo", "todos os monitores", "todas as telas")):
+            vx = user32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
+            vy = user32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+            vw = user32.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+            vh = user32.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+            if vw > 0 and vh > 0:
+                return (vx, vy, vw, vh, f"Todas as {len(monitores)} telas")
+
+        # 2. Tela Principal / Primária (a que começa em 0,0)
+        if any(t in alvo for t in ("principal", "primaria", "primária")):
+            for idx, (l, t, r, b) in enumerate(monitores, start=1):
+                if l == 0 and t == 0:
+                    return (l, t, r - l, b - t, f"Tela Principal (Monitor {idx})")
+
+        # 3. Por número do monitor ("tela 1", "monitor 2", "segunda tela", "terceira tela")
+        mapa_num = {
+            1: ("1", "tela 1", "monitor 1", "primeira", "primeiro"),
+            2: ("2", "tela 2", "monitor 2", "segunda", "segundo", "secundaria", "secundária"),
+            3: ("3", "tela 3", "monitor 3", "terceira", "terceiro"),
+            4: ("4", "tela 4", "monitor 4", "quarta", "quarto"),
+        }
+        for num_idx, palavras in mapa_num.items():
+            if alvo == str(num_idx) or any(p in alvo for p in palavras if len(p) > 1):
+                idx_escolhido = min(num_idx, len(monitores)) - 1
+                l, t, r, b = monitores[idx_escolhido]
+                return (l, t, r - l, b - t, f"Tela {idx_escolhido + 1}")
+
+        # 4. Por posição física ("esquerda", "direita", "meio", "cima", "baixo")
+        if "esquerda" in alvo:
+            l, t, r, b = min(monitores, key=lambda m: m[0])
+            return (l, t, r - l, b - t, "Tela da Esquerda")
+        if "direita" in alvo:
+            l, t, r, b = max(monitores, key=lambda m: m[0])
+            return (l, t, r - l, b - t, "Tela da Direita")
+        if "meio" in alvo or "central" in alvo or "centro" in alvo:
+            meio_idx = len(monitores) // 2
+            l, t, r, b = monitores[meio_idx]
+            return (l, t, r - l, b - t, "Tela Central")
+        if "cima" in alvo or "superior" in alvo:
+            l, t, r, b = min(monitores, key=lambda m: m[1])
+            return (l, t, r - l, b - t, "Tela Superior")
+        if "baixo" in alvo or "inferior" in alvo:
+            l, t, r, b = max(monitores, key=lambda m: m[1])
+            return (l, t, r - l, b - t, "Tela Inferior")
+
+        # 5. Por nome de janela/programa/site aberto (ex: "youtube", "calculadora", "vscode", "downloads")
+        if alvo not in {"atual", "ativa", "esta", "essa", "mouse", "cursor", "foco", "padrao", "padrão", ""}:
+            alvo_janela_rect = None
+
+            def _enum_win_cb(hwnd, _):
+                nonlocal alvo_janela_rect
+                if user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buff, length + 1)
+                        titulo = buff.value.lower()
+                        if alvo in titulo:
+                            rc = RECT()
+                            if user32.GetWindowRect(hwnd, ctypes.byref(rc)):
+                                alvo_janela_rect = (rc.left, rc.top, rc.right, rc.bottom)
+                                return False
+                return True
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+            user32.EnumWindows(WNDENUMPROC(_enum_win_cb), 0)
+
+            if alvo_janela_rect:
+                cx = (alvo_janela_rect[0] + alvo_janela_rect[2]) // 2
+                cy = (alvo_janela_rect[1] + alvo_janela_rect[3]) // 2
+                for idx, (l, t, r, b) in enumerate(monitores, start=1):
+                    if l <= cx < r and t <= cy < b:
+                        return (l, t, r - l, b - t, f"Tela {idx} (onde está '{alvo_tela}')")
+
+        # 6. Padrão Inteligente ("atual"): Captura o monitor onde está o cursor do MOUSE no momento!
+        pt = POINT()
+        if user32.GetCursorPos(ctypes.byref(pt)):
+            for idx, (l, t, r, b) in enumerate(monitores, start=1):
+                if l <= pt.x < r and t <= pt.y < b:
+                    return (l, t, r - l, b - t, f"Tela {idx} (onde está o mouse)")
+
+        l, t, r, b = monitores[0]
+        return (l, t, r - l, b - t, "Tela 1")
+
+    def _capturar_imagem_tela(self, alvo_tela: str = "atual") -> Image.Image | None:
+        # 1. Tenta captura nativa GDI BitBlt com anexação ao Desktop interativo e suporte multi-monitor (~15ms)
         try:
             user32 = ctypes.windll.user32
             gdi32 = ctypes.windll.gdi32
@@ -665,14 +794,13 @@ class Assistant(Agent):
             except Exception:
                 pass
 
-            w = user32.GetSystemMetrics(0)
-            h = user32.GetSystemMetrics(1)
+            x_src, y_src, w, h, _ = self._obter_retangulo_monitor_alvo(alvo_tela)
             if w > 0 and h > 0:
                 hdc_screen = user32.GetDC(0)
                 hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
                 hbm = gdi32.CreateCompatibleBitmap(hdc_screen, w, h)
                 old_bm = gdi32.SelectObject(hdc_mem, hbm)
-                gdi32.BitBlt(hdc_mem, 0, 0, w, h, hdc_screen, 0, 0, 0x00CC0020)
+                gdi32.BitBlt(hdc_mem, 0, 0, w, h, hdc_screen, x_src, y_src, 0x00CC0020)
 
                 class BITMAPINFOHEADER(ctypes.Structure):
                     _fields_ = [
@@ -2509,6 +2637,154 @@ class Assistant(Agent):
             return res_win
 
         return f"Aviso: Não encontrei nenhuma janela, pasta ou aba correspondente a '{alvo}' para maximizar/restaurar."
+
+    def _resolver_pasta_destino_print(self, pasta_destino: str) -> str:
+        pasta_usuario = os.path.expanduser("~")
+        bruto = (pasta_destino or "Downloads").strip().strip("\"'")
+
+        if os.path.isdir(bruto):
+            return os.path.abspath(bruto)
+
+        limpo = (
+            bruto.lower()
+            .replace("na pasta", "")
+            .replace("dentro da pasta", "")
+            .replace("para a pasta", "")
+            .replace("pasta", "")
+            .strip(" /\\:,-")
+        )
+        if not limpo:
+            limpo = "downloads"
+
+        # Verifica pastas padrão do sistema
+        desktop_dir = (
+            os.path.join(pasta_usuario, "Desktop")
+            if os.path.isdir(os.path.join(pasta_usuario, "Desktop"))
+            else os.path.join(pasta_usuario, "Área de Trabalho")
+        )
+        downloads_dir = os.path.join(pasta_usuario, "Downloads")
+        docs_dir = (
+            os.path.join(pasta_usuario, "Documents")
+            if os.path.isdir(os.path.join(pasta_usuario, "Documents"))
+            else os.path.join(pasta_usuario, "Documentos")
+        )
+        pics_dir = (
+            os.path.join(pasta_usuario, "Pictures")
+            if os.path.isdir(os.path.join(pasta_usuario, "Pictures"))
+            else os.path.join(pasta_usuario, "Imagens")
+        )
+
+        if limpo in {"downloads", "download", "transferencias", "transferências"}:
+            return downloads_dir
+        if limpo in {"desktop", "area de trabalho", "área de trabalho", "trabalho"}:
+            return desktop_dir
+        if limpo in {"documentos", "documents", "meus documentos"}:
+            return docs_dir
+        if limpo in {"imagens", "pictures", "fotos", "minhas imagens"}:
+            return pics_dir
+        if limpo in {"jarvis", "projeto jarvis"}:
+            return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+        # Se o usuário pediu ex: "prints na área de trabalho" ou "teste em downloads"
+        for marcador_desk in ("na área de trabalho", "na area de trabalho", "no desktop", "em desktop"):
+            if marcador_desk in limpo:
+                sub = limpo.replace(marcador_desk, "").strip(" /\\:,-")
+                if sub:
+                    caminho_sub = os.path.join(desktop_dir, sub)
+                    os.makedirs(caminho_sub, exist_ok=True)
+                    return caminho_sub
+                return desktop_dir
+
+        for marcador_dl in ("em downloads", "no downloads", "nos downloads", "na downloads"):
+            if marcador_dl in limpo:
+                sub = limpo.replace(marcador_dl, "").strip(" /\\:,-")
+                if sub:
+                    caminho_sub = os.path.join(downloads_dir, sub)
+                    os.makedirs(caminho_sub, exist_ok=True)
+                    return caminho_sub
+                return downloads_dir
+
+        # Busca pasta existente pelo nome exato (preservando capitalização real)
+        nome_original = (
+            re.sub(r"(?i)^(na\s+pasta|dentro\s+da\s+pasta|para\s+a\s+pasta|pasta)\s+", "", bruto)
+            .strip(" /\\:,-")
+        )
+        encontrada = self.buscar_pasta(nome_original or limpo)
+        if encontrada and os.path.isdir(encontrada):
+            return os.path.abspath(encontrada)
+
+        # Busca aproximada (contendo o termo) nas pastas principais
+        for base in (desktop_dir, downloads_dir, docs_dir, pics_dir, pasta_usuario):
+            if not os.path.isdir(base):
+                continue
+            try:
+                for item in os.listdir(base):
+                    caminho_item = os.path.join(base, item)
+                    if os.path.isdir(caminho_item) and limpo in item.lower():
+                        return os.path.abspath(caminho_item)
+            except OSError:
+                continue
+
+        # Se a pasta ainda não existir, cria automaticamente na Área de Trabalho (ou no caminho relativo informado)
+        nome_seguro = re.sub(r'[<>:"/\\|?*]', "_", nome_original or limpo).strip() or "Prints_Jarvis"
+        novo_caminho = os.path.join(desktop_dir, nome_seguro)
+        os.makedirs(novo_caminho, exist_ok=True)
+        return os.path.abspath(novo_caminho)
+
+    @function_tool(
+        description=(
+            "Tira um print (captura de tela / screenshot) em alta resolução e salva na pasta específica solicitada pelo usuário, com suporte a múltiplos monitores. "
+            "Use SEMPRE que o usuário pedir para tirar um print, capturar a tela ou salvar uma foto da tela em alguma pasta. "
+            "Parâmetros: "
+            "`pasta_destino` (nome ou caminho da pasta onde salvar; padrão: 'Downloads'), "
+            "`qual_tela` (qual monitor ou tela capturar: 'atual' para a tela onde está o mouse, 'tela 1', 'tela 2', 'tela 3', 'principal', 'esquerda', 'direita', 'todas', ou o nome do aplicativo/site como 'youtube', 'calculadora', 'vscode'; padrão: 'atual'), "
+            "e `nome_arquivo` (opcional, nome personalizado para o arquivo PNG)."
+        )
+    )
+    async def tirar_print_e_salvar(
+        self,
+        pasta_destino: str = "Downloads",
+        qual_tela: str = "atual",
+        nome_arquivo: str = "",
+    ) -> str:
+        print(f"[AÇÃO] O Jarvis está tirando print ({qual_tela}) para salvar em: '{pasta_destino}'")
+        try:
+            def _executar_print() -> tuple[str, str]:
+                _, _, _, _, desc_monitor = self._obter_retangulo_monitor_alvo(qual_tela)
+                img = self._capturar_imagem_tela(qual_tela)
+                if img is None:
+                    raise RuntimeError("Não foi possível capturar a imagem da tela no momento.")
+
+                pasta_final = self._resolver_pasta_destino_print(pasta_destino)
+                os.makedirs(pasta_final, exist_ok=True)
+
+                agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+                timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
+
+                nome_limpo = (nome_arquivo or "").strip().strip("\"'")
+                if nome_limpo and nome_limpo.lower() not in {"print", "captura", "tela", "screenshot", "padrao", "padrão"}:
+                    nome_limpo = re.sub(r'[<>:"/\\|?*]', "_", nome_limpo).strip()
+                    if not nome_limpo.lower().endswith((".png", ".jpg", ".jpeg")):
+                        nome_limpo = f"{nome_limpo}.png"
+                    caminho_arquivo = os.path.join(pasta_final, nome_limpo)
+                    if os.path.exists(caminho_arquivo):
+                        base_n, ext_n = os.path.splitext(nome_limpo)
+                        caminho_arquivo = os.path.join(pasta_final, f"{base_n}_{timestamp}{ext_n}")
+                else:
+                    caminho_arquivo = os.path.join(pasta_final, f"Print_Jarvis_{timestamp}.png")
+
+                if caminho_arquivo.lower().endswith((".jpg", ".jpeg")):
+                    img.convert("RGB").save(caminho_arquivo, format="JPEG", quality=95)
+                else:
+                    img.save(caminho_arquivo, format="PNG")
+
+                return os.path.abspath(caminho_arquivo), desc_monitor
+
+            caminho_salvo, desc_tela = await asyncio.to_thread(_executar_print)
+            return f"Print ({desc_tela}) capturado e salvo com SUCESSO em: {caminho_salvo}"
+        except Exception as erro:
+            logger_memoria.error("evento=tirar_print_e_salvar status=erro motivo=%s", erro)
+            return f"Aviso: Não foi possível tirar ou salvar o print da tela: {erro}"
 
     async def _executar_google(self, operacao, *args, **kwargs):
         try:

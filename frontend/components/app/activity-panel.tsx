@@ -57,6 +57,7 @@ const TOOL_LABELS: Record<string, string> = {
   fechar_pasta: 'Fechando pasta',
   minimizar_item_ou_janela: 'Minimizando janela ou aba',
   maximizar_ou_restaurar_item_ou_janela: 'Maximizando/restaurando janela ou aba',
+  tirar_print_e_salvar: 'Tirando print da tela e salvando na pasta',
   buscar_no_google_drive: 'Buscando no Google Drive',
   listar_pasta_google_drive: 'Listando pasta do Drive',
   ler_arquivo_google_drive: 'Lendo arquivo do Drive',
