@@ -17,12 +17,11 @@
   🔵 1.12. listar_arquivos_projeto_jarvis: Lista as pastas e arquivos que compõem o código-fonte do próprio Jarvis.
   🔵 1.13. pesquisar_termo_no_codigo: Busca instantaneamente palavras, funções ou componentes em todo o código-fonte do Jarvis.
   🔵 1.14. inspecionar_codigo_fonte: Lê e inspeciona trechos do próprio código-fonte do Jarvis com numeração de linhas ou busca direta.
-  🔵 1.15. desenvolver_melhoria_com_ia: Programador autônomo com cérebro Gemini dedicado que planeja, codifica e aplica melhorias complexas no código com compilação e teste automático.
-  🔵 1.16. propor_e_aplicar_modificacao_codigo: Modifica o código-fonte do Jarvis cirurgicamente com rede de segurança e rollback automático contra erros de sintaxe.
-  🔵 1.17. criar_novo_arquivo_codigo: Cria novos scripts ou módulos no projeto do Jarvis com validação de sintaxe.
-  🔵 1.18. reverter_ultima_alteracao_codigo: Reverte alterações de código não salvas usando o Git como botão de emergência.
-  🔵 1.19. salvar_e_enviar_para_github: Salva (commit) e envia (push) as alterações de código feitas diretamente para o repositório GitHub via comando de voz.
-  🔵 1.20. instalar_biblioteca_python: Instala pacotes e bibliotecas Python (pip) automaticamente no ambiente virtual do Jarvis sob comando de voz.
+  🔵 1.15. solicitar_desenvolvimento_ao_antigravity: Envia tarefas e especificações técnicas de melhorias, novos botões, telas ou correções diretamente para o Antigravity implementar com 100% de segurança.
+  🔵 1.16. consultar_solicitacoes_antigravity: Consulta o status das tarefas e solicitações de desenvolvimento enviadas para o Antigravity.
+  🔵 1.17. reverter_ultima_alteracao_codigo: Reverte alterações de código não salvas usando o Git como botão de emergência.
+  🔵 1.18. salvar_e_enviar_para_github: Salva (commit) e envia (push) as alterações de código feitas diretamente para o repositório GitHub via comando de voz.
+  🔵 1.19. instalar_biblioteca_python: Instala pacotes e bibliotecas Python (pip) automaticamente no ambiente virtual do Jarvis sob comando de voz.
 
 --------------------------------------------------------------------------------
 

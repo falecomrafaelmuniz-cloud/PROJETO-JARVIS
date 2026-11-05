@@ -4825,96 +4825,127 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Aplica uma alteração cirúrgica no próprio código-fonte do Jarvis, substituindo 'trecho_antigo' "
-            "por 'trecho_novo' em um arquivo existente (ex.: 'backend/agent.py', 'backend/prompts.py'). "
-            "POSSUI REDE DE SEGURANÇA AUTOMÁTICA: O sistema compila e valida o código antes de confirmar. "
-            "Se houver erro de sintaxe, o arquivo é revertido automaticamente para não quebrar o Jarvis."
+            "Envia uma solicitação de desenvolvimento/tarefa técnica de programação diretamente para o Antigravity "
+            "(o engenheiro de software no IDE). Use SEMPRE que o usuário solicitar qualquer criação, melhoria, "
+            "modernização, novo botão, alteração visual, novo componente, nova ferramenta ou correção no código-fonte "
+            "do Jarvis (como na lousa, HUD, relógio, backend ou frontend). O Jarvis atua como arquiteto/gerente de "
+            "produto, formaliza a especificação técnica e delega a alteração segura para o Antigravity implementar."
         )
     )
-    async def propor_e_aplicar_modificacao_codigo(
+    async def solicitar_desenvolvimento_ao_antigravity(
         self,
-        caminho_arquivo: str,
-        trecho_antigo: str,
-        trecho_novo: str,
-        descricao_mudanca: str = "",
+        titulo: str,
+        descricao_detalhada: str,
+        arquivo_alvo: str = "",
+        prioridade: str = "normal",
     ) -> str:
-        caminho = self._resolver_caminho_projeto(caminho_arquivo)
-        if not os.path.isfile(caminho):
-            return f"Aviso: Arquivo de código '{caminho_arquivo}' não encontrado."
+        titulo_limpo = (titulo or "").strip()
+        descricao_limpa = (descricao_detalhada or "").strip()
+        if not titulo_limpo:
+            return "Aviso: informe um título para a solicitação de desenvolvimento."
+
+        # Identificação inteligente do arquivo alvo
+        if not arquivo_alvo.strip():
+            texto_busca = f"{titulo_limpo} {descricao_limpa}".lower()
+            if "lousa" in texto_busca or "quadro" in texto_busca:
+                arquivo_alvo = "frontend/components/app/teaching-board.tsx"
+            elif "hud" in texto_busca or "dashboard" in texto_busca or "cpu" in texto_busca:
+                arquivo_alvo = "frontend/components/app/system-dashboard.tsx"
+            elif "relógio" in texto_busca or "relogio" in texto_busca or "card" in texto_busca:
+                arquivo_alvo = "frontend/components/app/clock-card.tsx"
+            elif "prompt" in texto_busca or "fala" in texto_busca or "personalidade" in texto_busca:
+                arquivo_alvo = "backend/prompts.py"
+            elif "navegador" in texto_busca or "youtube" in texto_busca:
+                arquivo_alvo = "backend/jarvis_browser.py"
+            else:
+                arquivo_alvo = "backend/agent.py"
+
+        raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        caminho_json = os.path.join(raiz_projeto, "solicitacoes_antigravity.json")
+        caminho_md = os.path.join(raiz_projeto, "SOLICITACOES_DESENVOLVIMENTO.md")
+
+        timestamp_formatado = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+        tarefas = []
+        if os.path.isfile(caminho_json):
+            try:
+                with open(caminho_json, "r", encoding="utf-8") as f:
+                    tarefas = json.load(f)
+            except Exception:
+                tarefas = []
+
+        novo_id = len(tarefas) + 1
+        nova_tarefa = {
+            "id": novo_id,
+            "data_hora": timestamp_formatado,
+            "titulo": titulo_limpo,
+            "descricao": descricao_limpa,
+            "arquivo_sugerido": arquivo_alvo,
+            "prioridade": prioridade,
+            "status": "pendente",
+            "origem": "Comando de voz do usuário via Jarvis",
+        }
+        tarefas.append(nova_tarefa)
 
         try:
-            with open(caminho, "r", encoding="utf-8") as f:
-                conteudo_original = f.read()
+            with open(caminho_json, "w", encoding="utf-8") as f:
+                json.dump(tarefas, f, indent=2, ensure_ascii=False)
 
-            if trecho_antigo not in conteudo_original:
-                return (
-                    f"Aviso: O trecho_antigo informado não foi encontrado exatamente como especificado em '{caminho_arquivo}'. "
-                    "Use inspecionar_codigo_fonte para copiar as linhas exatas e tente novamente."
-                )
+            linhas_md = [
+                "# 📋 Fila de Desenvolvimento Jarvis ➔ Antigravity",
+                "",
+                "> Este arquivo registra as solicitações de melhorias e tarefas feitas por voz pelo usuário via Jarvis para o Antigravity implementar.",
+                "",
+                "| ID | Data / Hora | Título | Arquivo Alvo | Prioridade | Status |",
+                "|---|---|---|---|---|---|",
+            ]
+            for t in reversed(tarefas):
+                linhas_md.append(f"| #{t['id']} | {t['data_hora']} | **{t['titulo']}** | `{t['arquivo_sugerido']}` | {t['prioridade'].upper()} | 🟡 {t['status']} |")
 
-            # Aplica a alteração substituindo a primeira ocorrência
-            conteudo_modificado = conteudo_original.replace(trecho_antigo, trecho_novo, 1)
+            linhas_md.append("\n## Detalhes da Última Solicitação:")
+            linhas_md.append(f"- **ID**: #{novo_id}")
+            linhas_md.append(f"- **Título**: {titulo_limpo}")
+            linhas_md.append(f"- **Arquivo Alvo**: `{arquivo_alvo}`")
+            linhas_md.append(f"- **Descrição**: {descricao_limpa}")
+            linhas_md.append(f"- **Prioridade**: {prioridade}")
 
-            # Escreve a modificação no arquivo
-            with open(caminho, "w", encoding="utf-8") as f:
-                f.write(conteudo_modificado)
+            with open(caminho_md, "w", encoding="utf-8") as f:
+                f.write("\n".join(linhas_md))
 
-            # Validação automática de segurança (se for Python)
-            if caminho.endswith(".py"):
-                import py_compile
-                try:
-                    py_compile.compile(caminho, doraise=True)
-                except py_compile.PyCompileError as erro_compilacao:
-                    # REVERSÃO AUTOMÁTICA DE EMERGÊNCIA
-                    with open(caminho, "w", encoding="utf-8") as f:
-                        f.write(conteudo_original)
-                    logger_memoria.error("evento=auto_modificacao_falha_compilacao motivo=%s", erro_compilacao)
-                    return (
-                        f"REVERSÃO DE SEGURANÇA ATIVADA: A alteração proposta gerou um erro de sintaxe ({erro_compilacao}). "
-                        "O arquivo foi restaurado automaticamente ao estado original para proteger o sistema. Corrija o código e tente novamente."
-                    )
-
-            logger_memoria.info("evento=auto_modificacao_sucesso arquivo=%s desc=%s", caminho_arquivo, descricao_mudanca)
             return (
-                f"Modificação aplicada e validada com SUCESSO em '{os.path.basename(caminho)}'! "
-                f"Descrição da melhoria: {descricao_mudanca or 'Atualização de código fonte'}. "
-                "O código foi testado pela rede de segurança e não possui erros de sintaxe."
+                f"Solicitação #{novo_id} ('{titulo_limpo}') enviada com sucesso para o Antigravity! "
+                f"Arquivo alvo sugerido: '{arquivo_alvo}'. O Antigravity foi notificado e fará a implementação "
+                "com validação completa de código."
             )
         except Exception as e:
-            return f"Aviso: Erro ao aplicar modificação de código: {e}"
+            return f"Aviso ao registrar solicitação para o Antigravity: {e}"
 
     @function_tool(
-        description=(
-            "Cria um novo arquivo de código ou script auxiliar no projeto do Jarvis. "
-            "Valida a sintaxe automaticamente se for um arquivo Python."
-        )
+        description="Consulta a lista e o status de todas as solicitações de desenvolvimento enviadas para o Antigravity."
     )
-    async def criar_novo_arquivo_codigo(self, caminho_arquivo: str, conteudo: str) -> str:
-        caminho = self._resolver_caminho_projeto(caminho_arquivo)
-        pasta = os.path.dirname(caminho)
-        if pasta and not os.path.exists(pasta):
-            os.makedirs(pasta, exist_ok=True)
+    async def consultar_solicitacoes_antigravity(self) -> str:
+        raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        caminho_json = os.path.join(raiz_projeto, "solicitacoes_antigravity.json")
+        if not os.path.isfile(caminho_json):
+            return "Nenhuma solicitação de desenvolvimento registrada no momento."
 
         try:
-            with open(caminho, "w", encoding="utf-8") as f:
-                f.write(conteudo)
+            with open(caminho_json, "r", encoding="utf-8") as f:
+                tarefas = json.load(f)
+            if not tarefas:
+                return "Nenhuma solicitação de desenvolvimento pendente."
 
-            if caminho.endswith(".py"):
-                import py_compile
-                try:
-                    py_compile.compile(caminho, doraise=True)
-                except py_compile.PyCompileError as erro:
-                    os.remove(caminho)
-                    return f"Aviso: O arquivo gerou erro de sintaxe ({erro}) e foi removido para segurança."
-
-            return f"Arquivo '{os.path.basename(caminho)}' criado e validado com sucesso."
+            resumo = [f"Total de {len(tarefas)} solicitações registradas:"]
+            for t in tarefas[-5:]:
+                resumo.append(f"• #{t['id']} [{t['status']}]: {t['titulo']} ({t['arquivo_sugerido']})")
+            return "\n".join(resumo)
         except Exception as e:
-            return f"Aviso: Erro ao criar arquivo de código: {e}"
+            return f"Aviso ao consultar solicitações: {e}"
 
     @function_tool(
         description=(
-            "Reverte as alterações não salvas de um arquivo de código usando o Git, restaurando-o ao estado do último commit. "
-            "Use caso alguma alteração não tenha saído como o usuário esperava."
+            "Reverte alterações de código não salvas usando o Git como botão de emergência. "
+            "Use se alguma tela ou código apresentar erro e o usuário pedir para desfazer ou reverter."
         )
     )
     async def reverter_ultima_alteracao_codigo(self, caminho_arquivo: str = "") -> str:
@@ -4940,107 +4971,6 @@ class Assistant(Agent):
             return f"Aviso ao reverter código: {res.stderr or res.stdout}"
         except Exception as e:
             return f"Aviso: Erro ao executar reversão Git: {e}"
-
-    @function_tool(
-        description=(
-            "Aciona o cérebro especialista em programação do Gemini nos bastidores para planejar, escrever e "
-            "aplicar uma melhoria complexa de código em qualquer arquivo do projeto (ex.: 'melhore a lousa para ter botão de PDF', "
-            "'adicione um novo comando no prompts.py', 'crie uma função para exportar relatórios'). "
-            "Ele analisa o arquivo, gera a alteração cirúrgica e valida a sintaxe com a rede de segurança antes de aplicar."
-        )
-    )
-    async def desenvolver_melhoria_com_ia(self, pedido_do_usuario: str, arquivo_alvo: str = "") -> str:
-        pedido = (pedido_do_usuario or "").strip()
-        if not pedido:
-            return "Aviso: informe o que você deseja desenvolver ou melhorar no código."
-
-        # Identifica arquivo alvo
-        caminho_final = ""
-        if arquivo_alvo.strip():
-            caminho_final = self._resolver_caminho_projeto(arquivo_alvo.strip())
-        else:
-            # Heurística rápida
-            p_lower = pedido.lower()
-            if "lousa" in p_lower or "quadro" in p_lower:
-                caminho_final = self._resolver_caminho_projeto("frontend/components/app/teaching-board.tsx") if ("visual" in p_lower or "tela" in p_lower or "botão" in p_lower or "botao" in p_lower or "cor" in p_lower) else self._resolver_caminho_projeto("backend/agent.py")
-            elif "prompt" in p_lower or "personalidade" in p_lower or "fala" in p_lower or "regra" in p_lower:
-                caminho_final = self._resolver_caminho_projeto("backend/prompts.py")
-            elif "hud" in p_lower or "dashboard" in p_lower or "cpu" in p_lower:
-                caminho_final = self._resolver_caminho_projeto("frontend/components/app/system-dashboard.tsx")
-            elif "navegador" in p_lower or "youtube" in p_lower or "aba" in p_lower:
-                caminho_final = self._resolver_caminho_projeto("backend/jarvis_browser.py")
-            else:
-                caminho_final = self._resolver_caminho_projeto("backend/agent.py")
-
-        if not os.path.isfile(caminho_final):
-            return f"Aviso: Arquivo alvo '{os.path.basename(caminho_final)}' não encontrado."
-
-        try:
-            with open(caminho_final, "r", encoding="utf-8", errors="replace") as f:
-                codigo_atual = f.read()
-
-            rel_path = os.path.relpath(caminho_final, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-            prompt_engenheiro = (
-                "Você é um engenheiro de software sênior trabalhando no projeto Jarvis. "
-                f"O usuário solicitou a seguinte melhoria/criação: '{pedido}'.\n"
-                f"Arquivo que deve ser modificado: '{rel_path}'.\n"
-                "Aqui está o conteúdo atual do arquivo (ou parte relevante):\n"
-                "```\n"
-                f"{codigo_atual[:30000]}\n"
-                "```\n\n"
-                "DIRETRIZES DE ENGENHARIA CRÍTICAS:\n"
-                "- Se for React/TypeScript/TSX: NUNCA acesse ou use variáveis/estados antes da linha em que foram declarados (Temporal Dead Zone). Respeite rigorosamente a ordem do código e das constantes.\n"
-                "- NÃO invente 'forceUpdate', hacks ou useEffects desnecessários. Produza código elegante, robusto e perfeitamente integrado.\n"
-                "- Se o pedido for vago, faça uma melhoria concreta, estética e visualmente agradável sem quebrar contratos existentes.\n"
-                "- 'trecho_antigo' deve existir com 100% de exatidão de caracteres no arquivo original.\n\n"
-                "Retorne APENAS um objeto JSON válido (sem blocos markdown extras) com o seguinte formato:\n"
-                "{\n"
-                '  "trecho_antigo": "trecho exato que já existe no arquivo e será substituído",\n'
-                '  "trecho_novo": "novo trecho de código pronto e sem erros que entrará no lugar",\n'
-                '  "explicacao": "explicação curta em 1 frase do que foi implementado"\n'
-                "}"
-            )
-
-            resposta_json = ""
-            for mod in ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]:
-                try:
-                    r = cliente_pesquisa.models.generate_content(
-                        model=mod,
-                        contents=prompt_engenheiro,
-                        config=genai_types.GenerateContentConfig(
-                            temperature=0.2,
-                            response_mime_type="application/json",
-                        ),
-                    )
-                    if r and r.text:
-                        resposta_json = r.text.strip()
-                        break
-                except Exception:
-                    continue
-
-            if not resposta_json:
-                return "Aviso: O motor de IA não conseguiu gerar a alteração no momento. Tente novamente."
-
-            dados = json.loads(resposta_json)
-            antigo = dados.get("trecho_antigo", "")
-            novo = dados.get("trecho_novo", "")
-            explicacao = dados.get("explicacao", "")
-
-            if not antigo or not novo:
-                return "Aviso: A resposta da IA não continha os trechos de substituição corretos."
-
-            # Aplica usando a ferramenta de modificação segura existente
-            res_aplicacao = await self.propor_e_aplicar_modificacao_codigo(
-                caminho_arquivo=caminho_final,
-                trecho_antigo=antigo,
-                trecho_novo=novo,
-                descricao_mudanca=explicacao or pedido,
-            )
-            return f"Desenvolvimento concluído: {res_aplicacao}"
-        except Exception as e:
-            logger_memoria.error("evento=desenvolver_melhoria_com_ia status=erro motivo=%s", e)
-            return f"Aviso: Erro durante o desenvolvimento da melhoria: {e}"
 
     @function_tool(
         description=(
