@@ -4696,6 +4696,194 @@ class Assistant(Agent):
         if removidos == 0:
             return f"Nenhum alerta encontrado com o termo '{remetente_ou_id}'."
         return f"Alerta de chegada de e-mail para '{remetente_ou_id}' removido com sucesso."
+    # =========================================================================
+    # MÓDULO DE ENGENHARIA E AUTO-EVOLUÇÃO (Capacidade de auto-modificação)
+    # =========================================================================
+    def _resolver_caminho_projeto(self, caminho_relativo_ou_absoluto: str) -> str:
+        caminho_limpo = (caminho_relativo_ou_absoluto or "").strip().strip('"').strip("'")
+        raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if os.path.isabs(caminho_limpo) and os.path.exists(caminho_limpo):
+            return os.path.abspath(caminho_limpo)
+        candidatos = [
+            os.path.join(raiz_projeto, caminho_limpo),
+            os.path.join(raiz_projeto, "backend", caminho_limpo),
+            os.path.join(raiz_projeto, "frontend", caminho_limpo),
+        ]
+        for c in candidatos:
+            if os.path.exists(c):
+                return os.path.abspath(c)
+        return os.path.abspath(os.path.join(raiz_projeto, caminho_limpo))
+
+    @function_tool(
+        description="Lista pastas e arquivos que compõem o código-fonte do próprio Jarvis para localizar arquivos de código."
+    )
+    async def listar_arquivos_projeto_jarvis(self, subpasta: str = "") -> str:
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alvo = os.path.join(raiz, subpasta) if subpasta else raiz
+        if not os.path.isdir(alvo):
+            return f"Aviso: Pasta '{subpasta}' não encontrada no projeto."
+        itens = []
+        for root, dirs, files in os.walk(alvo):
+            dirs[:] = [d for d in dirs if d not in {".git", ".venv", "venv", "node_modules", "__pycache__", ".next"}]
+            rel = os.path.relpath(root, raiz)
+            prefix = "" if rel == "." else rel + "/"
+            for f in files:
+                if not f.endswith((".pyc", ".png", ".jpg", ".exe", ".zip", ".ico")):
+                    itens.append(prefix + f)
+            if len(itens) >= 60:
+                break
+        return "Arquivos do projeto Jarvis:\n" + "\n".join(itens[:60])
+
+    @function_tool(
+        description=(
+            "Lê e inspeciona um trecho do próprio código-fonte do Jarvis (ex.: 'backend/agent.py', "
+            "'backend/prompts.py', 'frontend/components/app/welcome-view.tsx'). "
+            "Use sempre antes de modificar o código para entender as funções existentes e planejar sua alteração."
+        )
+    )
+    async def inspecionar_codigo_fonte(
+        self,
+        caminho_arquivo: str,
+        linha_inicio: int = 1,
+        quantidade_linhas: int = 120,
+    ) -> str:
+        caminho = self._resolver_caminho_projeto(caminho_arquivo)
+        if not os.path.isfile(caminho):
+            return f"Aviso: Arquivo de código '{caminho_arquivo}' não foi encontrado no projeto."
+
+        try:
+            with open(caminho, "r", encoding="utf-8", errors="replace") as f:
+                linhas = f.readlines()
+            total = len(linhas)
+            inicio = max(1, linha_inicio)
+            fim = min(total, inicio + max(1, min(250, quantidade_linhas)) - 1)
+            trecho = [f"{i}: {linhas[i-1]}" for i in range(inicio, fim + 1)]
+            nome_rel = os.path.relpath(caminho, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            return (
+                f"=== Arquivo: {nome_rel} (Linhas {inicio} a {fim} de {total}) ===\n"
+                + "".join(trecho)
+            )
+        except Exception as e:
+            return f"Aviso: Erro ao ler código de '{caminho_arquivo}': {e}"
+
+    @function_tool(
+        description=(
+            "Aplica uma alteração cirúrgica no próprio código-fonte do Jarvis, substituindo 'trecho_antigo' "
+            "por 'trecho_novo' em um arquivo existente (ex.: 'backend/agent.py', 'backend/prompts.py'). "
+            "POSSUI REDE DE SEGURANÇA AUTOMÁTICA: O sistema compila e valida o código antes de confirmar. "
+            "Se houver erro de sintaxe, o arquivo é revertido automaticamente para não quebrar o Jarvis."
+        )
+    )
+    async def propor_e_aplicar_modificacao_codigo(
+        self,
+        caminho_arquivo: str,
+        trecho_antigo: str,
+        trecho_novo: str,
+        descricao_mudanca: str = "",
+    ) -> str:
+        caminho = self._resolver_caminho_projeto(caminho_arquivo)
+        if not os.path.isfile(caminho):
+            return f"Aviso: Arquivo de código '{caminho_arquivo}' não encontrado."
+
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                conteudo_original = f.read()
+
+            if trecho_antigo not in conteudo_original:
+                return (
+                    f"Aviso: O trecho_antigo informado não foi encontrado exatamente como especificado em '{caminho_arquivo}'. "
+                    "Use inspecionar_codigo_fonte para copiar as linhas exatas e tente novamente."
+                )
+
+            # Aplica a alteração substituindo a primeira ocorrência
+            conteudo_modificado = conteudo_original.replace(trecho_antigo, trecho_novo, 1)
+
+            # Escreve a modificação no arquivo
+            with open(caminho, "w", encoding="utf-8") as f:
+                f.write(conteudo_modificado)
+
+            # Validação automática de segurança (se for Python)
+            if caminho.endswith(".py"):
+                import py_compile
+                try:
+                    py_compile.compile(caminho, doraise=True)
+                except py_compile.PyCompileError as erro_compilacao:
+                    # REVERSÃO AUTOMÁTICA DE EMERGÊNCIA
+                    with open(caminho, "w", encoding="utf-8") as f:
+                        f.write(conteudo_original)
+                    logger_memoria.error("evento=auto_modificacao_falha_compilacao motivo=%s", erro_compilacao)
+                    return (
+                        f"REVERSÃO DE SEGURANÇA ATIVADA: A alteração proposta gerou um erro de sintaxe ({erro_compilacao}). "
+                        "O arquivo foi restaurado automaticamente ao estado original para proteger o sistema. Corrija o código e tente novamente."
+                    )
+
+            logger_memoria.info("evento=auto_modificacao_sucesso arquivo=%s desc=%s", caminho_arquivo, descricao_mudanca)
+            return (
+                f"Modificação aplicada e validada com SUCESSO em '{os.path.basename(caminho)}'! "
+                f"Descrição da melhoria: {descricao_mudanca or 'Atualização de código fonte'}. "
+                "O código foi testado pela rede de segurança e não possui erros de sintaxe."
+            )
+        except Exception as e:
+            return f"Aviso: Erro ao aplicar modificação de código: {e}"
+
+    @function_tool(
+        description=(
+            "Cria um novo arquivo de código ou script auxiliar no projeto do Jarvis. "
+            "Valida a sintaxe automaticamente se for um arquivo Python."
+        )
+    )
+    async def criar_novo_arquivo_codigo(self, caminho_arquivo: str, conteudo: str) -> str:
+        caminho = self._resolver_caminho_projeto(caminho_arquivo)
+        pasta = os.path.dirname(caminho)
+        if pasta and not os.path.exists(pasta):
+            os.makedirs(pasta, exist_ok=True)
+
+        try:
+            with open(caminho, "w", encoding="utf-8") as f:
+                f.write(conteudo)
+
+            if caminho.endswith(".py"):
+                import py_compile
+                try:
+                    py_compile.compile(caminho, doraise=True)
+                except py_compile.PyCompileError as erro:
+                    os.remove(caminho)
+                    return f"Aviso: O arquivo gerou erro de sintaxe ({erro}) e foi removido para segurança."
+
+            return f"Arquivo '{os.path.basename(caminho)}' criado e validado com sucesso."
+        except Exception as e:
+            return f"Aviso: Erro ao criar arquivo de código: {e}"
+
+    @function_tool(
+        description=(
+            "Reverte as alterações não salvas de um arquivo de código usando o Git, restaurando-o ao estado do último commit. "
+            "Use caso alguma alteração não tenha saído como o usuário esperava."
+        )
+    )
+    async def reverter_ultima_alteracao_codigo(self, caminho_arquivo: str = "") -> str:
+        try:
+            raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if caminho_arquivo:
+                alvo = self._resolver_caminho_projeto(caminho_arquivo)
+                rel = os.path.relpath(alvo, raiz_projeto)
+                cmd = ["git", "checkout", "--", rel]
+            else:
+                cmd = ["git", "checkout", "--", "."]
+
+            res = subprocess.run(
+                cmd,
+                cwd=raiz_projeto,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=5,
+            )
+            if res.returncode == 0:
+                return "Código revertido com sucesso ao estado seguro do Git."
+            return f"Aviso ao reverter código: {res.stderr or res.stdout}"
+        except Exception as e:
+            return f"Aviso: Erro ao executar reversão Git: {e}"
+
     # --- FIM DAS FERRAMENTAS ---
 
 async def _publish_tool_activity(

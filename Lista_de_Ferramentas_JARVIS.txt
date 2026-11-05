@@ -15,7 +15,10 @@
   🔵 1.10. tirar_print_e_salvar: Tira um print (screenshot) em alta resolução de qualquer monitor (tela do mouse, tela 1, tela 2, tela da esquerda/direita, todas as telas ou tela de um programa) e salva na pasta específica solicitada.
   🔵 1.11. executar_comando_terminal: Executa comandos no terminal do Windows.
   🔵 1.12. listar_arquivos_projeto_jarvis: Lista as pastas e arquivos que compõem o código-fonte do próprio Jarvis.
-  🔵 1.13. ler_codigo_fonte_jarvis: Lê qualquer arquivo de código ou configuração do projeto Jarvis.
+  🔵 1.13. inspecionar_codigo_fonte: Lê e inspeciona trechos do próprio código-fonte do Jarvis com numeração de linhas.
+  🔵 1.14. propor_e_aplicar_modificacao_codigo: Modifica o código-fonte do Jarvis com rede de segurança e rollback automático contra erros de sintaxe.
+  🔵 1.15. criar_novo_arquivo_codigo: Cria novos scripts ou módulos no projeto do Jarvis com validação de sintaxe.
+  🔵 1.16. reverter_ultima_alteracao_codigo: Reverte alterações de código não salvas usando o Git como botão de emergência.
 
 --------------------------------------------------------------------------------
 
