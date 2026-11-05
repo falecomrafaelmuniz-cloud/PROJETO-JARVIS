@@ -2334,7 +2334,7 @@ class Assistant(Agent):
             "calculadora": ["calculadora", "calculator", "calc"],
             "bloco de notas": ["bloco de notas", "notepad"],
             "notepad": ["bloco de notas", "notepad"],
-            "vscode": ["visual studio code", "vscode", "vs code"],
+            "vscode": ["visual studio code", "vscode", "vs code", "antigravity", "code"],
             "vs code": ["visual studio code", "vscode", "vs code"],
             "explorador": ["explorador de arquivos", "file explorer", "explorer"],
             "pastas": ["explorador de arquivos", "file explorer"],
@@ -2472,7 +2472,7 @@ class Assistant(Agent):
             "calculadora": ["calculadora", "calculator", "calc"],
             "bloco de notas": ["bloco de notas", "notepad"],
             "notepad": ["bloco de notas", "notepad"],
-            "vscode": ["visual studio code", "vscode", "vs code"],
+            "vscode": ["visual studio code", "vscode", "vs code", "antigravity", "code"],
             "vs code": ["visual studio code", "vscode", "vs code"],
             "explorador": ["explorador de arquivos", "file explorer", "explorer"],
             "pastas": ["explorador de arquivos", "file explorer"],
@@ -4912,10 +4912,23 @@ class Assistant(Agent):
             with open(caminho_md, "w", encoding="utf-8") as f:
                 f.write("\n".join(linhas_md))
 
+            # Abre o VS Code automaticamente com o projeto e a solicitação aberta, e traz para a frente na tela
+            try:
+                subprocess.Popen(["code.cmd", "-r", caminho_md], cwd=raiz_projeto, shell=True)
+            except Exception:
+                try:
+                    subprocess.Popen(["code", "-r", caminho_md], cwd=raiz_projeto, shell=True)
+                except Exception:
+                    pass
+            try:
+                self._maximizar_ou_restaurar_windows_nativo("vscode")
+            except Exception:
+                pass
+
             return (
-                f"Solicitação #{novo_id} ('{titulo_limpo}') enviada com sucesso para o Antigravity! "
-                f"Arquivo alvo sugerido: '{arquivo_alvo}'. O Antigravity foi notificado e fará a implementação "
-                "com validação completa de código."
+                f"Solicitação #{novo_id} ('{titulo_limpo}') registrada e enviada para o Antigravity! "
+                f"Abri o VS Code na tela com o painel de desenvolvimento aberto para você acompanhar. "
+                f"Arquivo alvo sugerido: '{arquivo_alvo}'."
             )
         except Exception as e:
             return f"Aviso ao registrar solicitação para o Antigravity: {e}"

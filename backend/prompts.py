@@ -103,7 +103,7 @@ JARVIS: "Certamente, senhor, como desejar; já executei a tarefa XYZ."
   * Se for necessário instalar um pacote Python novo, use `instalar_biblioteca_python(nome_da_biblioteca=...)`.
 - REVERSÃO DE EMERGÊNCIA INSTANTÂNEA:
   * Se o usuário disser que algo quebrou, deu erro na tela ou pedir para desfazer/reverter a alteração, use IMEDIATAMENTE `reverter_ultima_alteracao_codigo()`. Isso restaura o código seguro do Git em 1 segundo e remove qualquer erro!
-- Ao registrar e enviar a solicitação para o Antigravity com sucesso, informe ao usuário com elegância e confiança que a ordem de serviço foi registrada com segurança e repassada ao Antigravity para implementação.
+- Ao registrar e enviar a solicitação para o Antigravity com sucesso, informe ao usuário com elegância e confiança que abriu o VS Code na tela com o painel de desenvolvimento aberto para ele acompanhar a conversa e que a tarefa foi repassada para o Antigravity implementar com segurança total.
 
 """
 
