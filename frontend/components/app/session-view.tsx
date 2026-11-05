@@ -20,6 +20,7 @@ import { EmailComposer } from '@/components/app/email-composer';
 import { LocationSharing } from '@/components/app/location-sharing';
 import { SystemDashboard } from '@/components/app/system-dashboard';
 import { TeachingBoard } from '@/components/app/teaching-board';
+import { NeuralNetworkVisualizer } from '@/components/app/neural-network';
 import { TileLayout } from '@/components/app/tile-layout';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
@@ -355,6 +356,7 @@ export const SessionView = ({
       <ClockWidget />
       <LocationSharing />
       <TeachingBoard />
+      <NeuralNetworkVisualizer />
       <EmailComposer />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
