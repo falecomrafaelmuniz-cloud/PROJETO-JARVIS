@@ -4941,6 +4941,170 @@ class Assistant(Agent):
         except Exception as e:
             return f"Aviso: Erro ao executar reversão Git: {e}"
 
+    @function_tool(
+        description=(
+            "Aciona o cérebro especialista em programação do Gemini nos bastidores para planejar, escrever e "
+            "aplicar uma melhoria complexa de código em qualquer arquivo do projeto (ex.: 'melhore a lousa para ter botão de PDF', "
+            "'adicione um novo comando no prompts.py', 'crie uma função para exportar relatórios'). "
+            "Ele analisa o arquivo, gera a alteração cirúrgica e valida a sintaxe com a rede de segurança antes de aplicar."
+        )
+    )
+    async def desenvolver_melhoria_com_ia(self, pedido_do_usuario: str, arquivo_alvo: str = "") -> str:
+        pedido = (pedido_do_usuario or "").strip()
+        if not pedido:
+            return "Aviso: informe o que você deseja desenvolver ou melhorar no código."
+
+        # Identifica arquivo alvo
+        caminho_final = ""
+        if arquivo_alvo.strip():
+            caminho_final = self._resolver_caminho_projeto(arquivo_alvo.strip())
+        else:
+            # Heurística rápida
+            p_lower = pedido.lower()
+            if "lousa" in p_lower or "quadro" in p_lower:
+                caminho_final = self._resolver_caminho_projeto("frontend/components/app/teaching-board.tsx") if ("visual" in p_lower or "tela" in p_lower or "botão" in p_lower or "botao" in p_lower or "cor" in p_lower) else self._resolver_caminho_projeto("backend/agent.py")
+            elif "prompt" in p_lower or "personalidade" in p_lower or "fala" in p_lower or "regra" in p_lower:
+                caminho_final = self._resolver_caminho_projeto("backend/prompts.py")
+            elif "hud" in p_lower or "dashboard" in p_lower or "cpu" in p_lower:
+                caminho_final = self._resolver_caminho_projeto("frontend/components/app/system-dashboard.tsx")
+            elif "navegador" in p_lower or "youtube" in p_lower or "aba" in p_lower:
+                caminho_final = self._resolver_caminho_projeto("backend/jarvis_browser.py")
+            else:
+                caminho_final = self._resolver_caminho_projeto("backend/agent.py")
+
+        if not os.path.isfile(caminho_final):
+            return f"Aviso: Arquivo alvo '{os.path.basename(caminho_final)}' não encontrado."
+
+        try:
+            with open(caminho_final, "r", encoding="utf-8", errors="replace") as f:
+                codigo_atual = f.read()
+
+            rel_path = os.path.relpath(caminho_final, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+            prompt_engenheiro = (
+                "Você é um engenheiro de software sênior trabalhando no projeto Jarvis. "
+                f"O usuário solicitou a seguinte melhoria/criação: '{pedido}'.\n"
+                f"Arquivo que deve ser modificado: '{rel_path}'.\n"
+                "Aqui está o conteúdo atual do arquivo (ou parte relevante):\n"
+                "```\n"
+                f"{codigo_atual[:30000]}\n"
+                "```\n\n"
+                "Retorne APENAS um objeto JSON válido (sem blocos markdown extras) com o seguinte formato:\n"
+                "{\n"
+                '  "trecho_antigo": "trecho exato que já existe no arquivo e será substituído",\n'
+                '  "trecho_novo": "novo trecho de código pronto e sem erros que entrará no lugar",\n'
+                '  "explicacao": "explicação curta em 1 frase do que foi implementado"\n'
+                "}\n"
+                "ATENÇÃO CRÍTICA: 'trecho_antigo' deve existir com 100% de exatidão de caracteres no arquivo original."
+            )
+
+            resposta_json = ""
+            for mod in ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]:
+                try:
+                    r = cliente_pesquisa.models.generate_content(
+                        model=mod,
+                        contents=prompt_engenheiro,
+                        config=genai_types.GenerateContentConfig(
+                            temperature=0.2,
+                            response_mime_type="application/json",
+                        ),
+                    )
+                    if r and r.text:
+                        resposta_json = r.text.strip()
+                        break
+                except Exception:
+                    continue
+
+            if not resposta_json:
+                return "Aviso: O motor de IA não conseguiu gerar a alteração no momento. Tente novamente."
+
+            dados = json.loads(resposta_json)
+            antigo = dados.get("trecho_antigo", "")
+            novo = dados.get("trecho_novo", "")
+            explicacao = dados.get("explicacao", "")
+
+            if not antigo or not novo:
+                return "Aviso: A resposta da IA não continha os trechos de substituição corretos."
+
+            # Aplica usando a ferramenta de modificação segura existente
+            res_aplicacao = await self.propor_e_aplicar_modificacao_codigo(
+                caminho_arquivo=caminho_final,
+                trecho_antigo=antigo,
+                trecho_novo=novo,
+                descricao_mudanca=explicacao or pedido,
+            )
+            return f"Desenvolvimento concluído: {res_aplicacao}"
+        except Exception as e:
+            logger_memoria.error("evento=desenvolver_melhoria_com_ia status=erro motivo=%s", e)
+            return f"Aviso: Erro durante o desenvolvimento da melhoria: {e}"
+
+    @function_tool(
+        description=(
+            "Faz commit e envia (git push) todas as alterações recentes do projeto Jarvis para o GitHub. "
+            "Use sempre que você fizer uma melhoria no código e o usuário pedir para salvar no GitHub ou sincronizar com o outro PC."
+        )
+    )
+    async def salvar_e_enviar_para_github(self, mensagem_commit: str = "feat: melhoria automatica implementada pelo Jarvis") -> str:
+        msg = (mensagem_commit or "feat: melhoria automatica implementada pelo Jarvis").strip().replace('"', '\"')
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            def _git_run(args):
+                return subprocess.run(
+                    ["git"] + args,
+                    cwd=raiz,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=20,
+                )
+
+            # 1. git add -A
+            add_res = await asyncio.to_thread(_git_run, ["add", "-A"])
+            if add_res.returncode != 0:
+                return f"Aviso ao preparar arquivos (git add): {add_res.stderr}"
+
+            # 2. git commit -m
+            commit_res = await asyncio.to_thread(_git_run, ["commit", "-m", msg])
+            if commit_res.returncode != 0 and "nothing to commit" not in commit_res.stdout.lower():
+                return f"Aviso ao registrar commit: {commit_res.stderr or commit_res.stdout}"
+
+            # 3. git push origin main
+            push_res = await asyncio.to_thread(_git_run, ["push", "origin", "main"])
+            if push_res.returncode != 0:
+                return f"Aviso ao enviar para o GitHub (git push): {push_res.stderr or push_res.stdout}"
+
+            return "Todas as melhorias foram salvas e enviadas para o seu GitHub com SUCESSO! O outro computador já pode receber a atualização."
+        except Exception as e:
+            return f"Aviso: Houve um erro ao sincronizar com o GitHub: {e}"
+
+    @function_tool(
+        description=(
+            "Instala uma biblioteca Python no ambiente virtual do Jarvis usando o pip "
+            "(ex.: 'pip install pandas', 'pydub', 'openpyxl', 'matplotlib')."
+        )
+    )
+    async def instalar_biblioteca_python(self, nome_da_biblioteca: str) -> str:
+        pacote = (nome_da_biblioteca or "").strip().replace("pip", "").replace("install", "").strip()
+        if not pacote:
+            return "Aviso: informe o nome da biblioteca que deseja instalar."
+
+        py_exe = sys.executable
+        try:
+            print(f"[ENGENHARIA] Instalando biblioteca: {pacote}")
+            res = await asyncio.to_thread(
+                subprocess.run,
+                [py_exe, "-m", "pip", "install", pacote, "--quiet"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+            )
+            if res.returncode == 0:
+                return f"Biblioteca '{pacote}' instalada com sucesso no ambiente Python do Jarvis!"
+            return f"Aviso ao instalar '{pacote}': {res.stderr or res.stdout}"
+        except Exception as e:
+            return f"Aviso: Erro ao instalar biblioteca: {e}"
+
     # --- FIM DAS FERRAMENTAS ---
 
 async def _publish_tool_activity(
