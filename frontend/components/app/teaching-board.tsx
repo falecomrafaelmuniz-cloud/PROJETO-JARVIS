@@ -23,10 +23,12 @@ const BOARD_WIDTH = 1200;
 const BOARD_HEIGHT = 760;
 const CHALK_COLORS = [
   { name: 'Giz branco', value: '#f8f5e7' },
-  { name: 'Giz amarelo', value: '#f5d76e' },
-  { name: 'Giz azul', value: '#8ce5f2' },
-  { name: 'Giz rosa', value: '#ff9fba' },
-  { name: 'Giz laranja', value: '#ffb36b' },
+  { name: 'Ciano Jarvis', value: '#22d3ee' },
+  { name: 'Verde neon', value: '#34d399' },
+  { name: 'Amarelo ouro', value: '#fbbf24' },
+  { name: 'Rosa choque', value: '#f472b6' },
+  { name: 'Roxo holográfico', value: '#a78bfa' },
+  { name: 'Laranja chama', value: '#fb923c' },
 ];
 
 type BoardTool = 'pen' | 'line' | 'rectangle' | 'ellipse';
@@ -442,8 +444,8 @@ export function TeachingBoard() {
               </button>
             </header>
 
-            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
-              <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <div className="flex flex-wrap items-center gap-2.5 border-b border-cyan-500/20 bg-slate-950/90 px-4 py-2.5 backdrop-blur-xl">
+              <div className="flex items-center gap-1 rounded-xl border border-cyan-500/20 bg-slate-900/80 p-1 shadow-inner">
                 {[
                   { value: 'pen', label: 'Desenhar', icon: Pencil },
                   { value: 'line', label: 'Linha', icon: ArrowUpRight },
@@ -458,10 +460,10 @@ export function TeachingBoard() {
                     aria-pressed={tool === value}
                     onClick={() => setTool(value as BoardTool)}
                     className={cn(
-                      'rounded-md p-2 transition',
+                      'rounded-lg p-2 transition-all duration-200',
                       tool === value
-                        ? 'bg-cyan-800 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white'
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.35)]'
+                        : 'text-slate-400 hover:text-cyan-200 hover:bg-slate-800/60'
                     )}
                   >
                     <Icon className="size-4" />
@@ -469,7 +471,7 @@ export function TeachingBoard() {
                 ))}
               </div>
 
-              <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5">
+              <div className="flex items-center gap-1.5 rounded-xl border border-cyan-500/20 bg-slate-900/80 px-2.5 py-1.5 shadow-inner">
                 {CHALK_COLORS.map((chalk) => (
                   <button
                     key={chalk.value}
@@ -479,10 +481,10 @@ export function TeachingBoard() {
                     aria-pressed={chalkColor === chalk.value}
                     onClick={() => setChalkColor(chalk.value)}
                     className={cn(
-                      'size-5 rounded-full border border-slate-400/70 transition',
+                      'size-5 rounded-full border border-white/20 transition-all duration-200',
                       chalkColor === chalk.value
-                        ? 'ring-2 ring-cyan-800 ring-offset-2'
-                        : 'hover:scale-110'
+                        ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-[0_0_8px_rgba(34,211,238,0.7)]'
+                        : 'hover:scale-115 opacity-85 hover:opacity-100'
                     )}
                     style={{ backgroundColor: chalk.value }}
                   />
@@ -490,7 +492,7 @@ export function TeachingBoard() {
               </div>
 
               <div className="flex min-w-[220px] flex-1 items-center gap-2 sm:max-w-xl">
-                <Type className="size-4 shrink-0 text-slate-500" />
+                <Type className="size-4 shrink-0 text-cyan-400/70" />
                 <input
                   value={textDraft}
                   onChange={(event) => setTextDraft(event.target.value)}
@@ -500,14 +502,14 @@ export function TeachingBoard() {
                       addText();
                     }
                   }}
-                  placeholder="Escreva uma anotação..."
+                  placeholder="Escreva uma anotação na lousa..."
                   aria-label="Texto para adicionar à lousa"
-                  className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-cyan-700 focus:ring-2 focus:ring-cyan-700/15"
+                  className="h-9 min-w-0 flex-1 rounded-xl border border-cyan-500/30 bg-slate-900/90 px-3 text-sm text-cyan-100 outline-none placeholder:text-slate-500 transition-all focus:border-cyan-400 focus:shadow-[0_0_12px_rgba(6,182,212,0.25)] focus:ring-1 focus:ring-cyan-400/40"
                 />
                 <button
                   type="button"
                   onClick={addText}
-                  className="rounded-lg bg-cyan-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-700"
+                  className="rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-3.5 py-2 text-xs font-semibold text-cyan-200 transition-all hover:bg-cyan-500/30 hover:shadow-[0_0_12px_rgba(6,182,212,0.4)] active:scale-95"
                 >
                   Adicionar
                 </button>
@@ -527,16 +529,16 @@ export function TeachingBoard() {
               <button
                 type="button"
                 onClick={() => uploadRef.current?.click()}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/20 bg-slate-900/80 px-3 py-2 text-xs font-medium text-cyan-200/90 transition-all hover:border-cyan-400/40 hover:bg-slate-800/80 hover:text-cyan-100"
               >
-                <ImagePlus className="size-4" />
+                <ImagePlus className="size-4 text-cyan-400" />
                 Imagem
               </button>
               <button
                 type="button"
                 onClick={() => setItems((current) => current.slice(0, -1))}
                 disabled={items.length === 0}
-                className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-xl border border-cyan-500/20 bg-slate-900/80 p-2 text-cyan-200/80 transition-all hover:border-cyan-400/40 hover:bg-slate-800/80 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-30"
                 title="Desfazer última adição"
                 aria-label="Desfazer última adição"
               >
@@ -550,7 +552,7 @@ export function TeachingBoard() {
                   }
                 }}
                 disabled={items.length === 0}
-                className="rounded-lg border border-rose-200 p-2 text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-2 text-rose-300 transition-all hover:border-rose-400/50 hover:bg-rose-900/40 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-30"
                 title="Limpar lousa"
                 aria-label="Limpar lousa"
               >
@@ -558,15 +560,15 @@ export function TeachingBoard() {
               </button>
             </div>
 
-            <div className="relative min-h-0 flex-1 overflow-hidden bg-[linear-gradient(135deg,#75421f,#c88b4a_12%,#8c5529_18%,#d6a15d_50%,#80502c_84%,#c58a4a)] p-3 shadow-[inset_0_2px_8px_#3b2418] sm:p-5">
-              <div className="h-full rounded-md border-[5px] border-[#754624] bg-[linear-gradient(90deg,#9c6335,#e2b574_8%,#a36c3c_15%,#744522_85%,#d3a168_93%,#82502c)] p-1 shadow-[inset_0_0_0_2px_#e0b271,0_8px_18px_#392316] sm:border-[9px] sm:p-2">
+            <div className="relative min-h-0 flex-1 overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-3 sm:p-5">
+              <div className="h-full rounded-2xl border-2 border-cyan-500/30 bg-slate-950/90 p-1.5 shadow-[0_0_35px_rgba(6,182,212,0.15),inset_0_0_20px_rgba(0,0,0,0.8)] sm:p-3">
                 <svg
                   ref={svgRef}
                   viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`}
                   role="img"
                   aria-label="Área de desenho da lousa"
                   className={cn(
-                    'h-full w-full touch-none rounded-[2px] bg-[#17633e] shadow-[inset_0_5px_22px_#092b1c]/60',
+                    'h-full w-full touch-none rounded-xl bg-[#081512] shadow-[inset_0_4px_30px_rgba(0,0,0,0.9)]',
                     tool === 'pen' ? 'cursor-crosshair' : 'cursor-cell'
                   )}
                   onPointerDown={handlePointerDown}
@@ -576,9 +578,9 @@ export function TeachingBoard() {
                 >
                   <defs>
                     <linearGradient id="chalkboard-surface" x1="0" y1="0" x2="0.9" y2="1">
-                      <stop offset="0%" stopColor="#1a7047" />
-                      <stop offset="50%" stopColor="#155c3a" />
-                      <stop offset="100%" stopColor="#104b30" />
+                      <stop offset="0%" stopColor="#0a1a16" />
+                      <stop offset="50%" stopColor="#081512" />
+                      <stop offset="100%" stopColor="#05100e" />
                     </linearGradient>
                     <filter id="chalk-soften" x="-5%" y="-5%" width="110%" height="110%">
                       <feGaussianBlur in="SourceGraphic" stdDeviation="0.45" result="soft" />
@@ -589,18 +591,17 @@ export function TeachingBoard() {
                     </filter>
                     <pattern
                       id="board-grain"
-                      width="190"
-                      height="150"
+                      width="100"
+                      height="100"
                       patternUnits="userSpaceOnUse"
                     >
+                      <circle cx="50" cy="50" r="0.8" fill="#22d3ee" fillOpacity=".04" />
                       <path
-                        d="M10 18h68M112 54h56M37 113h98M148 132h32"
-                        stroke="#d5e9c9"
-                        strokeOpacity=".035"
-                        strokeWidth="2"
+                        d="M0 50h100M50 0v100"
+                        stroke="#22d3ee"
+                        strokeOpacity=".02"
+                        strokeWidth="1"
                       />
-                      <circle cx="93" cy="24" r="1.5" fill="#d5e9c9" fillOpacity=".08" />
-                      <circle cx="20" cy="82" r="1" fill="#071f16" fillOpacity=".22" />
                     </pattern>
                     <marker
                       id="board-arrowhead"
@@ -816,8 +817,8 @@ export function TeachingBoard() {
                   )}
                 </svg>
               </div>
-              <p className="pointer-events-none absolute right-7 bottom-6 rounded-full bg-white/85 px-3 py-1 text-[11px] text-slate-500 shadow-sm">
-                Moldura de madeira · Giz salvo neste navegador
+              <p className="pointer-events-none absolute right-8 bottom-7 rounded-full border border-cyan-500/20 bg-slate-950/80 px-3.5 py-1 text-[11px] font-medium tracking-wide text-cyan-300/80 shadow-md backdrop-blur-md">
+                Moldura de Titânio · HUD Integrado · Giz Sincronizado
               </p>
               {storageError && (
                 <p
