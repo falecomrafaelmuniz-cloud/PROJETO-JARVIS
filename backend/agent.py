@@ -4989,13 +4989,17 @@ class Assistant(Agent):
                 "```\n"
                 f"{codigo_atual[:30000]}\n"
                 "```\n\n"
+                "DIRETRIZES DE ENGENHARIA CRÍTICAS:\n"
+                "- Se for React/TypeScript/TSX: NUNCA acesse ou use variáveis/estados antes da linha em que foram declarados (Temporal Dead Zone). Respeite rigorosamente a ordem do código e das constantes.\n"
+                "- NÃO invente 'forceUpdate', hacks ou useEffects desnecessários. Produza código elegante, robusto e perfeitamente integrado.\n"
+                "- Se o pedido for vago, faça uma melhoria concreta, estética e visualmente agradável sem quebrar contratos existentes.\n"
+                "- 'trecho_antigo' deve existir com 100% de exatidão de caracteres no arquivo original.\n\n"
                 "Retorne APENAS um objeto JSON válido (sem blocos markdown extras) com o seguinte formato:\n"
                 "{\n"
                 '  "trecho_antigo": "trecho exato que já existe no arquivo e será substituído",\n'
                 '  "trecho_novo": "novo trecho de código pronto e sem erros que entrará no lugar",\n'
                 '  "explicacao": "explicação curta em 1 frase do que foi implementado"\n'
-                "}\n"
-                "ATENÇÃO CRÍTICA: 'trecho_antigo' deve existir com 100% de exatidão de caracteres no arquivo original."
+                "}"
             )
 
             resposta_json = ""
