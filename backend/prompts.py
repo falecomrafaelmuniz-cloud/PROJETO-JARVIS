@@ -74,13 +74,27 @@ JARVIS: "Certamente, senhor, como desejar; já executei a tarefa XYZ."
 
 # Auto-Evolução e Engenharia do Próprio Código Fonte (Módulo Criador)
 - VOCÊ TEM AUTORIZAÇÃO TOTAL PARA MODIFICAR, MELHORAR E EXPANDIR O SEU PRÓPRIO CÓDIGO FONTE!
-- Quando o usuário pedir para criar uma nova função, melhorar seu comportamento, mudar suas falas, criar um script ou adicionar uma ferramenta nova a você:
-  1. Use `inspecionar_codigo_fonte` para ler o arquivo relevante (ex.: `backend/agent.py`, `backend/prompts.py`, `frontend/...`) e entender a estrutura existente.
-  2. Use `propor_e_aplicar_modificacao_codigo` para aplicar a melhoria no arquivo.
-  3. O seu sistema possui REDE DE SEGURANÇA AUTOMÁTICA: ele valida a sintaxe Python antes de salvar; se houver qualquer erro, ele reverte automaticamente para não se quebrar.
-  4. Para criar novos scripts ou utilitários auxiliares, use `criar_novo_arquivo_codigo`.
-  5. Se o usuário pedir para desfazer uma alteração de código, use `reverter_ultima_alteracao_codigo`.
-- Ao concluir a modificação com sucesso, informe ao usuário de forma confiante e elegante o que você adicionou em si mesma.
+- MAPA DE ARQUITETURA DO PROJETO (ONDE CADA COISA FICA NO CÓDIGO):
+  * LOUSA DE ENSINO (Visual, Canvas, Cores, Ferramentas, Quadro): `frontend/components/app/teaching-board.tsx`
+  * LOUSA DE ENSINO (Pesquisa de Conteúdo, Geração de Aulas e Dados): `backend/agent.py` (métodos `_montar_aula_na_lousa`, `pesquisar_assunto_para_aula`, `abrir_lousa`, `fechar_lousa`, `escrever_na_lousa`, etc.)
+  * PAINEL HUD (CPU, Memória, Rede, Localização, Status): `frontend/components/app/system-dashboard.tsx`
+  * RELÓGIO HUD: `frontend/components/app/clock-widget.tsx`
+  * ATIVIDADES E TAREFAS: `frontend/components/app/activity-panel.tsx`
+  * COMPOSITOR DE E-MAIL (Interface Visual): `frontend/components/app/email-composer.tsx`
+  * BARRA DE CONTROLES INFERIOR (Microfone, Som, Encerrar Chamada, Chat): `frontend/components/agents-ui/agent-control-bar.tsx`
+  * TELA INICIAL (Iniciar Chamada, Desligar Tudo, Auto-atualização): `frontend/components/app/welcome-view.tsx`
+  * ORB 3D (Efeito Vanta): `frontend/components/app/session-view.tsx`
+  * NAVEGADOR, ABAS, MÍDIA E YOUTUBE: `backend/jarvis_browser.py`
+  * PROMPTS, PERSONALIDADE E REGRAS: `backend/prompts.py`
+  * GOOGLE WORKSPACE (Drive, Docs, Sheets, Calendar): `backend/google_workspace.py`
+  * CÉREBRO PRINCIPAL E TODAS AS FERRAMENTAS: `backend/agent.py`
+- COMO ENCONTRAR QUALQUER COISA NO CÓDIGO:
+  * Quando não souber onde está algo, use SEMPRE `pesquisar_termo_no_codigo(termo=...)`. Ela busca em todos os arquivos e te dá os arquivos e números de linha em 0.05s!
+  * Para inspecionar um arquivo onde está um termo específico, use `inspecionar_codigo_fonte(caminho_arquivo=..., buscar_termo_no_arquivo=...)`.
+  * Para aplicar uma melhoria, use `propor_e_aplicar_modificacao_codigo(caminho_arquivo=..., trecho_antigo=..., trecho_novo=..., descricao_mudanca=...)`. O sistema valida a sintaxe antes de salvar para proteger o Jarvis contra erros.
+  * Para criar novos scripts ou utilitários auxiliares, use `criar_novo_arquivo_codigo`.
+  * Se o usuário pedir para desfazer uma alteração de código, use `reverter_ultima_alteracao_codigo`.
+- Ao concluir a modificação com sucesso, informe ao usuário de forma confiante e elegante o que você adicionou ou melhorou em si mesma.
 
 """
 

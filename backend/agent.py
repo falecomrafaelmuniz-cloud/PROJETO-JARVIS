@@ -4736,9 +4736,57 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
+            "Pesquisa rapidamente qualquer palavra-chave, função, variável ou conceito no código-fonte do Jarvis "
+            "(ex.: 'lousa', 'teaching-board', 'youtube', 'wallpaper', 'email', 'print', 'dashboard'). "
+            "Retorna instantaneamente os arquivos e as linhas exatas onde o termo aparece para você inspecionar e modificar."
+        )
+    )
+    async def pesquisar_termo_no_codigo(self, termo: str, subpasta: str = "") -> str:
+        termo_limpo = (termo or "").strip().lower()
+        if not termo_limpo or len(termo_limpo) < 2:
+            return "Aviso: informe um termo de busca com pelo menos 2 caracteres."
+
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        pasta_base = os.path.join(raiz, subpasta) if subpasta else raiz
+        if not os.path.isdir(pasta_base):
+            pasta_base = raiz
+
+        resultados = []
+        extensoes_validas = {".py", ".tsx", ".ts", ".js", ".json", ".css", ".html", ".md", ".txt"}
+        ignorar_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__", ".next", "dist", "bin"}
+
+        for root, dirs, files in os.walk(pasta_base):
+            dirs[:] = [d for d in dirs if d not in ignorar_dirs]
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                if ext in extensoes_validas:
+                    caminho_completo = os.path.join(root, file)
+                    rel = os.path.relpath(caminho_completo, raiz)
+                    try:
+                        with open(caminho_completo, "r", encoding="utf-8", errors="ignore") as f:
+                            for num_linha, linha in enumerate(f, start=1):
+                                if termo_limpo in linha.lower():
+                                    trecho = linha.strip()[:90]
+                                    resultados.append(f"- {rel} (linha {num_linha}): {trecho}")
+                                    if len(resultados) >= 20:
+                                        break
+                    except Exception:
+                        pass
+                if len(resultados) >= 20:
+                    break
+            if len(resultados) >= 20:
+                break
+
+        if not resultados:
+            return f"Nenhum resultado encontrado para '{termo}' no código do projeto."
+        return f"Resultados encontrados no código para '{termo}':\n" + "\n".join(resultados)
+
+    @function_tool(
+        description=(
             "Lê e inspeciona um trecho do próprio código-fonte do Jarvis (ex.: 'backend/agent.py', "
-            "'backend/prompts.py', 'frontend/components/app/welcome-view.tsx'). "
-            "Use sempre antes de modificar o código para entender as funções existentes e planejar sua alteração."
+            "'backend/prompts.py', 'frontend/components/app/teaching-board.tsx'). "
+            "Você pode informar 'caminho_arquivo' e passar 'buscar_termo_no_arquivo' (ex.: 'lousa') para ele "
+            "localizar a linha exata automaticamente, ou passar 'linha_inicio'."
         )
     )
     async def inspecionar_codigo_fonte(
@@ -4746,6 +4794,7 @@ class Assistant(Agent):
         caminho_arquivo: str,
         linha_inicio: int = 1,
         quantidade_linhas: int = 120,
+        buscar_termo_no_arquivo: str = "",
     ) -> str:
         caminho = self._resolver_caminho_projeto(caminho_arquivo)
         if not os.path.isfile(caminho):
@@ -4755,7 +4804,15 @@ class Assistant(Agent):
             with open(caminho, "r", encoding="utf-8", errors="replace") as f:
                 linhas = f.readlines()
             total = len(linhas)
+
             inicio = max(1, linha_inicio)
+            if buscar_termo_no_arquivo.strip():
+                t = buscar_termo_no_arquivo.strip().lower()
+                for num, l in enumerate(linhas, start=1):
+                    if t in l.lower():
+                        inicio = max(1, num - 15)
+                        break
+
             fim = min(total, inicio + max(1, min(250, quantidade_linhas)) - 1)
             trecho = [f"{i}: {linhas[i-1]}" for i in range(inicio, fim + 1)]
             nome_rel = os.path.relpath(caminho, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
