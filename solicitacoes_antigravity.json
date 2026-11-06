@@ -120,5 +120,16 @@
     "status": "concluido",
     "origem": "Comando direto do usuário no chat",
     "concluido_em": "06/11/2026 02:52:00"
+  },
+  {
+    "id": 12,
+    "data_hora": "06/11/2026 03:03:00",
+    "titulo": "Condução autônoma da aula sem perguntas de permissão e ritmo adequado com nova aba garantida",
+    "descricao": "Ajuste completo no ritmo e na postura pedagógica do Jarvis durante as aulas: 1) Proibição estrita de ficar pedindo permissão ou perguntando se o usuário quer que ele faça algo ('Você quer que eu faça isso?'); o Jarvis agora assume a liderança e dá seguimento contínuo e proativo à aula. 2) Controle de ritmo: o Jarvis não pula de página em 5 segundos, dedicando o tempo necessário para o aluno absorver o vídeo/gráfico inicial. 3) Garantia absoluta de nova aba via start chrome ao avançar de tópico, mantendo a aba do vídeo anterior 100% aberta e intacta no navegador.",
+    "arquivo_sugerido": "backend/agent.py, backend/jarvis_browser.py, backend/prompts.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando direto do usuário no chat",
+    "concluido_em": "06/11/2026 03:08:00"
   }
 ]

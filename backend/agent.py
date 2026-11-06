@@ -1434,15 +1434,18 @@ class Assistant(Agent):
                     f"=============================================================\n"
                 )
             resumo_retorno += (
-                f"ORIENTAÇÃO DIDÁTICA PARA A AULA:\n"
-                f"1. Comece IMEDIATAMENTE a ensinar e explicar o assunto em voz alta com clareza, empolgação e autoridade didática.\n"
-                f"2. Conecte sua explicação aos elementos visuais que você viu na tela ('Como você pode ver aqui...', 'repare no compressor...', 'observe a câmara de combustão...').\n"
-                f"3. Roteiro sugerido: {roteiro}\n"
-                f"4. Pontos centrais: {conceitos_txt}\n"
-                f"5. Analogia: {estrutura.get('analogia', '')} | Exemplo: {estrutura.get('exemplo', '')}\n"
-                f"6. VOCÊ PODE ABRIR OUTROS LUGARES E ABAS CONFORME A AULA AVANÇA: Se quiser mostrar um diagrama em corte, esquema técnico, infográfico ou comparativo, use a ferramenta `abrir_recurso_adicional_aula(termo_ou_topico=..., tipo_recurso=...)` (isso abrirá uma nova aba ao lado sem fechar a atual e te dará a visão da nova tela).\n"
-                f"7. Se quiser inspecionar novamente a tela a qualquer momento ou responder a perguntas específicas do usuário sobre o que está na tela, chame `analisar_tela_ou_janela_ativa`.\n"
-                f"Não precisa ser robótico nem falar exclusivamente da tela a todo instante; desenvolva a aula com fluidez, conduzindo o usuário e usando o visual para apoiar a explicação."
+                f"REGRAS OBRIGATÓRIAS DE CONDUÇÃO DA AULA:\n"
+                f"1. NÃO CHAME NENHUMA OUTRA FERRAMENTA AGORA! NÃO ABRA NADA NOVO NOS PRIMEIROS MOMENTOS!\n"
+                f"   O aluno precisa de tempo para olhar e absorver o conteúdo/vídeo aberto. Dedique este momento para ensinar e explicar este primeiro recurso com profundidade, calma e riqueza de detalhes.\n"
+                f"2. PROIBIDO PERGUNTAR PERMISSÃO OU SE O ALUNO 'QUER QUE VOCÊ FAÇA TAL COISA'!\n"
+                f"   NUNCA pergunte: 'Você quer que eu faça isso?', 'Quer que eu mostre o próximo ponto?', 'Deseja que eu abra uma imagem?'.\n"
+                f"   VOCÊ É O PROFESSOR E LÍDER: assuma o controle total da aula e dê seguimento contínuo e estruturado por sua própria iniciativa!\n"
+                f"3. Conecte sua fala ao que você viu na tela ('Veja aqui na tela...', 'repare neste detalhe...').\n"
+                f"4. Roteiro estruturado: {roteiro}\n"
+                f"5. Pontos centrais: {conceitos_txt}\n"
+                f"6. Analogia: {estrutura.get('analogia', '')} | Exemplo prático: {estrutura.get('exemplo', '')}\n"
+                f"7. TRANSIÇÃO DE TÓPICOS: Somente quando você tiver concluído toda a explicação deste conteúdo inicial e for passar para o próximo tópico, você mesmo avisa o aluno ('Agora vamos avançar para o próximo conceito e vou abrir uma nova aba aqui ao lado para vermos o esquema prático...') e aí sim usa `abrir_recurso_adicional_aula` (que abrirá em NOVA ABA mantendo a aba anterior intacta ao lado).\n"
+                f"8. Se o aluno pedir para clicar em algo na tela ou você quiser expandir uma imagem, use `clicar_em_elemento_ou_imagem`. Se ele fizer perguntas sobre o que está na tela, use `analisar_tela_ou_janela_ativa`."
             )
             self._ultima_pesquisa_cache = (chave_cache, time.monotonic(), resumo_retorno)
             return resumo_retorno

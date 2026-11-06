@@ -1,6 +1,7 @@
 import os
 import json
 import queue
+import subprocess
 import threading
 import time
 import uuid
@@ -82,10 +83,18 @@ class JarvisChrome:
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise JarvisBrowserError("Só posso abrir endereços web HTTP ou HTTPS.")
 
+        # Se for explicitamente para abrir em NOVA ABA (preservando todas as abas abertas anteriormente)
+        if nova_aba:
+            try:
+                subprocess.Popen(f'start chrome "{url}"', shell=True)
+                return "jarvis_tab"
+            except Exception:
+                return self._open_default_browser(url, nova_aba=True)
+
         with self._open_lock:
             now = time.monotonic()
             with self._pending_lock:
-                if not nova_aba and url == self._last_opened_url and (now - self._last_opened_at) < 2.0:
+                if url == self._last_opened_url and (now - self._last_opened_at) < 2.0:
                     return "jarvis_tab"
 
             try:
