@@ -86,6 +86,17 @@
     "prioridade": "Alta",
     "status": "concluido",
     "origem": "Comando de voz do usuário via Jarvis",
-    "concluido_em": "06/11/2026 00:12:00"
+    "concluido_em": "06/11/2026 00:32:00"
+  },
+  {
+    "id": 9,
+    "data_hora": "06/11/2026 01:31:09",
+    "titulo": "Remover lousa e implantar ensino didático com abertura de artigos visuais no navegador",
+    "descricao": "Remover completamente o componente de lousa de ensino (teaching-board.tsx) e suas ferramentas de giz/desenho, substituindo por um novo fluxo de ensino direto: ao solicitar aula ou explicação sobre qualquer assunto, o Jarvis abre imediatamente a página oficial ilustrada (Wikipédia, portais científicos e esquemas reais) no navegador Chrome em tela cheia e conduz uma explicação didática falada em tempo real.",
+    "arquivo_sugerido": "frontend/components/app/session-view.tsx, backend/agent.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando direto do usuário no chat",
+    "concluido_em": "06/11/2026 01:36:00"
   }
 ]

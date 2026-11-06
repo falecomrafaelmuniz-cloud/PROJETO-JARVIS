@@ -1278,178 +1278,14 @@ class Assistant(Agent):
             "roteiro_fala": limpo[:700],
         }
 
-    async def _montar_aula_na_lousa(
-        self,
-        assunto: str,
-        estrutura: dict,
-        fontes: list[dict[str, str]],
-        imagens: list[dict[str, str]],
-    ) -> None:
-        await self._publicar_na_lousa("clear")
-
-        titulo = str(estrutura.get("titulo") or assunto).strip()[:58]
-        ideia_central = str(estrutura.get("ideia_central") or "").strip()[:240]
-        conceitos = [
-            str(c).strip()[:115]
-            for c in (estrutura.get("conceitos") or [])
-            if str(c).strip()
-        ][:4]
-        etapas = [
-            str(e).strip()[:30]
-            for e in (estrutura.get("etapas_esquema") or [])
-            if str(e).strip()
-        ][:4]
-        exemplo = str(estrutura.get("exemplo") or "").strip()[:190]
-        analogia = str(estrutura.get("analogia") or "").strip()[:190]
-
-        # 1. Título no topo Widescreen
-        await self.escrever_na_lousa(
-            texto=f"AULA: {titulo.upper()}",
-            x=60,
-            y=60,
-            cor="#22d3ee",
-            tamanho=36,
+    @function_tool(
+        description=(
+            "Pesquisa um assunto na web em alta velocidade, localiza o artigo mais completo, rico e ilustrado "
+            "(Wikipédia, portais científicos ou esquemas técnicos), ABRE DIRETAMENTE na tela do navegador Chrome "
+            "do usuário e retorna uma explicação didática estruturada para você ensinar o assunto por voz "
+            "em tempo real enquanto o usuário visualiza a página e as imagens na tela."
         )
-
-        # 2. Ideia central em destaque
-        if ideia_central:
-            await self.escrever_na_lousa(
-                texto=ideia_central,
-                x=60,
-                y=115,
-                cor="#f8f5e7",
-                tamanho=20,
-            )
-
-        # 3. Coluna 1 (Esquerda: x=60 a 640) - Conceitos-chave
-        if conceitos:
-            texto_conceitos = "CONCEITOS-CHAVE:\n" + "\n\n".join(
-                f"{idx + 1}. {c}" for idx, c in enumerate(conceitos)
-            )
-            await self.escrever_na_lousa(
-                texto=texto_conceitos,
-                x=60,
-                y=210,
-                cor="#8ce5f2",
-                tamanho=19,
-            )
-
-        # 4. Coluna 2 (Centro: x=680 a 1240) - Imagens 3D Flutuantes e Esquemas Vetoriais SVG
-        termo_lower = assunto.lower()
-        desenho_svg_inserido = False
-        if any(k in termo_lower for k in ("turbina", "motor", "aviao", "avião", "jato", "aero")):
-            svg_turbina = """<g>
-<path d="M 50 60 Q 150 30 340 50 L 380 80 L 340 100 L 160 90 Q 75 90 50 60 Z" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
-<path d="M 50 280 Q 150 310 340 290 L 380 260 L 340 240 L 160 250 Q 75 250 50 280 Z" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
-<path d="M 25 55 L 140 68 L 340 78 L 430 90" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6 4" fill="none"/>
-<path d="M 25 285 L 140 272 L 340 262 L 430 250" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6 4" fill="none"/>
-<path d="M 40 170 Q 95 135 115 170 Q 95 205 40 170 Z" fill="#0284c7" stroke="#e0f2fe" stroke-width="2"/>
-<ellipse cx="115" cy="170" rx="14" ry="92" fill="none" stroke="#38bdf8" stroke-width="3.5"/>
-<line x1="115" y1="78" x2="115" y2="262" stroke="#7dd3fc" stroke-width="3"/>
-<path d="M 115 125 L 225 135 L 320 140 L 400 155 L 400 185 L 320 200 L 225 205 L 115 215 Z" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
-<line x1="145" y1="128" x2="145" y2="212" stroke="#38bdf8" stroke-width="3"/>
-<line x1="170" y1="131" x2="170" y2="209" stroke="#38bdf8" stroke-width="3"/>
-<line x1="195" y1="133" x2="195" y2="207" stroke="#0ea5e9" stroke-width="3"/>
-<line x1="220" y1="135" x2="220" y2="205" stroke="#0ea5e9" stroke-width="3"/>
-<rect x="240" y="138" width="60" height="64" rx="6" fill="#450a0a" stroke="#ef4444" stroke-width="2"/>
-<circle cx="270" cy="170" r="7" fill="#fbbf24"/>
-<line x1="315" y1="142" x2="315" y2="198" stroke="#f97316" stroke-width="3.5"/>
-<line x1="335" y1="144" x2="335" y2="196" stroke="#f97316" stroke-width="3.5"/>
-<line x1="355" y1="148" x2="355" y2="192" stroke="#ef4444" stroke-width="3"/>
-<line x1="105" y1="170" x2="380" y2="170" stroke="#f8fafc" stroke-width="3.5" stroke-dasharray="8 4"/>
-<polygon points="400,152 495,135 480,170 495,205 400,188" fill="#ef4444" opacity="0.9"/>
-<text x="75" y="40" fill="#38bdf8" font-size="12" font-weight="bold" font-family="sans-serif">1. FAN FRONTAL</text>
-<text x="145" y="118" fill="#7dd3fc" font-size="11" font-weight="bold" font-family="sans-serif">2. COMPRESSOR</text>
-<text x="240" y="128" fill="#f87171" font-size="11" font-weight="bold" font-family="sans-serif">3. COMBUSTÃO</text>
-<text x="320" y="132" fill="#fb923c" font-size="11" font-weight="bold" font-family="sans-serif">4. TURBINA</text>
-<text x="420" y="132" fill="#facc15" font-size="12" font-weight="bold" font-family="sans-serif">5. EMPUXO</text>
-</g>"""
-            await self.adicionar_desenho_svg_na_lousa(
-                conteudo_svg=svg_turbina,
-                x=680,
-                y=210,
-                largura=540,
-                altura=340,
-                legenda="Esquema Técnico Vetorial: Turbofan em Corte",
-            )
-            desenho_svg_inserido = True
-
-        y_img = 580 if desenho_svg_inserido else 210
-        alt_img = 310 if desenho_svg_inserido else 330
-        if imagens:
-            img_principal = imagens[0]
-            await self.adicionar_imagem_na_lousa(
-                url=img_principal["url"],
-                legenda=img_principal.get("legenda", assunto),
-                x=680,
-                y=y_img,
-                largura=540,
-                altura=alt_img,
-            )
-            if len(imagens) > 1 and not desenho_svg_inserido:
-                img_sec = imagens[1]
-                await self.adicionar_imagem_na_lousa(
-                    url=img_sec["url"],
-                    legenda=img_sec.get("legenda", ""),
-                    x=680,
-                    y=570,
-                    largura=540,
-                    altura=320,
-                )
-
-        # 5. Coluna 3 (Direita: x=1280 a 1840) - Esquema e Fluxo Tático 3D
-        await self.escrever_na_lousa(
-            texto="ESQUEMA E FLUXO TÁTICO:",
-            x=1280,
-            y=210,
-            cor="#fbbf24",
-            tamanho=22,
-        )
-        cores_esquema = ("#22d3ee", "#34d399", "#fbbf24", "#f472b6")
-        if etapas:
-            y_caixa = 260
-            for idx, etapa in enumerate(etapas):
-                cor_caixa = cores_esquema[idx % len(cores_esquema)]
-                await self.desenhar_esquema_na_lousa(
-                    tipo="retangulo",
-                    x=1280,
-                    y=y_caixa,
-                    largura=540,
-                    altura=76,
-                    rotulo=f"{idx + 1}. {etapa}",
-                    cor=cor_caixa,
-                )
-                if idx < len(etapas) - 1:
-                    await self.desenhar_esquema_na_lousa(
-                        tipo="seta",
-                        x=1550,
-                        y=y_caixa + 78,
-                        largura=2,
-                        altura=34,
-                        rotulo="",
-                        cor="#f8f5e7",
-                    )
-                y_caixa += 118
-
-        # 6. Rodapé em toda a largura Widescreen (x=60, y=930)
-        rodape_partes: list[str] = []
-        if analogia:
-            rodape_partes.append(f"💡 Analogia: {analogia}")
-        if exemplo:
-            rodape_partes.append(f"⚡ Na prática: {exemplo}")
-        if fontes:
-            titulos_fontes = ", ".join(f["titulo"] for f in fontes[:3])
-            rodape_partes.append(f"📚 Fontes: {titulos_fontes}")
-        if rodape_partes:
-            await self.escrever_na_lousa(
-                texto="  |  ".join(rodape_partes),
-                x=60,
-                y=930,
-                cor="#ffb36b",
-                tamanho=17,
-            )
-
-    @function_tool(description="Pesquisa um assunto na web em ~3 segundos, abre a lousa imediatamente com conceitos, imagens ilustrativas e fluxograma, e retorna a aula completa para você explicar ao usuário.")
+    )
     async def pesquisar_assunto_para_aula(
         self,
         assunto: str,
@@ -1468,18 +1304,8 @@ class Assistant(Agent):
 
         chave_cache = f"{assunto.lower()}|{foco.lower()}|{nivel.lower()}"
         async with self._pesquisa_lock:
-            # Abre a lousa instantaneamente (em 0.05s) com aviso de carregamento
-            await self._publicar_na_lousa("clear")
-            await self.escrever_na_lousa(
-                texto=f"PREPARANDO AULA: {assunto.upper()}...",
-                x=60,
-                y=70,
-                cor="#f5d76e",
-                tamanho=30,
-            )
-
             prompt_pesquisa = (
-                "Você é um professor de excelência. Prepare uma aula completa, rica e didática "
+                "Você é um professor de excelência. Prepare uma explicação falada envolvente, rica e didática "
                 "em português do Brasil sobre o assunto abaixo e retorne APENAS um JSON válido com estas chaves:\n"
                 '{\n'
                 '  "titulo": "título claro de até 48 caracteres",\n'
@@ -1490,21 +1316,14 @@ class Assistant(Agent):
                 '    "Conceito 3: explicação direta (até 95 chars)",\n'
                 '    "Conceito 4: explicação direta (até 95 chars)"\n'
                 '  ],\n'
-                '  "etapas_esquema": [\n'
-                '    "Etapa 1 (até 28 chars)",\n'
-                '    "Etapa 2 (até 28 chars)",\n'
-                '    "Etapa 3 (até 28 chars)",\n'
-                '    "Etapa 4 (até 28 chars)"\n'
-                '  ],\n'
                 '  "analogia": "analogia simples do mundo real (até 150 chars)",\n'
                 '  "exemplo": "exemplo concreto de aplicação (até 150 chars)",\n'
-                '  "roteiro_fala": "Explicação falada completa, didática e envolvente (8 a 12 frases), guiando o aluno pelo que está na lousa (definição, os 4 conceitos, as imagens, o fluxograma e o exemplo prático)."\n'
+                '  "roteiro_fala": "Explicação falada completa, didática e envolvente (8 a 12 frases), guiando o aluno pelos pontos principais que ele está vendo na página aberta (definição, mecanismos centrais, componentes e exemplo prático)."\n'
                 '}\n'
                 f"Assunto: {assunto}\nFoco: {foco or 'visão geral completa'}\nNível: {nivel}."
             )
             pesquisa_iniciada = time.monotonic()
             try:
-                # Executa a busca de imagens/fontes E a geração da aula em PARALELO (~2.5 a 3 segundos no total!)
                 tarefa_web = asyncio.to_thread(self._buscar_fontes_e_imagens_web, assunto)
                 tarefa_ia = asyncio.to_thread(self._gerar_estrutura_rapida, prompt_pesquisa, assunto)
                 (_, fontes, imagens), estrutura = await asyncio.wait_for(
@@ -1528,291 +1347,42 @@ class Assistant(Agent):
                         "Componentes e estrutura de funcionamento",
                         "Aplicações reais e impacto atual",
                     ],
-                    "etapas_esquema": ["Base Conceitual", "Mecanismo Central", "Processamento", "Aplicação Prática"],
-                    "analogia": f"Pense em {assunto} como uma engrenagem coordenada onde cada etapa alimenta a seguinte.",
+                    "analogia": f"Pense em {assunto} como um sistema coordenado onde cada etapa alimenta a seguinte.",
                     "exemplo": f"Aplicação prática de {assunto} no dia a dia.",
-                    "roteiro_fala": f"Preparei o quadro completo na lousa sobre {assunto}. Explique detalhadamente ao usuário a definição central, os pilares, o fluxograma e o exemplo prático.",
+                    "roteiro_fala": f"Abri a página na sua tela sobre {assunto}. Vamos analisar a definição central, o funcionamento prático e seus principais componentes.",
                 }
-                fontes = []
+                fontes = [{"titulo": f"{assunto} na Wikipédia", "url": f"https://pt.wikipedia.org/wiki/{url_quote(assunto.replace(' ', '_'))}"}]
                 imagens = []
                 modo = "contingencia_local"
 
-            await self._montar_aula_na_lousa(assunto, estrutura, fontes, imagens)
+            # Abre o artigo web oficial diretamente na tela do usuário no Chrome!
+            url_alvo = fontes[0]["url"] if fontes else f"https://pt.wikipedia.org/wiki/{url_quote(assunto.replace(' ', '_'))}"
+            nome_alvo = fontes[0]["titulo"] if fontes else assunto
+            try:
+                print(f"[AULA WEB] Abrindo página na tela do usuário: {nome_alvo} ({url_alvo})")
+                await asyncio.to_thread(jarvis_chrome.open_url, url_alvo)
+            except Exception as e_navegador:
+                logger_memoria.warning("evento=aula_abrir_navegador status=aviso erro=%s", str(e_navegador))
 
             duracao_ms = int((time.monotonic() - pesquisa_iniciada) * 1000)
             logger_memoria.info(
-                "evento=pesquisa_aula status=sucesso modo=%s fontes=%d imagens=%d duracao_ms=%d",
+                "evento=pesquisa_aula status=sucesso modo=%s fontes=%d duracao_ms=%d url=%s",
                 modo,
                 len(fontes),
-                len(imagens),
                 duracao_ms,
+                url_alvo,
             )
             roteiro = str(estrutura.get("roteiro_fala") or estrutura.get("ideia_central") or "").strip()
             conceitos_txt = " | ".join(str(c) for c in (estrutura.get("conceitos") or [])[:4])
-            fontes_txt = ", ".join(f"{f['titulo']} ({f['url']})" for f in fontes[:3]) or "conhecimento consolidado"
-            resumo_curto = (
-                f"A lousa já foi aberta e preenchida com título, definição, 4 conceitos, {len(imagens)} imagem(ns), fluxograma e exemplo sobre '{assunto}'. "
-                f"Comece IMEDIATAMENTE a dar uma AULA COMPLETA E DETALHADA em voz alta ao usuário (não chame mais nenhuma ferramenta da lousa!), seguindo este roteiro: {roteiro}\n"
-                f"Conceitos na lousa: {conceitos_txt}\n"
-                f"Analogia: {estrutura.get('analogia', '')} | Exemplo: {estrutura.get('exemplo', '')}\n"
-                f"Fontes: {fontes_txt}."
+            resumo_retorno = (
+                f"A página ilustrada com esquemas e conteúdo completo sobre '{assunto}' JÁ FOI ABERTA na tela do navegador do usuário no Chrome ({url_alvo}). "
+                f"Comece IMEDIATAMENTE a ensinar e explicar o assunto em voz alta com entusiasmo, clareza e didática (não chame mais nenhuma ferramenta), guiando o usuário pelo que está na tela:\n"
+                f"Roteiro de explicação: {roteiro}\n"
+                f"Pontos-chave: {conceitos_txt}\n"
+                f"Analogia: {estrutura.get('analogia', '')} | Exemplo prático: {estrutura.get('exemplo', '')}."
             )
-            self._ultima_pesquisa_cache = (chave_cache, time.monotonic(), resumo_curto)
-            return resumo_curto
-
-    async def _publicar_na_lousa(
-        self,
-        action: str,
-        element: dict | None = None,
-        target: str | None = None,
-        changes: dict | None = None,
-    ):
-        packet: dict = {"type": "jarvis_board", "action": action}
-        if element is not None:
-            packet["element"] = element
-        if target is not None:
-            packet["target"] = target
-        if changes is not None:
-            packet["changes"] = changes
-        try:
-            await self.board_room.local_participant.publish_data(
-                json.dumps(packet, ensure_ascii=False),
-                topic="jarvis.board",
-            )
-        except Exception as error:
-            logger_memoria.error(
-                "evento=lousa status=erro_publicacao tipo=%s",
-                type(error).__name__,
-            )
-            return "Aviso: não consegui enviar a atualização para a lousa desta sessão."
-        return "A lousa foi atualizada."
-
-    @function_tool(description="Abre a lousa de ensino na tela do usuário sem apagar o conteúdo atual. Use quando o usuário pedir para abrir ou mostrar a lousa.")
-    async def abrir_lousa(self):
-        return await self._publicar_na_lousa("open")
-
-    @function_tool(description="Fecha/oculta a janela da lousa de ensino na tela do usuário, mantendo os desenhos salvos. Use quando o usuário pedir para fechar, esconder ou sair da lousa.")
-    async def fechar_lousa(self):
-        return await self._publicar_na_lousa("close")
-
-    @function_tool(description="Edita ou move um item já existente na lousa. Informe em 'texto_ou_rotulo_atual' um trecho do texto/rótulo que deseja editar (ou 'ultimo' para o último item criado), e passe o 'novo_texto', 'nova_cor' (#RRGGBB) ou novas coordenadas 'novo_x'/'novo_y'.")
-    async def editar_item_na_lousa(
-        self,
-        texto_ou_rotulo_atual: str,
-        novo_texto: str = "",
-        nova_cor: str = "",
-        novo_x: float = -1,
-        novo_y: float = -1,
-        novo_tamanho: float = -1,
-    ):
-        alvo = texto_ou_rotulo_atual.strip()
-        if not alvo:
-            return "Aviso: informe o texto/rótulo do item que deseja editar ou 'ultimo'."
-        changes: dict[str, str | float] = {}
-        if novo_texto.strip():
-            changes["text"] = novo_texto.strip()[:3000]
-        if nova_cor.strip():
-            if not re.fullmatch(r"#[0-9a-fA-F]{6}", nova_cor.strip()):
-                return "Aviso: a nova cor deve estar em hexadecimal, por exemplo #f5d76e."
-            changes["color"] = nova_cor.strip()
-        if novo_x >= 0:
-            changes["x"] = max(0, min(1200, novo_x))
-        if novo_y >= 0:
-            changes["y"] = max(0, min(760, novo_y))
-        if novo_tamanho > 0:
-            changes["size"] = max(12, min(72, novo_tamanho))
-        if not changes:
-            return "Aviso: informe pelo menos uma alteração (novo_texto, nova_cor, novo_x, novo_y ou novo_tamanho)."
-        return await self._publicar_na_lousa("update", target=alvo, changes=changes)
-
-    @function_tool(description="Apaga um item específico da lousa sem limpar o quadro inteiro. Informe um trecho do texto/rótulo do item que quer apagar, ou 'ultimo' para desfazer/remover o último item adicionado.")
-    async def apagar_item_da_lousa(self, texto_ou_rotulo_ou_ultimo: str = "ultimo"):
-        alvo = texto_ou_rotulo_ou_ultimo.strip() or "ultimo"
-        return await self._publicar_na_lousa("remove", target=alvo)
-
-    @function_tool(description="Escreve um texto explicativo na lousa visível ao usuário. Coordenadas x/y usam uma área 1200x760; use valores entre 0 e 1200 para x e 0 e 760 para y. Abre a lousa automaticamente.")
-    async def escrever_na_lousa(
-        self,
-        texto: str,
-        x: float = 80,
-        y: float = 100,
-        cor: str = "#f8f5e7",
-        tamanho: float = 30,
-    ):
-        texto = texto.strip()
-        if not texto or len(texto) > 3000:
-            return "Aviso: informe um texto para a lousa com até 3000 caracteres."
-        if not re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
-            return "Aviso: a cor deve estar em hexadecimal, por exemplo #172554."
-        element = {
-            "id": str(uuid.uuid4()),
-            "type": "text",
-            "x": max(0, min(1200, x)),
-            "y": max(0, min(760, y)),
-            "text": texto,
-            "color": cor,
-            "size": max(12, min(72, tamanho)),
-        }
-        return await self._publicar_na_lousa("add", element)
-
-    @function_tool(description="Desenha na lousa um retângulo, círculo ou seta para ilustrar uma explicação. tipo aceita retangulo, circulo ou seta; x/y usam área 1200x760.")
-    async def desenhar_esquema_na_lousa(
-        self,
-        tipo: str,
-        x: float,
-        y: float,
-        largura: float = 180,
-        altura: float = 120,
-        rotulo: str = "",
-        cor: str = "#f8f5e7",
-    ):
-        kind = tipo.strip().lower()
-        if kind not in {"retangulo", "retângulo", "circulo", "círculo", "seta"}:
-            return "Aviso: tipo inválido; escolha retangulo, circulo ou seta."
-        if not re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
-            return "Aviso: a cor deve estar em hexadecimal, por exemplo #0e7490."
-        x = max(0, min(1200, x))
-        y = max(0, min(760, y))
-        width = max(2, min(1200 - x, largura))
-        height = max(2, min(760 - y, altura))
-        if kind == "seta":
-            element = {
-                "id": str(uuid.uuid4()),
-                "type": "line",
-                "x": x,
-                "y": y,
-                "width": width,
-                "height": height,
-                "points": f"{x},{y} {x + width},{y + height}",
-                "color": cor,
-                "size": 5,
-                "label": rotulo[:300],
-            }
-        else:
-            element = {
-                "id": str(uuid.uuid4()),
-                "type": "ellipse" if kind in {"circulo", "círculo"} else "rectangle",
-                "x": x,
-                "y": y,
-                "width": width,
-                "height": height,
-                "color": cor,
-                "size": 4,
-                "label": rotulo[:300],
-            }
-        return await self._publicar_na_lousa("add", element)
-
-    @function_tool(description="Desenha uma linha livre na lousa a partir de coordenadas JSON [[x,y], ...]. Use a escala 1200x760 e no máximo 400 pontos.")
-    async def desenhar_linha_na_lousa(
-        self,
-        pontos_json: str,
-        cor: str = "#f8f5e7",
-        espessura: float = 4,
-    ):
-        try:
-            points = json.loads(pontos_json)
-        except (TypeError, json.JSONDecodeError):
-            return "Aviso: os pontos devem ser um JSON válido no formato [[x,y], ...]."
-        if (
-            not isinstance(points, list)
-            or len(points) < 2
-            or len(points) > 400
-            or any(
-                not isinstance(point, list)
-                or len(point) != 2
-                or any(
-                    isinstance(value, bool)
-                    or not isinstance(value, (int, float))
-                    or not math.isfinite(value)
-                    for value in point
-                )
-                for point in points
-            )
-        ):
-            return "Aviso: informe de 2 a 400 pares de coordenadas numéricas."
-        if not re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
-            return "Aviso: a cor deve estar em hexadecimal, por exemplo #0e7490."
-        coordinates = " ".join(
-            f"{max(0, min(1200, x))},{max(0, min(760, y))}"
-            for x, y in points
-        )
-        element = {
-            "id": str(uuid.uuid4()),
-            "type": "path",
-            "x": 0,
-            "y": 0,
-            "points": coordinates,
-            "color": cor,
-            "size": max(1, min(24, espessura)),
-        }
-        return await self._publicar_na_lousa("add", element)
-
-    @function_tool(
-        description=(
-            "Adiciona à lousa um desenho ou elemento vetorial SVG customizado (esquemas técnicos, turbinas, "
-            "circuitos, moléculas, diagramas, ícones ou ilustrações vetoriais complexas). "
-            "Pode receber o código SVG interno (<path ... />, <circle ... />), coordenadas "
-            "x/y na escala 1920x1080, largura, altura e legenda."
-        )
-    )
-    async def adicionar_desenho_svg_na_lousa(
-        self,
-        conteudo_svg: str,
-        x: float = 680,
-        y: float = 250,
-        largura: float = 540,
-        altura: float = 340,
-        legenda: str = "",
-        cor_borda: str = "#22d3ee",
-    ):
-        if not conteudo_svg.strip():
-            return "Aviso: informe o conteúdo SVG."
-        element = {
-            "id": f"svg-{uuid.uuid4().hex[:8]}",
-            "type": "svg",
-            "x": float(x),
-            "y": float(y),
-            "width": float(largura),
-            "height": float(altura),
-            "color": cor_borda,
-            "svgContent": conteudo_svg.strip(),
-            "label": legenda.strip(),
-        }
-        await self.abrir_lousa()
-        return await self._publicar_na_lousa("add", element)
-
-    @function_tool(description="Adiciona à lousa uma imagem pública por URL HTTPS. Não use links privados nem temporários que exijam login; para fotos locais, peça ao usuário para carregá-las pela lousa.")
-    async def adicionar_imagem_na_lousa(
-        self,
-        url: str,
-        legenda: str = "",
-        x: float = 420,
-        y: float = 180,
-        largura: float = 320,
-        altura: float = 220,
-    ):
-        url = url.strip()
-        if (
-            not url.startswith("https://")
-            or len(url) > 4000
-            or any(character.isspace() for character in url)
-        ):
-            return "Aviso: informe uma URL pública HTTPS de imagem, com até 4000 caracteres."
-        element = {
-            "id": str(uuid.uuid4()),
-            "type": "image",
-            "x": max(0, min(1200, x)),
-            "y": max(0, min(760, y)),
-            "width": max(40, min(600, largura)),
-            "height": max(40, min(500, altura)),
-            "src": url,
-            "label": legenda.strip()[:300],
-        }
-        return await self._publicar_na_lousa("add", element)
-
-    @function_tool(description="Limpa todo o conteúdo atual da lousa de ensino.")
-    async def limpar_lousa(self):
-        return await self._publicar_na_lousa("clear")
+            self._ultima_pesquisa_cache = (chave_cache, time.monotonic(), resumo_retorno)
+            return resumo_retorno
 
     async def _buscar_video_youtube(self, consulta: str) -> tuple[str | None, str | None]:
         termo = consulta.strip()
@@ -3422,21 +2992,13 @@ class Assistant(Agent):
                 b64 = base64.b64encode(buf.getvalue()).decode("ascii")
                 return f"data:image/jpeg;base64,{b64}"
 
-            data_uri = await asyncio.to_thread(_gerar_data_uri, caminhos_locais[0])
-            await self.abrir_lousa()
-            legenda = pergunta_ou_legenda.strip() or os.path.basename(caminhos_locais[0])
-            element = {
-                "id": str(uuid.uuid4()),
-                "type": "image",
-                "x": 380,
-                "y": 140,
-                "width": 420,
-                "height": 300,
-                "src": data_uri,
-                "label": legenda[:300],
-            }
-            await self._publicar_na_lousa("add", element)
-            return f"Foto '{os.path.basename(caminhos_locais[0])}' adicionada com SUCESSO à Lousa na tela (e salva em {pasta_final})."
+            caminho_foto = os.path.abspath(caminhos_locais[0])
+            url_foto = f"file:///{caminho_foto.replace(os.sep, '/')}"
+            try:
+                await asyncio.to_thread(jarvis_chrome.open_url, url_foto)
+            except Exception:
+                pass
+            return f"Foto '{os.path.basename(caminho_foto)}' aberta com SUCESSO na tela (e salva em {pasta_final})."
 
         # 4. Padrão: Salvar na pasta especificada
         nomes_salvos = ", ".join(os.path.basename(c) for c in caminhos_locais)

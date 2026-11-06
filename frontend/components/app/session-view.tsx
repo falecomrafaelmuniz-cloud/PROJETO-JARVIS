@@ -19,7 +19,6 @@ import { ClockWidget } from '@/components/app/clock-widget';
 import { EmailComposer } from '@/components/app/email-composer';
 import { LocationSharing } from '@/components/app/location-sharing';
 import { SystemDashboard } from '@/components/app/system-dashboard';
-import { TeachingBoard } from '@/components/app/teaching-board';
 import { NeuralNetworkVisualizer } from '@/components/app/neural-network';
 import { TileLayout } from '@/components/app/tile-layout';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
@@ -355,7 +354,6 @@ export const SessionView = ({
       <SystemDashboard />
       <ClockWidget />
       <LocationSharing />
-      <TeachingBoard />
       <NeuralNetworkVisualizer />
       <EmailComposer />
 

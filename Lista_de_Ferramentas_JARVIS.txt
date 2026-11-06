@@ -111,18 +111,8 @@
 
 --------------------------------------------------------------------------------
 
-🟣 [ROXO - 8. Lousa de Ensino Interativa e Aulas]
-  🟣 8.1. pesquisar_assunto_para_aula: Pesquisa um tema na web e monta uma aula ilustrada na lousa.
-  🟣 8.2. abrir_lousa: Abre a janela da lousa de ensino na tela.
-  🟣 8.3. fechar_lousa: Fecha/oculta a janela da lousa mantendo o conteúdo salvo.
-  🟣 8.4. escrever_na_lousa: Escreve um texto explicativo na lousa.
-  🟣 8.5. desenhar_esquema_na_lousa: Desenha retângulos, círculos ou setas na lousa.
-  🟣 8.6. desenhar_linha_na_lousa: Desenha traços e linhas livres na lousa.
-  🟣 8.7. adicionar_imagem_na_lousa: Adiciona uma imagem pública por URL HTTPS à lousa.
-  🟣 8.8. adicionar_desenho_svg_na_lousa: Adiciona ilustrações e esquemas vetoriais SVG customizados (turbinas, circuitos, diagramas, moléculas) na escala Widescreen 1920x1080 com manipulação interativa.
-  🟣 8.9. editar_item_na_lousa: Edita texto, cor ou posição de um item já existente na lousa.
-  🟣 8.10. apagar_item_da_lousa: Apaga um item específico ou desfaz o último item da lousa.
-  🟣 8.11. limpar_lousa: Apaga todo o conteúdo atual da lousa de ensino.
+🟣 [ROXO - 8. Ensino Didático e Aulas Visuais no Navegador]
+  🟣 8.1. pesquisar_assunto_para_aula: Pesquisa um assunto na web em alta velocidade, localiza o artigo mais completo e ilustrado (Wikipédia, portais científicos ou esquemas técnicos), ABRE DIRETAMENTE na tela do navegador Chrome do usuário com esquemas e fotos reais em tela cheia, e fornece o roteiro didático estruturado para o Jarvis ensinar por voz guiando o que está na tela.
 
 --------------------------------------------------------------------------------
 
