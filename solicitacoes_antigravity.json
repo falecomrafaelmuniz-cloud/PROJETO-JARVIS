@@ -28,9 +28,10 @@
     "descricao": "Reforçar a solicitação anterior (ID #2): A duplicação de arquivos nativos do Google Docs deve ser uma 'deep copy' que preserve absolutamente todo o conteúdo, incluindo formatação, imagens e estrutura, para que a cópia seja idêntica ao original. A ferramenta atual falhou em preservar as imagens. Criar a cópia exata e movê-la para a pasta 'AP Vitality 91 Action'.",
     "arquivo_sugerido": "backend/google_workspace.py",
     "prioridade": "Alta",
-    "status": "concluido",
+    "status": "cancelado",
     "origem": "Comando de voz do usuário via Jarvis",
-    "concluido_em": "05/11/2026 22:55:34"
+    "concluido_em": "05/11/2026 22:55:34",
+    "cancelado_em": "05/11/2026 23:12:40"
   },
   {
     "id": 4,
@@ -49,8 +50,9 @@
     "descricao": "Adicionar ferramenta nativa `duplicar_item_google_drive` no backend, permitindo duplicar arquivos ou pastas com preservação total de conteúdo e imagens, conforme solicitação do usuário para melhor gerenciamento no Google Drive. Atualmente, as solicitações #2 e #3 na fila (`backend/google_workspace.py`) estão relacionadas a isso e devem ser priorizadas ou unificadas nesta nova ferramenta.",
     "arquivo_sugerido": "backend/google_workspace.py",
     "prioridade": "Alta",
-    "status": "pendente",
-    "origem": "Comando de voz do usuário via Jarvis"
+    "status": "cancelado",
+    "origem": "Comando de voz do usuário via Jarvis",
+    "cancelado_em": "05/11/2026 23:12:40"
   },
   {
     "id": 6,
