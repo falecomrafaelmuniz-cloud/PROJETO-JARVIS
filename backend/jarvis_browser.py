@@ -78,12 +78,12 @@ class JarvisChrome:
                     }
         return {"url": "", "title": ""}
 
-    def open_url(self, url, nova_aba=False):
+    def open_url(self, url, nova_aba=True):
         parsed_url = urlparse(url)
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise JarvisBrowserError("Só posso abrir endereços web HTTP ou HTTPS.")
 
-        # Se for explicitamente para abrir em NOVA ABA (preservando todas as abas abertas anteriormente)
+        # SEMPRE abre em nova aba no Chrome para preservar 100% das abas abertas anteriormente pelo usuário
         if nova_aba:
             try:
                 subprocess.Popen(f'start chrome "{url}"', shell=True)

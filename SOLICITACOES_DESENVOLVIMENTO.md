@@ -4,6 +4,7 @@
 
 | ID | Data / Hora | Título | Arquivo Alvo | Prioridade | Status |
 |---|---|---|---|---|---|
+| #13 | 06/11/2026 03:17:00 | **Preservação total de abas anteriores, fala concisa ancorada na tela e pergunta de fechamento** | `backend/agent.py, backend/jarvis_browser.py, backend/jarvis_chrome_extension/service_worker.js, backend/prompts.py` | ALTA | ✅ concluido |
 | #12 | 06/11/2026 03:03:00 | **Condução autônoma da aula sem perguntas de permissão e ritmo adequado com nova aba garantida** | `backend/agent.py, backend/jarvis_browser.py, backend/prompts.py` | ALTA | ✅ concluido |
 | #11 | 06/11/2026 02:46:00 | **Ferramenta de clique visual de precisão em fotos, imagens e elementos na tela** | `backend/agent.py, backend/prompts.py` | ALTA | ✅ concluido |
 | #10 | 06/11/2026 02:25:00 | **Visão da tela em tempo real para aulas e navegação multi-aba dinâmica** | `backend/agent.py, backend/jarvis_browser.py, backend/prompts.py` | ALTA | ✅ concluido |
@@ -18,9 +19,9 @@
 | #1 | 05/11/2026 02:21:35 | **Modernização da Lousa de Ensino** | `frontend/components/app/teaching-board.tsx` | ALTA | ✅ concluido |
 
 ## Detalhes da Última Solicitação:
-- **ID**: #12
-- **Título**: Condução autônoma da aula sem perguntas de permissão e ritmo adequado com nova aba garantida
-- **Arquivo Alvo**: `backend/agent.py`, `backend/jarvis_browser.py`, `backend/prompts.py`
-- **Descrição**: Ajuste completo no ritmo e na postura pedagógica do Jarvis durante as aulas: 1) Proibição estrita de ficar pedindo permissão ou perguntando se o usuário quer que ele faça algo ('Você quer que eu faça isso?'); o Jarvis agora assume a liderança e dá seguimento contínuo e proativo à aula. 2) Controle de ritmo: o Jarvis não pula de página em 5 segundos, dedicando o tempo necessário para o aluno absorver o vídeo/gráfico inicial. 3) Garantia absoluta de nova aba via `start chrome` ao avançar de tópico, mantendo a aba do vídeo anterior 100% aberta e intacta no navegador.
+- **ID**: #13
+- **Título**: Preservação total de abas anteriores, fala concisa ancorada na tela e pergunta de fechamento
+- **Arquivo Alvo**: `backend/agent.py`, `backend/jarvis_browser.py`, `backend/jarvis_chrome_extension/service_worker.js`, `backend/prompts.py`
+- **Descrição**: Três correções fundamentais aplicadas: 1) O Jarvis agora abre SEMPRE em uma nova aba e nunca sobrescreve abas já abertas no Chrome (remoção de atualização forçada de abas anteriores). 2) O Jarvis não fala pelos cotovelos nem inventa roteiros imaginários: sua explicação é concisa, direta (3 a 5 frases) e estritamente ancorada no que está visível na tela em tempo real. 3) Ao concluir a explicação objetiva, o Jarvis finaliza com a pergunta de fechamento elegante, perguntando se o usuário ficou com dúvidas ou se deseja aprofundar em mais detalhes.
 - **Prioridade**: ALTA
 - **Status**: ✅ Concluído com sucesso pelo Antigravity!

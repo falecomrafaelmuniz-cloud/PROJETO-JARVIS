@@ -131,5 +131,16 @@
     "status": "concluido",
     "origem": "Comando direto do usuário no chat",
     "concluido_em": "06/11/2026 03:08:00"
+  },
+  {
+    "id": 13,
+    "data_hora": "06/11/2026 03:17:00",
+    "titulo": "Preservação total de abas anteriores, fala concisa ancorada na tela e pergunta de fechamento",
+    "descricao": "Três correções fundamentais aplicadas: 1) O Jarvis agora abre SEMPRE em uma nova aba e nunca sobrescreve abas já abertas no Chrome (remoção de atualização forçada de abas anteriores). 2) O Jarvis não fala pelos cotovelos nem inventa roteiros imaginários: sua explicação é concisa, direta (3 a 5 frases) e estritamente ancorada no que está visível na tela em tempo real. 3) Ao concluir a explicação objetiva, o Jarvis finaliza com a pergunta de fechamento elegante, perguntando se o usuário ficou com dúvidas ou se deseja aprofundar em mais detalhes.",
+    "arquivo_sugerido": "backend/agent.py, backend/jarvis_browser.py, backend/jarvis_chrome_extension/service_worker.js, backend/prompts.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando direto do usuário no chat",
+    "concluido_em": "06/11/2026 03:20:00"
   }
 ]

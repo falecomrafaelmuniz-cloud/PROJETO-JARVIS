@@ -453,21 +453,8 @@ async function openInJarvisTab(url, novaAba = false) {
   }
 
   const stored = await chrome.storage.local.get([
-    JARVIS_TAB_KEY,
     JARVIS_WINDOW_KEY,
   ]);
-  const tabId = stored[JARVIS_TAB_KEY];
-
-  if (Number.isInteger(tabId)) {
-    try {
-      const tab = await chrome.tabs.get(tabId);
-      await chrome.tabs.update(tab.id, { url, active: true });
-      await chrome.windows.update(tab.windowId, { focused: true });
-      return;
-    } catch {
-      await chrome.storage.local.remove(JARVIS_TAB_KEY);
-    }
-  }
 
   const activeTabs = await chrome.tabs.query({
     active: true,

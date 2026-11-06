@@ -1394,21 +1394,22 @@ class Assistant(Agent):
                     nome_alvo = f"Google ({assunto})"
 
             try:
-                print(f"[AULA VISUAL] Abrindo página na tela do usuário: {nome_alvo} ({url_alvo})")
-                await asyncio.to_thread(jarvis_chrome.open_url, url_alvo, False)
+                print(f"[AULA VISUAL] Abrindo página em NOVA ABA na tela do usuário: {nome_alvo} ({url_alvo})")
+                await asyncio.to_thread(jarvis_chrome.open_url, url_alvo, True)
             except Exception as e_navegador:
                 logger_memoria.warning("evento=aula_abrir_navegador status=aviso erro=%s", str(e_navegador))
 
-            # Aguarda renderização e foca a visão do Jarvis na tela do usuário
+            # Aguarda renderização completa e foca a visão do Jarvis na tela do usuário
             visao_tela = ""
             try:
-                await asyncio.sleep(1.4)
+                await asyncio.sleep(2.0)
                 img_tela = await asyncio.to_thread(self._capturar_imagem_tela)
                 if img_tela:
                     prompt_visao = (
-                        f"Você é o Jarvis observando a tela aberta do usuário para dar uma aula sobre '{assunto}'. "
-                        "Descreva em 3 ou 4 tópicos objetivos o que está visível na tela agora (vídeo, animação 3D, esquemas, componentes ou diagramas), "
-                        "para que sua fala se conecte diretamente com o que o aluno está enxergando na tela."
+                        f"Você é o Jarvis observando a tela aberta para ensinar o usuário sobre '{assunto}'. "
+                        "Identifique e descreva com exatidão o que está visível na tela agora (título exato da janela/vídeo, "
+                        "se é um vídeo tocando, gráfico de velas/candles, esquemas ou diagramas visíveis). "
+                        "Resuma em 3 tópicos diretos e objetivos para que a fala seja 100% fiel ao que o aluno está enxergando na tela."
                     )
                     visao_tela = await asyncio.to_thread(self._chamar_gemini_visao, img_tela, prompt_visao)
             except Exception as e_vis:
@@ -1422,30 +1423,26 @@ class Assistant(Agent):
                 duracao_ms,
                 url_alvo,
             )
-            roteiro = str(estrutura.get("roteiro_fala") or estrutura.get("ideia_central") or "").strip()
-            conceitos_txt = " | ".join(str(c) for c in (estrutura.get("conceitos") or [])[:4])
+            conceitos_txt = " | ".join(str(c) for c in (estrutura.get("conceitos") or [])[:3])
             resumo_retorno = (
-                f"O conteúdo visual rico sobre '{assunto}' JÁ ESTÁ ABERTO na tela do Chrome do usuário ({nome_alvo} - {url_alvo}).\n"
+                f"O conteúdo visual sobre '{assunto}' JÁ ESTÁ ABERTO em uma NOVA ABA no Chrome do usuário ({nome_alvo} - {url_alvo}), mantendo as abas anteriores intactas.\n"
             )
             if visao_tela and not visao_tela.startswith("Aviso:"):
                 resumo_retorno += (
-                    f"=== VISÃO REAL DA TELA (O que o usuário está vendo agora) ===\n"
+                    f"=== O QUE ESTÁ REALMENTE VISÍVEL NA TELA AGORA ===\n"
                     f"{visao_tela}\n"
-                    f"=============================================================\n"
+                    f"===================================================\n"
                 )
             resumo_retorno += (
                 f"REGRAS OBRIGATÓRIAS DE CONDUÇÃO DA AULA:\n"
-                f"1. NÃO CHAME NENHUMA OUTRA FERRAMENTA AGORA! NÃO ABRA NADA NOVO NOS PRIMEIROS MOMENTOS!\n"
-                f"   O aluno precisa de tempo para olhar e absorver o conteúdo/vídeo aberto. Dedique este momento para ensinar e explicar este primeiro recurso com profundidade, calma e riqueza de detalhes.\n"
-                f"2. PROIBIDO PERGUNTAR PERMISSÃO OU SE O ALUNO 'QUER QUE VOCÊ FAÇA TAL COISA'!\n"
-                f"   NUNCA pergunte: 'Você quer que eu faça isso?', 'Quer que eu mostre o próximo ponto?', 'Deseja que eu abra uma imagem?'.\n"
-                f"   VOCÊ É O PROFESSOR E LÍDER: assuma o controle total da aula e dê seguimento contínuo e estruturado por sua própria iniciativa!\n"
-                f"3. Conecte sua fala ao que você viu na tela ('Veja aqui na tela...', 'repare neste detalhe...').\n"
-                f"4. Roteiro estruturado: {roteiro}\n"
-                f"5. Pontos centrais: {conceitos_txt}\n"
-                f"6. Analogia: {estrutura.get('analogia', '')} | Exemplo prático: {estrutura.get('exemplo', '')}\n"
-                f"7. TRANSIÇÃO DE TÓPICOS: Somente quando você tiver concluído toda a explicação deste conteúdo inicial e for passar para o próximo tópico, você mesmo avisa o aluno ('Agora vamos avançar para o próximo conceito e vou abrir uma nova aba aqui ao lado para vermos o esquema prático...') e aí sim usa `abrir_recurso_adicional_aula` (que abrirá em NOVA ABA mantendo a aba anterior intacta ao lado).\n"
-                f"8. Se o aluno pedir para clicar em algo na tela ou você quiser expandir uma imagem, use `clicar_em_elemento_ou_imagem`. Se ele fizer perguntas sobre o que está na tela, use `analisar_tela_ou_janela_ativa`."
+                f"1. FALE ESTRITAMENTE SOBRE O QUE ESTÁ NA TELA! Seja direto, claro e conciso (3 a 5 frases explicativas). "
+                f"   Não invente teorias ou detalhes que não estão visíveis na tela. Não fale demais nem enrole.\n"
+                f"2. NÃO CHAME NENHUMA OUTRA FERRAMENTA AGORA! Dedique este momento para explicar o que o aluno está enxergando nesta tela.\n"
+                f"3. PROIBIDO PERGUNTAR PERMISSÃO NO MEIO DA AULA! NUNCA diga 'Você quer que eu faça tal coisa?', 'Quer que eu mostre o próximo ponto?'. Conduza a explicação com autoridade, clareza e ritmo tranquilo!\n"
+                f"4. Pontos-chave para orientar a fala: {conceitos_txt}.\n"
+                f"5. FINALIZAÇÃO OBRIGATÓRIA DA AULA: Assim que concluir a explicação objetiva do que está na tela, encerre com a pergunta de fechamento:\n"
+                f"   'Essa é a base do funcionamento de {assunto}. Você ficou com alguma dúvida sobre o que vimos na tela ou quer que eu aprofunde em mais algum detalhe?'\n"
+                f"6. Se o aluno pedir para ver outro aspecto ou avançar, aí sim abra o próximo recurso em NOVA ABA (`abrir_recurso_adicional_aula`) ou use `clicar_em_elemento_ou_imagem` para expandir alguma imagem que ele apontar."
             )
             self._ultima_pesquisa_cache = (chave_cache, time.monotonic(), resumo_retorno)
             return resumo_retorno
