@@ -111,9 +111,11 @@
 
 --------------------------------------------------------------------------------
 
-🟣 [ROXO - 8. Ensino Didático Visual, Visão da Tela e Aulas Multi-Aba]
+🟣 [ROXO - 8. Ensino Didático Visual, Visão da Tela, Controle de Mouse e Aulas Multi-Aba]
   🟣 8.1. pesquisar_assunto_para_aula: Pesquisa vídeos/animações 3D no YouTube e infográficos ricos no Google (sem Wikipédia), ABRE DIRETAMENTE na tela do Chrome, captura a tela ao vivo com visão computacional para ver o que está sendo exibido e fornece o roteiro didático para o Jarvis ensinar por voz relacionando com o que o aluno está vendo.
   🟣 8.2. abrir_recurso_adicional_aula: Abre novos recursos complementares em novas abas ao lado (diagramas em corte, esquemas técnicos, novos vídeos ou infográficos) durante a aula sem fechar a aba anterior, inspecionando visualmente a nova tela para continuar a explicação.
+  🟣 8.3. clicar_em_elemento_ou_imagem: Localiza visualmente e clica com precisão do mouse físico em QUALQUER foto, imagem, miniatura, botão, link ou elemento na tela para abrir, focar ou expandir individualmente.
+  🟣 8.4. rolar_pagina_ou_tela: Rola a página para cima ou para baixo com a rodinha do mouse para ver mais fotos, imagens ou conteúdos.
 
 --------------------------------------------------------------------------------
 

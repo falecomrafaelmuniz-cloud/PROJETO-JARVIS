@@ -852,6 +852,43 @@ class Assistant(Agent):
 
         return None
 
+    def _executar_clique_mouse(
+        self,
+        x: int,
+        y: int,
+        tipo_clique: str = "esquerdo",
+        clique_duplo: bool = False,
+    ) -> None:
+        user32 = ctypes.windll.user32
+        user32.SetCursorPos(int(x), int(y))
+        time.sleep(0.04)
+        tipo = (tipo_clique or "esquerdo").strip().lower()
+        if "direito" in tipo:
+            user32.mouse_event(0x0008, 0, 0, 0, 0)  # MOUSEEVENTF_RIGHTDOWN
+            time.sleep(0.03)
+            user32.mouse_event(0x0010, 0, 0, 0, 0)  # MOUSEEVENTF_RIGHTUP
+        elif "meio" in tipo or "scroll" in tipo:
+            user32.mouse_event(0x0020, 0, 0, 0, 0)  # MOUSEEVENTF_MIDDLEDOWN
+            time.sleep(0.03)
+            user32.mouse_event(0x0040, 0, 0, 0, 0)  # MOUSEEVENTF_MIDDLEUP
+        else:
+            user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+            time.sleep(0.03)
+            user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+            if clique_duplo:
+                time.sleep(0.08)
+                user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+                time.sleep(0.03)
+                user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+
+    def _executar_scroll_mouse(self, quantidade_linhas: int = 5, direcao: str = "baixo") -> None:
+        user32 = ctypes.windll.user32
+        passos = abs(int(quantidade_linhas or 5))
+        delta = -120 if str(direcao).lower() in ("baixo", "down", "descer", "descendo") else 120
+        for _ in range(passos):
+            user32.mouse_event(0x0800, 0, 0, delta, 0)  # MOUSEEVENTF_WHEEL
+            time.sleep(0.03)
+
     def _chamar_gemini_visao(self, imagem_pil: Image.Image, prompt: str) -> str:
         api_key = os.environ.get("GOOGLE_API_KEY")
         if not api_key:
@@ -2686,6 +2723,122 @@ class Assistant(Agent):
             )
 
         return await asyncio.to_thread(self._chamar_gemini_visao, img, prompt)
+
+    @function_tool(
+        description=(
+            "Localiza visualmente e clica com precisão do mouse em QUALQUER foto, imagem, miniatura, botão, link, ícone ou elemento visual na tela do computador. "
+            "Exemplos: 'clica na segunda foto', 'clica na foto do motor', 'clica na imagem da turbina', 'clica no botão de tela cheia', 'clica no link do artigo X'. "
+            "Use sempre que o usuário pedir para clicar em algo na tela ou quando você quiser abrir, focar ou expandir uma foto ou elemento individualmente."
+        )
+    )
+    async def clicar_em_elemento_ou_imagem(
+        self,
+        alvo: str,
+        tipo_clique: str = "esquerdo",
+        clique_duplo: bool = False,
+        qual_tela: str = "atual",
+    ) -> str:
+        termo = (alvo or "").strip()
+        if not termo:
+            return "Aviso: informe o que você deseja clicar na tela (ex.: 'foto da turbina', 'segunda imagem', 'botão de play')."
+
+        img = await asyncio.to_thread(self._capturar_imagem_tela, qual_tela)
+        if not img:
+            return "Aviso: Não foi possível capturar a imagem da tela para localizar o elemento."
+
+        x_src, y_src, w, h, desc_monitor = self._obter_retangulo_monitor_alvo(qual_tela)
+        largura_orig, altura_orig = img.size
+
+        prompt = (
+            f"Você é um sistema de visão computacional de alta precisão para controle de mouse.\n"
+            f"O usuário quer clicar no seguinte elemento visual na tela: '{termo}'.\n"
+            f"Analise a imagem da tela e localize com exatidão a caixa delimitadora 2D (bounding box) "
+            f"do elemento correspondente no formato [ymin, xmin, ymax, xmax] normalizado de 0 a 1000.\n"
+            f"Se houver múltiplos elementos semelhantes (ex: várias miniaturas de fotos em uma pesquisa de imagens ou galeria), "
+            f"escolha o que melhor corresponde à descrição '{termo}'. Se o usuário pediu por ordem ('primeira', 'segunda', 'terceira', 'quarta foto'), "
+            f"respeite rigorosamente a ordem de leitura ocidental (linha por linha, da esquerda para a direita, de cima para baixo).\n"
+            f"Retorne sua resposta ESTRITAMENTE em formato JSON:\n"
+            f'{{"encontrado": true, "box_2d": [ymin, xmin, ymax, xmax], "descricao": "descrição concisa do elemento localizado"}}\n'
+            f'Se o elemento não estiver visível nesta tela, retorne:\n'
+            f'{{"encontrado": false, "motivo": "não localizado visualmente na tela atual"}}'
+        )
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            return "Aviso: GOOGLE_API_KEY não configurada no ambiente."
+
+        client = genai.Client(api_key=api_key)
+        resp_json = None
+        for m in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"):
+            try:
+                resp = client.models.generate_content(model=m, contents=[img, prompt])
+                if resp and resp.text:
+                    txt = resp.text.strip()
+                    if "```" in txt:
+                        m_json = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", txt, re.DOTALL)
+                        if m_json:
+                            txt = m_json.group(1)
+                    resp_json = json.loads(txt)
+                    break
+            except Exception:
+                continue
+
+        if not resp_json or not resp_json.get("encontrado"):
+            motivo = resp_json.get("motivo", "não localizado visualmente") if resp_json else "tempo limite de visão"
+            return f"Não consegui localizar '{termo}' na tela atual ({motivo}). Você pode pedir para rolar a página ou especificar com outros detalhes."
+
+        box = resp_json.get("box_2d")
+        if not box or len(box) != 4:
+            return f"Aviso: Coordenadas visuais inválidas para '{termo}'."
+
+        ymin, xmin, ymax, xmax = [float(v) for v in box]
+        x_norm = (xmin + xmax) / 2.0
+        y_norm = (ymin + ymax) / 2.0
+
+        target_x = x_src + int((x_norm / 1000.0) * largura_orig)
+        target_y = y_src + int((y_norm / 1000.0) * altura_orig)
+
+        descricao = resp_json.get("descricao", termo)
+        print(f"[CLIQUE VISUAL] Clicando em '{descricao}' nas coordenadas ({target_x}, {target_y}) na {desc_monitor}")
+
+        await asyncio.to_thread(self._executar_clique_mouse, target_x, target_y, tipo_clique, clique_duplo)
+
+        # Aguarda 0.8s para a ação refletir na tela
+        await asyncio.sleep(0.8)
+
+        # Inspeciona a tela após o clique para reportar ao usuário o que abriu
+        nova_visao = ""
+        try:
+            img_pos = await asyncio.to_thread(self._capturar_imagem_tela, qual_tela)
+            if img_pos:
+                prompt_pos = (
+                    f"O usuário clicou em '{descricao}'. "
+                    "Descreva em 1 ou 2 frases curtas o que aconteceu ou o que se abriu na tela agora."
+                )
+                nova_visao = await asyncio.to_thread(self._chamar_gemini_visao, img_pos, prompt_pos)
+        except Exception:
+            pass
+
+        msg_ret = f"Cliquei com sucesso em '{descricao}' na tela ({desc_monitor}, posição x={target_x}, y={target_y})."
+        if nova_visao and not nova_visao.startswith("Aviso:"):
+            msg_ret += f" O que apareceu na tela: {nova_visao}"
+        return msg_ret
+
+    @function_tool(
+        description=(
+            "Rola (faz scroll) na página da web, aplicativo ou tela ativa para cima ou para baixo com a rodinha do mouse. "
+            "Use quando o usuário pedir 'rola para baixo', 'desce a página', 'sobe', 'mostra mais fotos', "
+            "ou quando quiser visualizar mais conteúdos que estão abaixo na tela."
+        )
+    )
+    async def rolar_pagina_ou_tela(
+        self,
+        direcao: str = "baixo",
+        quantidade_linhas: int = 5,
+    ) -> str:
+        await asyncio.to_thread(self._executar_scroll_mouse, quantidade_linhas, direcao)
+        dir_txt = "baixo" if str(direcao).lower() in ("baixo", "down", "descer", "descendo") else "cima"
+        return f"Rolei a página para {dir_txt} com sucesso."
 
     @function_tool(
         description=(

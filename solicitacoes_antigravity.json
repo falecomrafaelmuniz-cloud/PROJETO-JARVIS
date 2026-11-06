@@ -109,5 +109,16 @@
     "status": "concluido",
     "origem": "Comando direto do usuário no chat",
     "concluido_em": "06/11/2026 02:35:00"
+  },
+  {
+    "id": 11,
+    "data_hora": "06/11/2026 02:46:00",
+    "titulo": "Ferramenta de clique visual de precisão em fotos, imagens e elementos na tela",
+    "descricao": "Dotar o Jarvis da capacidade de clicar em fotos, imagens, miniaturas, botões ou qualquer elemento na tela do computador. Implementação de clicar_em_elemento_ou_imagem com visão espacial do Gemini (bounding box 2D normalizada) e controle físico de mouse via Win32 user32, permitindo expandir e inspecionar fotos individualmente onde quer que ele procure e ache na tela, além de rolagem com rolar_pagina_ou_tela.",
+    "arquivo_sugerido": "backend/agent.py, backend/prompts.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando direto do usuário no chat",
+    "concluido_em": "06/11/2026 02:52:00"
   }
 ]
