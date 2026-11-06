@@ -6,6 +6,8 @@ import {
   ArrowUpRight,
   Circle,
   ImagePlus,
+  Maximize2,
+  Minimize2,
   Pencil,
   Square,
   Trash2,
@@ -134,7 +136,21 @@ export function TeachingBoard() {
   const uploadRef = useRef<HTMLInputElement>(null);
   const drawingStart = useRef<{ x: number; y: number } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [items, setItems] = useState<BoardItem[]>([]);
+
+  // Atalho do teclado: ESC fecha a lousa e volta para a tela do Jarvis
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
   const [loaded, setLoaded] = useState(false);
   const [tool, setTool] = useState<BoardTool>('pen');
   const [chalkColor, setChalkColor] = useState(CHALK_COLORS[0].value);
@@ -414,10 +430,20 @@ export function TeachingBoard() {
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-2 backdrop-blur-md sm:p-5">
+        <div
+          className={cn(
+            'fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md transition-all duration-300',
+            isFullscreen ? 'p-0' : 'p-2 sm:p-5'
+          )}
+        >
           <section
             aria-label="Lousa de ensino do Jarvis"
-            className="relative flex h-full max-h-[960px] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-cyan-400/30 bg-black/90 text-white shadow-[0_0_40px_rgba(6,182,212,0.25)] shadow-cyan-950/50 backdrop-blur-2xl"
+            className={cn(
+              'relative flex flex-col overflow-hidden text-white backdrop-blur-2xl transition-all duration-300',
+              isFullscreen
+                ? 'h-full w-full rounded-none border-0 bg-black/95'
+                : 'h-full max-h-[960px] w-full max-w-[1500px] rounded-2xl border border-cyan-400/30 bg-black/90 shadow-[0_0_40px_rgba(6,182,212,0.25)] shadow-cyan-950/50'
+            )}
           >
             {/* Visual de linhas holográficas nos cantos superiores */}
             <div className="pointer-events-none absolute inset-x-8 top-0 z-20 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
@@ -430,18 +456,30 @@ export function TeachingBoard() {
                 <div>
                   <h2 className="text-sm font-semibold">Lousa do Jarvis</h2>
                   <p className="text-xs text-slate-400">
-                    Desenhe, escreva ou peça ao Jarvis para explicar visualmente.
+                    Pressione <kbd className="rounded border border-cyan-400/40 bg-cyan-950/60 px-1 text-[10px] text-cyan-300">ESC</kbd> para fechar ou alterne para tela cheia.
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="rounded-lg p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
-                aria-label="Fechar lousa"
-              >
-                <X className="size-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreen((prev) => !prev)}
+                  className="rounded-lg p-2 text-cyan-300 transition hover:bg-white/10 hover:text-white"
+                  title={isFullscreen ? 'Restaurar janela (ou ESC para fechar)' : 'Expandir para tela cheia'}
+                  aria-label="Alternar tela cheia"
+                >
+                  {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="rounded-lg p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  title="Fechar lousa (ESC)"
+                  aria-label="Fechar lousa"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
             </header>
 
             <div className="flex flex-wrap items-center gap-2.5 border-b border-cyan-500/20 bg-slate-950/90 px-4 py-2.5 backdrop-blur-xl">
@@ -732,37 +770,77 @@ export function TeachingBoard() {
                         </g>
                       );
                     }
+                    const imgW = item.width ?? 340;
+                    const imgH = item.height ?? 240;
                     return (
-                      <g key={item.id}>
+                      <g key={item.id} className="transition-transform duration-200">
+                        {/* Moldura cibernética com sombra neon suave */}
+                        <rect
+                          x={item.x - 3}
+                          y={item.y - 3}
+                          width={imgW + 6}
+                          height={imgH + 6}
+                          rx="16"
+                          fill="rgba(8, 21, 18, 0.95)"
+                          stroke="#22d3ee"
+                          strokeWidth="2"
+                          strokeOpacity="0.75"
+                          filter="url(#chalk-soften)"
+                        />
+                        <clipPath id={`clip-${item.id}`}>
+                          <rect
+                            x={item.x}
+                            y={item.y}
+                            width={imgW}
+                            height={imgH}
+                            rx="12"
+                          />
+                        </clipPath>
                         <image
                           href={item.src}
                           x={item.x}
                           y={item.y}
-                          width={item.width ?? 320}
-                          height={item.height ?? 220}
-                          preserveAspectRatio="xMidYMid meet"
+                          width={imgW}
+                          height={imgH}
+                          preserveAspectRatio="xMidYMid slice"
+                          clipPath={`url(#clip-${item.id})`}
                         />
+                        {/* Borda interna refinada */}
                         <rect
                           x={item.x}
                           y={item.y}
-                          width={item.width ?? 320}
-                          height={item.height ?? 220}
+                          width={imgW}
+                          height={imgH}
+                          rx="12"
                           fill="none"
-                          stroke="#f8f5e7"
-                          strokeWidth="3"
-                          filter="url(#chalk-soften)"
+                          stroke="#22d3ee"
+                          strokeWidth="1.5"
+                          strokeOpacity="0.4"
                         />
                         {item.label && (
-                          <text
-                            x={item.x}
-                            y={item.y + (item.height ?? 220) + 22}
-                            fill="#f5d76e"
-                            fontSize="16"
-                            fontFamily="'Comic Sans MS', 'Segoe Print', cursive"
-                            filter="url(#chalk-soften)"
-                          >
-                            {item.label}
-                          </text>
+                          <g>
+                            <rect
+                              x={item.x + 8}
+                              y={item.y + imgH - 32}
+                              width={imgW - 16}
+                              height="26"
+                              rx="6"
+                              fill="rgba(5, 16, 14, 0.9)"
+                              stroke="#22d3ee"
+                              strokeWidth="1"
+                              strokeOpacity="0.3"
+                            />
+                            <text
+                              x={item.x + 16}
+                              y={item.y + imgH - 14}
+                              fill="#22d3ee"
+                              fontSize="12"
+                              fontWeight="600"
+                              letterSpacing="0.04em"
+                            >
+                              {item.label}
+                            </text>
+                          </g>
                         )}
                       </g>
                     );
