@@ -1093,6 +1093,48 @@ class GoogleWorkspace:
         )
         return self._file_summary(updated)
 
+    def copy_drive_item(self, file_id_or_name, new_name="", destination_folder_id_or_name=""):
+        drive = self._service("drive", "v3")
+        target = (file_id_or_name or "").strip()
+        if not target:
+            raise GoogleWorkspaceError("Informe o nome ou ID do arquivo a duplicar.")
+
+        file_id = target
+        orig_name = ""
+        try:
+            meta = self._execute(drive.files().get(fileId=target, fields="id,name,mimeType", supportsAllDrives=True))
+            orig_name = meta.get("name", "")
+        except Exception:
+            escaped = self._escape_drive_query(target)
+            q = f"name = '{escaped}' and trashed = false"
+            res = self._execute(drive.files().list(q=q, fields="files(id,name,mimeType)", pageSize=5, supportsAllDrives=True))
+            files = res.get("files", [])
+            if not files:
+                q2 = f"name contains '{escaped}' and trashed = false"
+                res2 = self._execute(drive.files().list(q=q2, fields="files(id,name,mimeType)", pageSize=5, supportsAllDrives=True))
+                files = res2.get("files", [])
+            if not files:
+                raise GoogleWorkspaceError(f"Arquivo '{target}' não encontrado no Google Drive.")
+            file_id = files[0]["id"]
+            orig_name = files[0].get("name", "")
+
+        copy_title = new_name.strip() if new_name and new_name.strip() else f"Cópia de {orig_name or 'Arquivo'}"
+        body = {"name": copy_title}
+
+        if destination_folder_id_or_name and destination_folder_id_or_name.strip():
+            dest_id = self._resolve_folder_id(destination_folder_id_or_name.strip())
+            body["parents"] = [dest_id]
+
+        copied = self._execute(
+            drive.files().copy(
+                fileId=file_id,
+                body=body,
+                fields="id,name,mimeType,webViewLink,parents",
+                supportsAllDrives=True,
+            )
+        )
+        return self._file_summary(copied)
+
     def replace_google_doc_text(self, document_id, old_text, new_text):
         if not old_text:
             raise GoogleWorkspaceError("O texto a localizar não pode ficar vazio.")

@@ -9,5 +9,57 @@
     "status": "concluido",
     "origem": "Comando de voz do usuário via Jarvis",
     "concluido_em": "05/11/2026 02:30:24"
+  },
+  {
+    "id": 2,
+    "data_hora": "05/11/2026 22:27:47",
+    "titulo": "Corrigir duplicação de arquivo do Google Docs com preservação total de conteúdo e imagens",
+    "descricao": "A duplicação automática de documentos do Google Docs (como no caso do arquivo 'HISTORICO') não está preservando corretamente o conteúdo integral, incluindo imagens e formatação, resultando em cópias incompletas. É necessário criar uma nova ferramenta ou ajustar a existente para realizar uma cópia exata (deep copy) que preserve todo o conteúdo e estrutura do arquivo original, garantindo que a cópia seja idêntica ao original, e em seguida, mover para a pasta de destino correta (AP Vitality 91 Action).",
+    "arquivo_sugerido": "backend/google_workspace.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis",
+    "concluido_em": "05/11/2026 22:55:34"
+  },
+  {
+    "id": 3,
+    "data_hora": "05/11/2026 22:28:47",
+    "titulo": "Re-executar duplicação exata de arquivo com imagens no Google Drive",
+    "descricao": "Reforçar a solicitação anterior (ID #2): A duplicação de arquivos nativos do Google Docs deve ser uma 'deep copy' que preserve absolutamente todo o conteúdo, incluindo formatação, imagens e estrutura, para que a cópia seja idêntica ao original. A ferramenta atual falhou em preservar as imagens. Criar a cópia exata e movê-la para a pasta 'AP Vitality 91 Action'.",
+    "arquivo_sugerido": "backend/google_workspace.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis",
+    "concluido_em": "05/11/2026 22:55:34"
+  },
+  {
+    "id": 4,
+    "data_hora": "05/11/2026 22:35:11",
+    "titulo": "Desenvolvimento de Módulo de Auto-Monitoramento Neural e Otimização de Performance",
+    "descricao": "Propor e desenvolver um 'Módulo de Auto-Monitoramento Neural' que integre visualização avançada no System Dashboard (HUD) e otimizações de performance no backend. Isso permitirá ao usuário uma visão holística e em tempo real do desempenho do Jarvis, similar a uma 'conexão neural', e buscará maior assertividade e velocidade através de otimizações de arquitetura.",
+    "arquivo_sugerido": "backend/agent.py, frontend/components/app/system-dashboard.tsx",
+    "prioridade": "Alta",
+    "status": "pendente",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 5,
+    "data_hora": "05/11/2026 22:52:28",
+    "titulo": "Adição de ferramenta nativa para duplicar item no Google Drive",
+    "descricao": "Adicionar ferramenta nativa `duplicar_item_google_drive` no backend, permitindo duplicar arquivos ou pastas com preservação total de conteúdo e imagens, conforme solicitação do usuário para melhor gerenciamento no Google Drive. Atualmente, as solicitações #2 e #3 na fila (`backend/google_workspace.py`) estão relacionadas a isso e devem ser priorizadas ou unificadas nesta nova ferramenta.",
+    "arquivo_sugerido": "backend/google_workspace.py",
+    "prioridade": "Alta",
+    "status": "pendente",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 6,
+    "data_hora": "05/11/2026 22:54:44",
+    "titulo": "Implementação de desenho e manipulação SVG na Lousa de Ensino",
+    "descricao": "Adicionar funcionalidade de criação e manipulação de imagens SVG nativas na Lousa de Ensino (teaching-board.tsx), permitindo ao usuário desenhar e programar elementos gráficos vetoriais diretamente na interface, como parte das ferramentas avançadas de desenho e esquema.",
+    "arquivo_sugerido": "frontend/components/app/teaching-board.tsx",
+    "prioridade": "Média",
+    "status": "pendente",
+    "origem": "Comando de voz do usuário via Jarvis"
   }
 ]

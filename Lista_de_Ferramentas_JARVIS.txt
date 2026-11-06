@@ -44,9 +44,10 @@
   🟢 3.6. atualizar_arquivo_texto_google_drive: Substitui o conteúdo de um arquivo de texto no Drive.
   🟢 3.7. renomear_item_google_drive: Renomeia um arquivo ou pasta no Google Drive.
   🟢 3.8. mover_item_google_drive: Move um item para outra pasta no Google Drive.
-  🟢 3.9. enviar_item_google_drive_para_lixeira: Move um item do Google Drive para a lixeira.
-  🟢 3.10. criar_documento_google_docs: Cria um documento nativo do Google Docs.
-  🟢 3.11. substituir_trecho_google_docs: Substitui ocorrências de texto em um Google Docs.
+  🟢 3.9. duplicar_item_google_drive: Duplica ou cria uma cópia exata (deep copy) de qualquer arquivo no Google Drive (Google Docs com fotos/imagens completas, Planilhas, PDFs, etc.), preservando 100% de todo o conteúdo original.
+  🟢 3.10. enviar_item_google_drive_para_lixeira: Move um item do Google Drive para a lixeira.
+  🟢 3.11. criar_documento_google_docs: Cria um documento nativo do Google Docs.
+  🟢 3.12. substituir_trecho_google_docs: Substitui ocorrências de texto em um Google Docs.
 
 --------------------------------------------------------------------------------
 

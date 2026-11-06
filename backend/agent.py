@@ -3383,6 +3383,27 @@ class Assistant(Agent):
             id_pasta_destino,
         )
 
+    @function_tool(
+        description=(
+            "Duplica ou cria uma cópia exata (deep copy) de qualquer arquivo no Google Drive (Google Docs com fotos, "
+            "imagens e formatação completa, Planilhas, Slides, PDFs ou qualquer arquivo). "
+            "Preserva 100% de todo o conteúdo original sem perda de imagens. "
+            "Pode receber nome ou ID do arquivo, novo nome para a cópia e nome ou ID da pasta de destino."
+        )
+    )
+    async def duplicar_item_google_drive(
+        self,
+        nome_ou_id_arquivo: str,
+        novo_nome: str = "",
+        pasta_destino: str = "",
+    ):
+        return await self._executar_google(
+            google_workspace.copy_drive_item,
+            nome_ou_id_arquivo,
+            novo_nome,
+            pasta_destino,
+        )
+
     @function_tool(description="Substitui todas as ocorrências exatas de um trecho em um Google Docs, preservando o restante do documento.")
     async def substituir_trecho_google_docs(
         self,
