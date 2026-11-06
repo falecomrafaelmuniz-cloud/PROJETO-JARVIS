@@ -40,8 +40,9 @@
     "descricao": "Propor e desenvolver um 'Módulo de Auto-Monitoramento Neural' que integre visualização avançada no System Dashboard (HUD) e otimizações de performance no backend. Isso permitirá ao usuário uma visão holística e em tempo real do desempenho do Jarvis, similar a uma 'conexão neural', e buscará maior assertividade e velocidade através de otimizações de arquitetura.",
     "arquivo_sugerido": "backend/agent.py, frontend/components/app/system-dashboard.tsx",
     "prioridade": "Alta",
-    "status": "pendente",
-    "origem": "Comando de voz do usuário via Jarvis"
+    "status": "cancelado",
+    "origem": "Comando de voz do usuário via Jarvis",
+    "cancelado_em": "05/11/2026 23:15:01"
   },
   {
     "id": 5,
