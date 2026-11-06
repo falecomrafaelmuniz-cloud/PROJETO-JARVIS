@@ -21,8 +21,8 @@ import { cn } from '@/lib/shadcn/utils';
 
 const BOARD_TOPIC = 'jarvis.board';
 const BOARD_STORAGE_KEY = 'jarvis-teaching-board-v1';
-const BOARD_WIDTH = 1200;
-const BOARD_HEIGHT = 760;
+const BOARD_WIDTH = 1920;
+const BOARD_HEIGHT = 1080;
 const CHALK_COLORS = [
   { name: 'Giz branco', value: '#f8f5e7' },
   { name: 'Ciano Jarvis', value: '#22d3ee' },
@@ -139,13 +139,49 @@ export function TeachingBoard() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [items, setItems] = useState<BoardItem[]>([]);
 
-  // Atalho do teclado: ESC fecha a lousa e volta para a tela do Jarvis
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+        setIsFullscreen(true);
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+        setIsFullscreen(false);
+      }
+    } catch {
+      setIsFullscreen((prev) => !prev);
+    }
+  };
+
+  const fecharLousa = async () => {
+    if (typeof document !== 'undefined' && document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {}
+    }
+    setIsFullscreen(false);
+    setIsOpen(false);
+  };
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  // Atalho do teclado: ESC fecha a lousa e restaura o navegador
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        setIsOpen(false);
+        fecharLousa();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -463,18 +499,18 @@ export function TeachingBoard() {
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setIsFullscreen((prev) => !prev)}
-                  className="rounded-lg p-2 text-cyan-300 transition hover:bg-white/10 hover:text-white"
-                  title={isFullscreen ? 'Restaurar janela (ou ESC para fechar)' : 'Expandir para tela cheia'}
+                  onClick={toggleFullscreen}
+                  className="rounded-lg border border-cyan-400/30 bg-cyan-950/40 p-2 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)] transition hover:border-cyan-300 hover:bg-cyan-900/50 hover:text-white active:scale-95"
+                  title={isFullscreen ? 'Sair da tela cheia do monitor (ESC)' : 'Expandir para TELA CHEIA Widescreen (100% do Monitor)'}
                   aria-label="Alternar tela cheia"
                 >
                   {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsOpen(false)}
+                  onClick={fecharLousa}
                   className="rounded-lg p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
-                  title="Fechar lousa (ESC)"
+                  title="Fechar lousa e voltar ao Jarvis (ESC)"
                   aria-label="Fechar lousa"
                 >
                   <X className="size-5" />
@@ -598,8 +634,14 @@ export function TeachingBoard() {
               </button>
             </div>
 
-            <div className="relative min-h-0 flex-1 overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-3 sm:p-5">
-              <div className="h-full rounded-2xl border-2 border-cyan-500/30 bg-slate-950/90 p-1.5 shadow-[0_0_35px_rgba(6,182,212,0.15),inset_0_0_20px_rgba(0,0,0,0.8)] sm:p-3">
+            <div className={cn(
+              'relative min-h-0 flex-1 overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 transition-all duration-300',
+              isFullscreen ? 'p-0' : 'p-3 sm:p-5'
+            )}>
+              <div className={cn(
+                'h-full bg-slate-950/90 transition-all duration-300 flex items-center justify-center',
+                isFullscreen ? 'rounded-none border-0 p-0 shadow-none' : 'rounded-2xl border-2 border-cyan-500/30 p-1.5 shadow-[0_0_35px_rgba(6,182,212,0.15),inset_0_0_20px_rgba(0,0,0,0.8)] sm:p-3'
+              )}>
                 <svg
                   ref={svgRef}
                   viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`}
@@ -627,6 +669,25 @@ export function TeachingBoard() {
                         <feMergeNode in="SourceGraphic" />
                       </feMerge>
                     </filter>
+                    {/* Filtros 3D Avançados para Imagens e Cards Flutuantes */}
+                    <filter id="card-3d-depth" x="-30%" y="-30%" width="170%" height="170%">
+                      <feDropShadow dx="0" dy="24" stdDeviation="28" floodColor="#000000" floodOpacity="0.95" />
+                      <feDropShadow dx="0" dy="8" stdDeviation="16" floodColor="#06b6d4" floodOpacity="0.45" />
+                    </filter>
+                    <linearGradient id="cyber-frame-grad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.9" />
+                      <stop offset="50%" stopColor="#0ea5e9" stopOpacity="0.5" />
+                      <stop offset="100%" stopColor="#a855f7" stopOpacity="0.85" />
+                    </linearGradient>
+                    <linearGradient id="card-glass-gloss" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.22" />
+                      <stop offset="40%" stopColor="#ffffff" stopOpacity="0.04" />
+                      <stop offset="100%" stopColor="#000000" stopOpacity="0.2" />
+                    </linearGradient>
+                    <linearGradient id="box-card-bg" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#08231c" stopOpacity="0.85" />
+                      <stop offset="100%" stopColor="#03110e" stopOpacity="0.95" />
+                    </linearGradient>
                     <pattern
                       id="board-grain"
                       width="100"
@@ -669,7 +730,7 @@ export function TeachingBoard() {
                           fill={item.color ?? '#f8f5e7'}
                           fontSize={fontSize}
                           fontWeight="600"
-                          fontFamily="'Comic Sans MS', 'Segoe Print', cursive"
+                          fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, 'Inter', sans-serif"
                           filter="url(#chalk-soften)"
                         >
                           {lines.map((line, index) => (
@@ -703,7 +764,7 @@ export function TeachingBoard() {
                               y={item.y + (item.height ?? 0) / 2 - 12}
                               fill={item.color ?? '#f8f5e7'}
                               fontSize="22"
-                              fontFamily="'Comic Sans MS', 'Segoe Print', cursive"
+                              fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, 'Inter', sans-serif"
                               filter="url(#chalk-soften)"
                             >
                               {item.label}
@@ -714,17 +775,18 @@ export function TeachingBoard() {
                     }
                     if (item.type === 'rectangle') {
                       return (
-                        <g key={item.id}>
+                        <g key={item.id} className="transition-all duration-200">
+                          {/* Fundo de vidro fosco 3D para caixas de esquema */}
                           <rect
                             x={item.x}
                             y={item.y}
                             width={item.width}
                             height={item.height}
-                            fill="none"
-                            stroke={item.color ?? '#f8f5e7'}
-                            strokeWidth={item.size ?? 4}
-                            rx="12"
-                            filter="url(#chalk-soften)"
+                            fill="url(#box-card-bg)"
+                            stroke={item.color ?? '#22d3ee'}
+                            strokeWidth={item.size ?? 3}
+                            rx="16"
+                            filter="url(#card-3d-depth)"
                           />
                           {item.label && (
                             <text
@@ -732,7 +794,7 @@ export function TeachingBoard() {
                               y={item.y + Math.min((item.height ?? 0) - 8, 34)}
                               fill={item.color ?? '#f8f5e7'}
                               fontSize="22"
-                              fontFamily="'Comic Sans MS', 'Segoe Print', cursive"
+                              fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, 'Inter', sans-serif"
                               filter="url(#chalk-soften)"
                             >
                               {item.label}
@@ -761,7 +823,7 @@ export function TeachingBoard() {
                               textAnchor="middle"
                               fill={item.color ?? '#f8f5e7'}
                               fontSize="22"
-                              fontFamily="'Comic Sans MS', 'Segoe Print', cursive"
+                              fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, 'Inter', sans-serif"
                               filter="url(#chalk-soften)"
                             >
                               {item.label}
@@ -770,22 +832,21 @@ export function TeachingBoard() {
                         </g>
                       );
                     }
-                    const imgW = item.width ?? 340;
-                    const imgH = item.height ?? 240;
+                    const imgW = item.width ?? 380;
+                    const imgH = item.height ?? 260;
                     return (
-                      <g key={item.id} className="transition-transform duration-200">
-                        {/* Moldura cibernética com sombra neon suave */}
+                      <g key={item.id} className="cursor-pointer transition-transform duration-300 hover:scale-105">
+                        {/* Placa Traseira 3D que salta para fora das letras com sombra profunda */}
                         <rect
-                          x={item.x - 3}
-                          y={item.y - 3}
-                          width={imgW + 6}
-                          height={imgH + 6}
-                          rx="16"
-                          fill="rgba(8, 21, 18, 0.95)"
-                          stroke="#22d3ee"
-                          strokeWidth="2"
-                          strokeOpacity="0.75"
-                          filter="url(#chalk-soften)"
+                          x={item.x - 6}
+                          y={item.y - 6}
+                          width={imgW + 12}
+                          height={imgH + 12}
+                          rx="22"
+                          fill="#03110e"
+                          stroke="url(#cyber-frame-grad)"
+                          strokeWidth="3.5"
+                          filter="url(#card-3d-depth)"
                         />
                         <clipPath id={`clip-${item.id}`}>
                           <rect
@@ -793,7 +854,7 @@ export function TeachingBoard() {
                             y={item.y}
                             width={imgW}
                             height={imgH}
-                            rx="12"
+                            rx="16"
                           />
                         </clipPath>
                         <image
@@ -805,38 +866,50 @@ export function TeachingBoard() {
                           preserveAspectRatio="xMidYMid slice"
                           clipPath={`url(#clip-${item.id})`}
                         />
-                        {/* Borda interna refinada */}
+                        {/* Brilho reflexivo de vidro 3D sobre a imagem */}
+                        <rect
+                          x={item.x}
+                          y={item.y}
+                          width={imgW}
+                          height={imgH / 2}
+                          rx="16"
+                          fill="url(#card-glass-gloss)"
+                          pointerEvents="none"
+                        />
+                        {/* Borda interna holográfica */}
                         <rect
                           x={item.x}
                           y={item.y}
                           width={imgW}
                           height={imgH}
-                          rx="12"
+                          rx="16"
                           fill="none"
                           stroke="#22d3ee"
                           strokeWidth="1.5"
-                          strokeOpacity="0.4"
+                          strokeOpacity="0.5"
+                          pointerEvents="none"
                         />
                         {item.label && (
                           <g>
                             <rect
-                              x={item.x + 8}
-                              y={item.y + imgH - 32}
-                              width={imgW - 16}
-                              height="26"
-                              rx="6"
-                              fill="rgba(5, 16, 14, 0.9)"
+                              x={item.x + 12}
+                              y={item.y + imgH - 38}
+                              width={imgW - 24}
+                              height="30"
+                              rx="8"
+                              fill="rgba(3, 17, 14, 0.92)"
                               stroke="#22d3ee"
                               strokeWidth="1"
-                              strokeOpacity="0.3"
+                              strokeOpacity="0.4"
                             />
                             <text
-                              x={item.x + 16}
-                              y={item.y + imgH - 14}
-                              fill="#22d3ee"
-                              fontSize="12"
-                              fontWeight="600"
-                              letterSpacing="0.04em"
+                              x={item.x + 22}
+                              y={item.y + imgH - 18}
+                              fill="#38bdf8"
+                              fontSize="13"
+                              fontWeight="700"
+                              letterSpacing="0.06em"
+                              fontFamily="system-ui, -apple-system, sans-serif"
                             >
                               {item.label}
                             </text>
