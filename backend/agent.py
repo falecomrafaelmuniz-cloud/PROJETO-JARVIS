@@ -1160,81 +1160,52 @@ class Assistant(Agent):
         resumos: list[str] = []
         fontes: list[dict[str, str]] = []
         imagens: list[dict[str, str]] = []
-        headers = {"User-Agent": "JarvisAssistant/1.0 (https://localhost)"}
-        with httpx.Client(headers=headers, timeout=2.5, follow_redirects=True) as client:
-            for idioma in ("pt", "en"):
-                try:
-                    resp = client.get(
-                        f"https://{idioma}.wikipedia.org/w/api.php",
-                        params={
-                            "action": "query",
-                            "generator": "search",
-                            "gsrsearch": assunto,
-                            "gsrlimit": 4,
-                            "prop": "pageimages|extracts",
-                            "piprop": "thumbnail",
-                            "pithumbsize": 640,
-                            "exintro": 1,
-                            "explaintext": 1,
-                            "exsentences": 2,
-                            "exlimit": "max",
-                            "format": "json",
-                        },
-                    )
-                    resp.raise_for_status()
-                    paginas = (resp.json().get("query", {}) or {}).get("pages", {}) or {}
-                    itens_ordenados = sorted(
-                        paginas.values(), key=lambda p: p.get("index", 99)
-                    )
-                    for item in itens_ordenados:
-                        titulo = (item.get("title") or "").strip()
-                        extrato = " ".join((item.get("extract") or "").split()).strip()
-                        if not titulo:
-                            continue
-                        url = f"https://{idioma}.wikipedia.org/wiki/{url_quote(titulo.replace(' ', '_'))}"
-                        fontes.append({"titulo": f"{titulo} ({idioma.upper()})", "url": url})
-                        if extrato:
-                            resumos.append(f"- {titulo}: {extrato[:240]}")
-                        thumb = (item.get("thumbnail") or {}).get("source") or ""
-                        if (
-                            isinstance(thumb, str)
-                            and thumb.startswith("https://")
-                            and not thumb.lower().endswith(".svg")
-                        ):
-                            imagens.append({"url": thumb, "legenda": titulo[:65]})
-                    if fontes and imagens:
-                        break
-                except Exception:
-                    continue
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        }
+        termo = assunto.strip()
+        termo_busca = termo if any(k in termo.lower() for k in ("como", "o que", "por que", "quem", "qual")) else f"como funciona {termo}"
 
-            # Se ainda não achou imagem, busca no Wikimedia Commons em ~0.8s
-            if not imagens:
-                try:
-                    resp_commons = client.get(
-                        "https://commons.wikimedia.org/w/api.php",
-                        params={
-                            "action": "query",
-                            "generator": "search",
-                            "gsrsearch": f"filetype:bitmap {assunto}",
-                            "gsrnamespace": 6,
-                            "gsrlimit": 3,
-                            "prop": "imageinfo",
-                            "iiprop": "url",
-                            "iiurlwidth": 640,
-                            "format": "json",
-                        },
+        # 1. Busca vídeos/animações 3D de alta qualidade no YouTube (perfeito para mecanismos, motores e ciências)
+        try:
+            with httpx.Client(timeout=3.5, headers=headers) as client:
+                resp_yt = client.get("https://www.youtube.com/results", params={"search_query": f"{termo_busca} 3d"})
+                if resp_yt.status_code == 200:
+                    match_yt = re.search(
+                        r'"videoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"',
+                        resp_yt.text,
                     )
-                    paginas_c = (resp_commons.json().get("query", {}) or {}).get("pages", {}) or {}
-                    for item in paginas_c.values():
-                        info = ((item.get("imageinfo") or [{}])[0]) or {}
-                        thumb = (info.get("thumburl") or info.get("url") or "").strip()
-                        titulo_img = (item.get("title") or "").replace("File:", "").rsplit(".", 1)[0]
-                        if thumb.startswith("https://"):
-                            imagens.append({"url": thumb, "legenda": titulo_img[:65]})
-                except Exception:
-                    pass
+                    if match_yt:
+                        v_id = match_yt.group(1)
+                        v_tit = match_yt.group(2)
+                        fontes.append({
+                            "titulo": f"Vídeo/Animação 3D: {v_tit}",
+                            "url": f"https://www.youtube.com/watch?v={v_id}",
+                            "tipo": "video",
+                        })
+                        resumos.append(f"Vídeo e animação 3D: {v_tit}")
+        except Exception:
+            pass
 
-        return "\n".join(resumos), fontes[:3], imagens[:2]
+        # 2. Busca no Google aberto com foco em artigos especializados e infográficos (NÃO usa Wikipédia)
+        query_enc = url_quote(termo_busca)
+        fontes.append({
+            "titulo": f"Artigos e Guias Especializados: {termo.title()}",
+            "url": f"https://www.google.com/search?q={query_enc}",
+            "tipo": "google",
+        })
+        fontes.append({
+            "titulo": f"Infográficos e Esquemas Técnicos: {termo.title()}",
+            "url": f"https://www.google.com/search?q={query_enc}+esquema+infografico&tbm=isch",
+            "tipo": "imagens",
+        })
+
+        return "\n".join(resumos), fontes, imagens
 
     def _gerar_estrutura_rapida(self, prompt_pesquisa: str, assunto: str) -> dict:
         for modelo_candidato in (MODELO_PESQUISA_FALLBACK, "gemini-3.5-flash", MODELO_PESQUISA):
@@ -1280,20 +1251,22 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Pesquisa um assunto na web em alta velocidade, localiza o artigo mais completo, rico e ilustrado "
-            "(Wikipédia, portais científicos ou esquemas técnicos), ABRE DIRETAMENTE na tela do navegador Chrome "
-            "do usuário e retorna uma explicação didática estruturada para você ensinar o assunto por voz "
-            "em tempo real enquanto o usuário visualiza a página e as imagens na tela."
+            "Pesquisa e ensina qualquer assunto abrindo na tela do usuário conteúdo visual rico, moderno e preciso "
+            "(Google com infográficos e artigos especializados, vídeo explicativo/3D no YouTube, ou esquemas no Google Imagens). "
+            "NUNCA ABRE WIKIPÉDIA. Escolha tipo_midia='auto' (padrão), 'video' (vídeo/animação 3D no YouTube), "
+            "'artigo' (Google com artigos educativos e esquemas), ou 'imagens' (Google Imagens com infográficos em alta definição)."
         )
     )
     async def pesquisar_assunto_para_aula(
         self,
         assunto: str,
         foco: str = "",
+        tipo_midia: str = "auto",
         nivel: str = "iniciante",
     ):
         assunto = assunto.strip()
         foco = foco.strip()
+        tipo_midia = tipo_midia.strip().lower() or "auto"
         nivel = nivel.strip()
         if not assunto or len(assunto) > 500:
             return "Aviso: informe um assunto com até 500 caracteres."
@@ -1302,10 +1275,10 @@ class Assistant(Agent):
         if not nivel or len(nivel) > 80:
             return "Aviso: informe um nível de ensino com até 80 caracteres."
 
-        chave_cache = f"{assunto.lower()}|{foco.lower()}|{nivel.lower()}"
+        chave_cache = f"{assunto.lower()}|{foco.lower()}|{tipo_midia}|{nivel.lower()}"
         async with self._pesquisa_lock:
             prompt_pesquisa = (
-                "Você é um professor de excelência. Prepare uma explicação falada envolvente, rica e didática "
+                "Você é um professor de excelência e autoridade didática. Prepare uma explicação falada envolvente, rica e didática "
                 "em português do Brasil sobre o assunto abaixo e retorne APENAS um JSON válido com estas chaves:\n"
                 '{\n'
                 '  "titulo": "título claro de até 48 caracteres",\n'
@@ -1318,7 +1291,7 @@ class Assistant(Agent):
                 '  ],\n'
                 '  "analogia": "analogia simples do mundo real (até 150 chars)",\n'
                 '  "exemplo": "exemplo concreto de aplicação (até 150 chars)",\n'
-                '  "roteiro_fala": "Explicação falada completa, didática e envolvente (8 a 12 frases), guiando o aluno pelos pontos principais que ele está vendo na página aberta (definição, mecanismos centrais, componentes e exemplo prático)."\n'
+                '  "roteiro_fala": "Explicação falada completa, didática e envolvente (8 a 12 frases), guiando o aluno pelos pontos principais que ele está vendo na tela aberta (definição, mecanismos centrais, componentes e exemplo prático)."\n'
                 '}\n'
                 f"Assunto: {assunto}\nFoco: {foco or 'visão geral completa'}\nNível: {nivel}."
             )
@@ -1349,17 +1322,42 @@ class Assistant(Agent):
                     ],
                     "analogia": f"Pense em {assunto} como um sistema coordenado onde cada etapa alimenta a seguinte.",
                     "exemplo": f"Aplicação prática de {assunto} no dia a dia.",
-                    "roteiro_fala": f"Abri a página na sua tela sobre {assunto}. Vamos analisar a definição central, o funcionamento prático e seus principais componentes.",
+                    "roteiro_fala": f"Abri o conteúdo visual na sua tela sobre {assunto}. Vamos analisar a definição central, o funcionamento prático e seus principais componentes.",
                 }
-                fontes = [{"titulo": f"{assunto} na Wikipédia", "url": f"https://pt.wikipedia.org/wiki/{url_quote(assunto.replace(' ', '_'))}"}]
-                imagens = []
+                fontes = []
                 modo = "contingencia_local"
 
-            # Abre o artigo web oficial diretamente na tela do usuário no Chrome!
-            url_alvo = fontes[0]["url"] if fontes else f"https://pt.wikipedia.org/wiki/{url_quote(assunto.replace(' ', '_'))}"
-            nome_alvo = fontes[0]["titulo"] if fontes else assunto
+            # Determina a melhor URL visual (Google com artigos/infográficos, Vídeo 3D no YouTube ou Google Imagens)
+            url_alvo = ""
+            nome_alvo = ""
+
+            # 1. Se pediu especificamente imagens/esquemas/fotos
+            if tipo_midia == "imagens" or any(k in assunto.lower() for k in ("imagem", "imagens", "foto", "fotos", "esquema", "diagrama", "desenho")):
+                url_alvo = f"https://www.google.com/search?q={url_quote(assunto + ' esquema infografico')}&tbm=isch"
+                nome_alvo = f"Google Imagens (Esquemas de {assunto})"
+            # 2. Se pediu vídeo, ou for mecanismo/máquina/funcionamento prático e houver vídeo no YouTube
+            elif tipo_midia == "video" or (
+                tipo_midia == "auto" and any(f.get("tipo") == "video" for f in fontes) and any(k in assunto.lower() for k in ("como funciona", "turbina", "motor", "mecanismo", "3d", "aviao", "avião", "carro", "foguete"))
+            ):
+                video_fonte = next((f for f in fontes if f.get("tipo") == "video"), None)
+                if video_fonte:
+                    url_alvo = video_fonte["url"]
+                    nome_alvo = video_fonte["titulo"]
+                else:
+                    url_alvo = f"https://www.youtube.com/results?search_query={url_quote(assunto + ' como funciona 3d')}"
+                    nome_alvo = f"YouTube ({assunto})"
+            # 3. Padrão: Google Busca visual com artigos especializados e infográficos
+            else:
+                artigo_fonte = next((f for f in fontes if f.get("tipo") == "google"), None)
+                if artigo_fonte:
+                    url_alvo = artigo_fonte["url"]
+                    nome_alvo = artigo_fonte["titulo"]
+                else:
+                    url_alvo = f"https://www.google.com/search?q={url_quote(assunto)}"
+                    nome_alvo = f"Google ({assunto})"
+
             try:
-                print(f"[AULA WEB] Abrindo página na tela do usuário: {nome_alvo} ({url_alvo})")
+                print(f"[AULA VISUAL] Abrindo página na tela do usuário: {nome_alvo} ({url_alvo})")
                 await asyncio.to_thread(jarvis_chrome.open_url, url_alvo)
             except Exception as e_navegador:
                 logger_memoria.warning("evento=aula_abrir_navegador status=aviso erro=%s", str(e_navegador))
@@ -1375,8 +1373,9 @@ class Assistant(Agent):
             roteiro = str(estrutura.get("roteiro_fala") or estrutura.get("ideia_central") or "").strip()
             conceitos_txt = " | ".join(str(c) for c in (estrutura.get("conceitos") or [])[:4])
             resumo_retorno = (
-                f"A página ilustrada com esquemas e conteúdo completo sobre '{assunto}' JÁ FOI ABERTA na tela do navegador do usuário no Chrome ({url_alvo}). "
-                f"Comece IMEDIATAMENTE a ensinar e explicar o assunto em voz alta com entusiasmo, clareza e didática (não chame mais nenhuma ferramenta), guiando o usuário pelo que está na tela:\n"
+                f"O conteúdo visual rico sobre '{assunto}' JÁ FOI ABERTO na tela do navegador Chrome do usuário ({nome_alvo} - {url_alvo}). "
+                f"NÃO FOI USADA WIKIPÉDIA. "
+                f"Comece IMEDIATAMENTE a ensinar e explicar o assunto em voz alta com entusiasmo, autoridade e clareza didática (não chame mais nenhuma ferramenta), guiando o usuário pelo que está na tela:\n"
                 f"Roteiro de explicação: {roteiro}\n"
                 f"Pontos-chave: {conceitos_txt}\n"
                 f"Analogia: {estrutura.get('analogia', '')} | Exemplo prático: {estrutura.get('exemplo', '')}."
