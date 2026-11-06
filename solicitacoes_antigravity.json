@@ -84,7 +84,8 @@
     "descricao": "Corrigir bug onde clicar em elementos SVG na lousa abre uma nova janela que fica atrás do quadro, impedindo a interação adequada. Garantir que a interação com SVGs funcione corretamente na interface da lousa.",
     "arquivo_sugerido": "frontend/components/app/teaching-board.tsx",
     "prioridade": "Alta",
-    "status": "pendente",
-    "origem": "Comando de voz do usuário via Jarvis"
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis",
+    "concluido_em": "06/11/2026 00:12:00"
   }
 ]

@@ -327,9 +327,9 @@ export function TeachingBoard() {
   const [draft, setDraft] = useState<BoardItem | null>(null);
   const [storageError, setStorageError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isSvgMenuOpen, setIsSvgMenuOpen] = useState(false);
+  const [isSvgModalOpen, setIsSvgModalOpen] = useState(false);
+  const [svgModalTab, setSvgModalTab] = useState<'presets' | 'custom'>('presets');
   const [customSvgCode, setCustomSvgCode] = useState('');
-  const [showCustomSvgModal, setShowCustomSvgModal] = useState(false);
 
   // Informações de arraste e redimensionamento ativo de itens
   const dragInfo = useRef<{
@@ -375,12 +375,16 @@ export function TeachingBoard() {
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
-  // Atalho do teclado: ESC fecha a lousa e restaura o navegador, Delete apaga selecionado
+  // Atalho do teclado: ESC fecha o modal de SVG ou a lousa, Delete apaga selecionado
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        if (isSvgModalOpen) {
+          setIsSvgModalOpen(false);
+          return;
+        }
         fecharLousa();
       } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) {
         const activeTag = (document.activeElement?.tagName || '').toLowerCase();
@@ -393,7 +397,7 @@ export function TeachingBoard() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, selectedId]);
+  }, [isOpen, selectedId, isSvgModalOpen]);
 
   useEffect(() => {
     try {
@@ -713,10 +717,11 @@ export function TeachingBoard() {
   const addPresetSvg = (presetId: string) => {
     const preset = SVG_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
+    const newId = `svg-${Date.now()}`;
     setItems((current) => [
       ...current,
       {
-        id: `svg-${Date.now()}`,
+        id: newId,
         type: 'svg',
         x: 680,
         y: 220,
@@ -728,16 +733,19 @@ export function TeachingBoard() {
         label: preset.name,
       },
     ]);
-    setIsSvgMenuOpen(false);
+    setSelectedId(newId);
+    setTool('select');
+    setIsSvgModalOpen(false);
   };
 
   const addCustomSvg = () => {
     const code = customSvgCode.trim();
     if (!code) return;
+    const newId = `svg-${Date.now()}`;
     setItems((current) => [
       ...current,
       {
-        id: `svg-${Date.now()}`,
+        id: newId,
         type: 'svg',
         x: 680,
         y: 220,
@@ -749,8 +757,10 @@ export function TeachingBoard() {
         label: 'Desenho Vetorial SVG',
       },
     ]);
+    setSelectedId(newId);
+    setTool('select');
     setCustomSvgCode('');
-    setShowCustomSvgModal(false);
+    setIsSvgModalOpen(false);
   };
 
   const duplicarSelecionado = () => {
@@ -906,54 +916,15 @@ export function TeachingBoard() {
               </div>
 
               {/* Botão de Inserção de Vetores e Desenhos SVG Técnicos */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsSvgMenuOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-gradient-to-r from-cyan-950/60 to-blue-950/60 px-3 py-2 text-xs font-semibold text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.2)] transition hover:border-cyan-300 hover:text-white"
-                  title="Inserir Ilustrações e Desenhos Vetoriais SVG (Turbina, Chip IA, Átomo, Circuitos)"
-                >
-                  <Shapes className="size-4 text-cyan-300" />
-                  <span>Desenhos SVG</span>
-                </button>
-
-                {/* Dropdown de Presets SVG */}
-                {isSvgMenuOpen && (
-                  <div className="absolute top-full left-0 z-50 mt-2 w-80 rounded-2xl border border-cyan-400/40 bg-slate-950/95 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.25)] backdrop-blur-2xl">
-                    <p className="px-2 pb-2 text-[11px] font-bold tracking-wider uppercase text-cyan-400 border-b border-cyan-500/20">
-                      Modelos Vetoriais Prontos (SVG)
-                    </p>
-                    <div className="mt-2 space-y-1">
-                      {SVG_PRESETS.map((preset) => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => addPresetSvg(preset.id)}
-                          className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs text-slate-200 transition hover:bg-cyan-500/20 hover:text-cyan-100"
-                        >
-                          <div>
-                            <p className="font-semibold">{preset.name}</p>
-                            <p className="text-[10px] text-slate-400">{preset.category}</p>
-                          </div>
-                          <span className="text-cyan-400 text-xs">＋ Inserir</span>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-2.5 pt-2 border-t border-cyan-500/20">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsSvgMenuOpen(false);
-                          setShowCustomSvgModal(true);
-                        }}
-                        className="w-full rounded-xl border border-cyan-500/30 bg-slate-900/80 px-2.5 py-1.5 text-center text-xs font-medium text-cyan-300 hover:bg-cyan-900/40"
-                      >
-                        Colar Código SVG Customizado...
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsSvgModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-gradient-to-r from-cyan-950/70 to-blue-950/70 px-3 py-2 text-xs font-semibold text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.2)] transition hover:border-cyan-300 hover:text-white active:scale-95"
+                title="Abrir Galeria de Desenhos e Diagramas Vetoriais SVG (Turbina, Chip IA, Átomo, Circuitos)"
+              >
+                <Shapes className="size-4 text-cyan-300" />
+                <span>Desenhos SVG</span>
+              </button>
 
               {/* Seletor de Cores de Giz / Caneta */}
               <div className="flex items-center gap-1.5 rounded-xl border border-cyan-500/20 bg-slate-950/80 px-2.5 py-1.5 shadow-inner">
@@ -1094,50 +1065,6 @@ export function TeachingBoard() {
                 </button>
               </div>
             </div>
-
-            {/* Modal para Colar SVG Customizado */}
-            {showCustomSvgModal && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-                <div className="w-full max-w-lg rounded-2xl border border-cyan-400/40 bg-slate-950 p-5 shadow-2xl">
-                  <div className="flex items-center justify-between pb-3 border-b border-cyan-500/20">
-                    <h3 className="text-sm font-bold text-cyan-300">Inserir Código SVG Vetorial</h3>
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomSvgModal(false)}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Cole o código interno do SVG (ex.: &lt;path ... /&gt;, &lt;circle ... /&gt;, &lt;g&gt;...&lt;/g&gt;) ou o elemento &lt;svg&gt; completo:
-                  </p>
-                  <textarea
-                    rows={7}
-                    value={customSvgCode}
-                    onChange={(e) => setCustomSvgCode(e.target.value)}
-                    placeholder="<circle cx='100' cy='100' r='50' fill='#22d3ee' />..."
-                    className="mt-3 w-full rounded-xl border border-cyan-500/30 bg-slate-900 p-3 font-mono text-xs text-cyan-200 outline-none focus:border-cyan-400"
-                  />
-                  <div className="mt-4 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomSvgModal(false)}
-                      className="rounded-xl px-4 py-2 text-xs text-slate-400 hover:bg-slate-900"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={addCustomSvg}
-                      className="rounded-xl bg-cyan-500/30 border border-cyan-400/60 px-5 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-500/50"
-                    >
-                      Renderizar na Lousa
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Área Principal de Exibição Widescreen 16:9 */}
             <div className="relative flex-1 overflow-hidden bg-slate-950 flex items-center justify-center p-0">
@@ -1724,6 +1651,162 @@ export function TeachingBoard() {
                 </span>
               </div>
             </footer>
+
+            {/* Modal Principal / Galeria de Modelos Vetoriais SVG (Fixed no topo de tudo) */}
+            {isSvgModalOpen && (
+              <div
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setIsSvgModalOpen(false);
+                }}
+              >
+                <div className="flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl border border-cyan-400/50 bg-slate-950 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_35px_rgba(6,182,212,0.3)] animate-in fade-in zoom-in-95 duration-200">
+                  {/* Cabeçalho do Modal */}
+                  <div className="flex shrink-0 items-center justify-between border-b border-cyan-500/20 px-6 py-4 bg-slate-900/80">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-10 items-center justify-center rounded-2xl border border-cyan-400/40 bg-cyan-950/60 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+                        <Shapes className="size-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-cyan-100 uppercase tracking-wide">
+                          Galeria de Desenhos e Diagramas Vetoriais SVG
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Selecione um modelo técnico de alta definição ou cole seu código SVG customizado
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsSvgModalOpen(false)}
+                      className="rounded-xl border border-white/10 bg-slate-800/80 p-2 text-slate-300 transition hover:bg-rose-950/50 hover:border-rose-400/40 hover:text-rose-200"
+                      title="Fechar galeria (ESC)"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+
+                  {/* Abas do Modal */}
+                  <div className="flex shrink-0 items-center gap-2 border-b border-cyan-500/20 bg-slate-950 px-6 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSvgModalTab('presets')}
+                      className={cn(
+                        'rounded-xl px-4 py-2 text-xs font-bold tracking-wide transition-all',
+                        svgModalTab === 'presets'
+                          ? 'border border-cyan-400/50 bg-cyan-500/20 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                          : 'text-slate-400 hover:text-cyan-200 hover:bg-slate-900'
+                      )}
+                    >
+                      Modelos Didáticos Prontos ({SVG_PRESETS.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSvgModalTab('custom')}
+                      className={cn(
+                        'rounded-xl px-4 py-2 text-xs font-bold tracking-wide transition-all',
+                        svgModalTab === 'custom'
+                          ? 'border border-cyan-400/50 bg-cyan-500/20 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                          : 'text-slate-400 hover:text-cyan-200 hover:bg-slate-900'
+                      )}
+                    >
+                      Colar SVG Customizado
+                    </button>
+                  </div>
+
+                  {/* Conteúdo com rolagem */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                    {svgModalTab === 'presets' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {SVG_PRESETS.map((preset) => (
+                          <div
+                            key={preset.id}
+                            className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-cyan-500/30 bg-slate-900/70 p-4 transition-all duration-200 hover:border-cyan-300 hover:bg-slate-900/90 hover:shadow-[0_0_25px_rgba(6,182,212,0.25)]"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between pb-2">
+                                <span className="rounded-full border border-cyan-400/30 bg-cyan-950/60 px-2.5 py-0.5 text-[10px] font-mono text-cyan-300">
+                                  {preset.category}
+                                </span>
+                                <span className="text-[11px] text-slate-500 font-mono">
+                                  {preset.defaultWidth}×{preset.defaultHeight}
+                                </span>
+                              </div>
+                              <h4 className="text-sm font-bold text-cyan-100 group-hover:text-cyan-300 transition-colors">
+                                {preset.name}
+                              </h4>
+                              {/* Preview Miniatura do SVG */}
+                              <div className="mt-3 h-36 w-full overflow-hidden rounded-xl border border-cyan-500/20 bg-slate-950 p-2 flex items-center justify-center">
+                                <svg
+                                  viewBox={preset.viewBox}
+                                  className="h-full w-full object-contain pointer-events-none"
+                                  dangerouslySetInnerHTML={{ __html: preset.svgContent }}
+                                />
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addPresetSvg(preset.id)}
+                              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/50 bg-cyan-500/20 py-2.5 text-xs font-bold uppercase tracking-wider text-cyan-100 transition-all hover:bg-cyan-500/40 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95"
+                            >
+                              <span>Inserir na Lousa</span>
+                              <ArrowUpRight className="size-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-cyan-500/20 bg-slate-900/50 p-4">
+                          <label className="text-xs font-semibold text-cyan-300">
+                            Código Vetorial SVG (Cole elementos &lt;path&gt;, &lt;circle&gt;, &lt;g&gt; ou &lt;svg&gt; completo):
+                          </label>
+                          <textarea
+                            rows={8}
+                            value={customSvgCode}
+                            onChange={(e) => setCustomSvgCode(e.target.value)}
+                            placeholder="<circle cx='260' cy='170' r='80' fill='#22d3ee' opacity='0.5' />&#10;<text x='260' y='175' text-anchor='middle' fill='#ffffff'>MEU DIAGRAMA</text>"
+                            className="mt-2 w-full rounded-xl border border-cyan-500/30 bg-slate-950 p-3 font-mono text-xs text-cyan-200 outline-none transition focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                          />
+                        </div>
+
+                        {customSvgCode.trim() && (
+                          <div className="rounded-2xl border border-cyan-500/30 bg-slate-950 p-4">
+                            <p className="text-xs font-semibold text-cyan-400 mb-2">Pré-visualização ao vivo:</p>
+                            <div className="h-44 w-full overflow-hidden rounded-xl border border-cyan-500/20 bg-[#05110e] p-2 flex items-center justify-center">
+                              <svg
+                                viewBox="0 0 520 340"
+                                className="h-full w-full object-contain pointer-events-none"
+                                dangerouslySetInnerHTML={{ __html: customSvgCode }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsSvgModalOpen(false)}
+                            className="rounded-xl px-5 py-2.5 text-xs text-slate-400 hover:bg-slate-900"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={addCustomSvg}
+                            disabled={!customSvgCode.trim()}
+                            className="flex items-center gap-2 rounded-xl border border-cyan-400/60 bg-gradient-to-r from-cyan-500/30 to-blue-600/30 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-cyan-100 hover:from-cyan-500/50 hover:to-blue-600/50 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <span>Renderizar na Lousa</span>
+                            <ArrowUpRight className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       )}
