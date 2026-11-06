@@ -2220,9 +2220,7 @@ class Assistant(Agent):
         alvo_norm = (alvo or "atual").strip().lower()
         print(f"[AÇÃO] O Jarvis está minimizando: '{alvo_norm}'")
 
-        # 1. Se o usuário pediu para minimizar painéis internos da interface do Jarvis (lousa ou janela de e-mail)
-        if "lousa" in alvo_norm or "quadro" in alvo_norm:
-            return await self.fechar_lousa()
+        # 1. Se o usuário pediu para minimizar painéis internos da interface do Jarvis (janela de e-mail)
         if "rascunho" in alvo_norm or ("janela" in alvo_norm and "email" in alvo_norm):
             return await self.fechar_rascunho_email()
 
@@ -2258,8 +2256,6 @@ class Assistant(Agent):
         print(f"[AÇÃO] O Jarvis está maximizando/restaurando: '{alvo_norm}'")
 
         # 1. Painéis internos do Jarvis
-        if "lousa" in alvo_norm or "quadro" in alvo_norm:
-            return await self.abrir_lousa()
         if "rascunho" in alvo_norm or ("janela" in alvo_norm and "email" in alvo_norm):
             return await self.abrir_rascunho_email(reiniciar=False)
 
