@@ -73,6 +73,17 @@
     "descricao": "O usuário solicitou melhorias gerais na lousa de ensino (teaching-board.tsx). Analisar o código atual, modernizar a interface, otimizar a performance de desenho e garantir total responsividade e novas funcionalidades a pedido do usuário. Prioridade: ALTA.",
     "arquivo_sugerido": "frontend/components/app/teaching-board.tsx",
     "prioridade": "ALTA",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis",
+    "concluido_em": "06/11/2026 00:12:00"
+  },
+  {
+    "id": 8,
+    "data_hora": "06/11/2026 00:16:56",
+    "titulo": "Corrigir interação com elementos SVG na lousa de ensino",
+    "descricao": "Corrigir bug onde clicar em elementos SVG na lousa abre uma nova janela que fica atrás do quadro, impedindo a interação adequada. Garantir que a interação com SVGs funcione corretamente na interface da lousa.",
+    "arquivo_sugerido": "frontend/components/app/teaching-board.tsx",
+    "prioridade": "Alta",
     "status": "pendente",
     "origem": "Comando de voz do usuário via Jarvis"
   }

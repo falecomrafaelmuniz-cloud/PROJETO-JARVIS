@@ -119,9 +119,10 @@
   🟣 8.5. desenhar_esquema_na_lousa: Desenha retângulos, círculos ou setas na lousa.
   🟣 8.6. desenhar_linha_na_lousa: Desenha traços e linhas livres na lousa.
   🟣 8.7. adicionar_imagem_na_lousa: Adiciona uma imagem pública por URL HTTPS à lousa.
-  🟣 8.8. editar_item_na_lousa: Edita texto, cor ou posição de um item já existente na lousa.
-  🟣 8.9. apagar_item_da_lousa: Apaga um item específico ou desfaz o último item da lousa.
-  🟣 8.10. limpar_lousa: Apaga todo o conteúdo atual da lousa de ensino.
+  🟣 8.8. adicionar_desenho_svg_na_lousa: Adiciona ilustrações e esquemas vetoriais SVG customizados (turbinas, circuitos, diagramas, moléculas) na escala Widescreen 1920x1080 com manipulação interativa.
+  🟣 8.9. editar_item_na_lousa: Edita texto, cor ou posição de um item já existente na lousa.
+  🟣 8.10. apagar_item_da_lousa: Apaga um item específico ou desfaz o último item da lousa.
+  🟣 8.11. limpar_lousa: Apaga todo o conteúdo atual da lousa de ensino.
 
 --------------------------------------------------------------------------------
 

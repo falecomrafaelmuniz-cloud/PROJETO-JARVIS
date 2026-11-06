@@ -1302,110 +1302,151 @@ class Assistant(Agent):
         exemplo = str(estrutura.get("exemplo") or "").strip()[:190]
         analogia = str(estrutura.get("analogia") or "").strip()[:190]
 
-        # 1. Título no topo em amarelo giz
+        # 1. Título no topo Widescreen
         await self.escrever_na_lousa(
             texto=f"AULA: {titulo.upper()}",
-            x=40,
-            y=46,
-            cor="#f5d76e",
-            tamanho=31,
+            x=60,
+            y=60,
+            cor="#22d3ee",
+            tamanho=36,
         )
 
-        # 2. Ideia central logo abaixo em branco giz
+        # 2. Ideia central em destaque
         if ideia_central:
             await self.escrever_na_lousa(
                 texto=ideia_central,
-                x=40,
-                y=88,
+                x=60,
+                y=115,
                 cor="#f8f5e7",
-                tamanho=19,
+                tamanho=20,
             )
 
-        # 3. Conceitos-chave detalhados na coluna esquerda
+        # 3. Coluna 1 (Esquerda: x=60 a 640) - Conceitos-chave
         if conceitos:
-            texto_conceitos = "CONCEITOS-CHAVE:\n" + "\n".join(
+            texto_conceitos = "CONCEITOS-CHAVE:\n" + "\n\n".join(
                 f"{idx + 1}. {c}" for idx, c in enumerate(conceitos)
             )
             await self.escrever_na_lousa(
                 texto=texto_conceitos,
-                x=40,
-                y=180,
+                x=60,
+                y=210,
                 cor="#8ce5f2",
-                tamanho=18,
+                tamanho=19,
             )
 
-        # 4. Imagem ilustrativa no centro-esquerda inferior (quando disponível)
+        # 4. Coluna 2 (Centro: x=680 a 1240) - Imagens 3D Flutuantes e Esquemas Vetoriais SVG
+        termo_lower = assunto.lower()
+        desenho_svg_inserido = False
+        if any(k in termo_lower for k in ("turbina", "motor", "aviao", "avião", "jato", "aero")):
+            svg_turbina = """<g>
+<path d="M 50 60 Q 150 30 340 50 L 380 80 L 340 100 L 160 90 Q 75 90 50 60 Z" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+<path d="M 50 280 Q 150 310 340 290 L 380 260 L 340 240 L 160 250 Q 75 250 50 280 Z" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+<path d="M 25 55 L 140 68 L 340 78 L 430 90" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6 4" fill="none"/>
+<path d="M 25 285 L 140 272 L 340 262 L 430 250" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6 4" fill="none"/>
+<path d="M 40 170 Q 95 135 115 170 Q 95 205 40 170 Z" fill="#0284c7" stroke="#e0f2fe" stroke-width="2"/>
+<ellipse cx="115" cy="170" rx="14" ry="92" fill="none" stroke="#38bdf8" stroke-width="3.5"/>
+<line x1="115" y1="78" x2="115" y2="262" stroke="#7dd3fc" stroke-width="3"/>
+<path d="M 115 125 L 225 135 L 320 140 L 400 155 L 400 185 L 320 200 L 225 205 L 115 215 Z" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+<line x1="145" y1="128" x2="145" y2="212" stroke="#38bdf8" stroke-width="3"/>
+<line x1="170" y1="131" x2="170" y2="209" stroke="#38bdf8" stroke-width="3"/>
+<line x1="195" y1="133" x2="195" y2="207" stroke="#0ea5e9" stroke-width="3"/>
+<line x1="220" y1="135" x2="220" y2="205" stroke="#0ea5e9" stroke-width="3"/>
+<rect x="240" y="138" width="60" height="64" rx="6" fill="#450a0a" stroke="#ef4444" stroke-width="2"/>
+<circle cx="270" cy="170" r="7" fill="#fbbf24"/>
+<line x1="315" y1="142" x2="315" y2="198" stroke="#f97316" stroke-width="3.5"/>
+<line x1="335" y1="144" x2="335" y2="196" stroke="#f97316" stroke-width="3.5"/>
+<line x1="355" y1="148" x2="355" y2="192" stroke="#ef4444" stroke-width="3"/>
+<line x1="105" y1="170" x2="380" y2="170" stroke="#f8fafc" stroke-width="3.5" stroke-dasharray="8 4"/>
+<polygon points="400,152 495,135 480,170 495,205 400,188" fill="#ef4444" opacity="0.9"/>
+<text x="75" y="40" fill="#38bdf8" font-size="12" font-weight="bold" font-family="sans-serif">1. FAN FRONTAL</text>
+<text x="145" y="118" fill="#7dd3fc" font-size="11" font-weight="bold" font-family="sans-serif">2. COMPRESSOR</text>
+<text x="240" y="128" fill="#f87171" font-size="11" font-weight="bold" font-family="sans-serif">3. COMBUSTÃO</text>
+<text x="320" y="132" fill="#fb923c" font-size="11" font-weight="bold" font-family="sans-serif">4. TURBINA</text>
+<text x="420" y="132" fill="#facc15" font-size="12" font-weight="bold" font-family="sans-serif">5. EMPUXO</text>
+</g>"""
+            await self.adicionar_desenho_svg_na_lousa(
+                conteudo_svg=svg_turbina,
+                x=680,
+                y=210,
+                largura=540,
+                altura=340,
+                legenda="Esquema Técnico Vetorial: Turbofan em Corte",
+            )
+            desenho_svg_inserido = True
+
+        y_img = 580 if desenho_svg_inserido else 210
+        alt_img = 310 if desenho_svg_inserido else 330
         if imagens:
             img_principal = imagens[0]
             await self.adicionar_imagem_na_lousa(
                 url=img_principal["url"],
                 legenda=img_principal.get("legenda", assunto),
-                x=40,
-                y=430,
-                largura=310,
-                altura=195,
+                x=680,
+                y=y_img,
+                largura=540,
+                altura=alt_img,
             )
-            if len(imagens) > 1:
+            if len(imagens) > 1 and not desenho_svg_inserido:
                 img_sec = imagens[1]
                 await self.adicionar_imagem_na_lousa(
                     url=img_sec["url"],
                     legenda=img_sec.get("legenda", ""),
-                    x=375,
-                    y=430,
-                    largura=290,
-                    altura=195,
+                    x=680,
+                    y=570,
+                    largura=540,
+                    altura=320,
                 )
 
-        # 5. Esquema visual na direita (fluxograma completo com caixas coloridas e setas)
+        # 5. Coluna 3 (Direita: x=1280 a 1840) - Esquema e Fluxo Tático 3D
         await self.escrever_na_lousa(
-            texto="ESQUEMA VISUAL:",
-            x=710,
-            y=180,
-            cor="#f5d76e",
-            tamanho=19,
+            texto="ESQUEMA E FLUXO TÁTICO:",
+            x=1280,
+            y=210,
+            cor="#fbbf24",
+            tamanho=22,
         )
-        cores_esquema = ("#f5d76e", "#8ce5f2", "#ffb36b", "#ff9fba")
+        cores_esquema = ("#22d3ee", "#34d399", "#fbbf24", "#f472b6")
         if etapas:
-            y_caixa = 200
+            y_caixa = 260
             for idx, etapa in enumerate(etapas):
                 cor_caixa = cores_esquema[idx % len(cores_esquema)]
                 await self.desenhar_esquema_na_lousa(
                     tipo="retangulo",
-                    x=710,
+                    x=1280,
                     y=y_caixa,
-                    largura=450,
-                    altura=68,
+                    largura=540,
+                    altura=76,
                     rotulo=f"{idx + 1}. {etapa}",
                     cor=cor_caixa,
                 )
                 if idx < len(etapas) - 1:
                     await self.desenhar_esquema_na_lousa(
                         tipo="seta",
-                        x=935,
-                        y=y_caixa + 70,
+                        x=1550,
+                        y=y_caixa + 78,
                         largura=2,
-                        altura=28,
+                        altura=34,
                         rotulo="",
                         cor="#f8f5e7",
                     )
-                y_caixa += 100
+                y_caixa += 118
 
-        # 6. Analogia, Exemplo prático e Fontes na base da lousa
+        # 6. Rodapé em toda a largura Widescreen (x=60, y=930)
         rodape_partes: list[str] = []
         if analogia:
-            rodape_partes.append(f"Analogia: {analogia}")
+            rodape_partes.append(f"💡 Analogia: {analogia}")
         if exemplo:
-            rodape_partes.append(f"Na prática: {exemplo}")
+            rodape_partes.append(f"⚡ Na prática: {exemplo}")
         if fontes:
             titulos_fontes = ", ".join(f["titulo"] for f in fontes[:3])
-            rodape_partes.append(f"Fontes: {titulos_fontes}")
+            rodape_partes.append(f"📚 Fontes: {titulos_fontes}")
         if rodape_partes:
             await self.escrever_na_lousa(
-                texto="\n".join(rodape_partes),
-                x=40,
-                y=665,
+                texto="  |  ".join(rodape_partes),
+                x=60,
+                y=930,
                 cor="#ffb36b",
-                tamanho=16,
+                tamanho=17,
             )
 
     @function_tool(description="Pesquisa um assunto na web em ~3 segundos, abre a lousa imediatamente com conceitos, imagens ilustrativas e fluxograma, e retorna a aula completa para você explicar ao usuário.")
@@ -1704,6 +1745,40 @@ class Assistant(Agent):
             "color": cor,
             "size": max(1, min(24, espessura)),
         }
+        return await self._publicar_na_lousa("add", element)
+
+    @function_tool(
+        description=(
+            "Adiciona à lousa um desenho ou elemento vetorial SVG customizado (esquemas técnicos, turbinas, "
+            "circuitos, moléculas, diagramas, ícones ou ilustrações vetoriais complexas). "
+            "Pode receber o código SVG interno (<path ... />, <circle ... />), coordenadas "
+            "x/y na escala 1920x1080, largura, altura e legenda."
+        )
+    )
+    async def adicionar_desenho_svg_na_lousa(
+        self,
+        conteudo_svg: str,
+        x: float = 680,
+        y: float = 250,
+        largura: float = 540,
+        altura: float = 340,
+        legenda: str = "",
+        cor_borda: str = "#22d3ee",
+    ):
+        if not conteudo_svg.strip():
+            return "Aviso: informe o conteúdo SVG."
+        element = {
+            "id": f"svg-{uuid.uuid4().hex[:8]}",
+            "type": "svg",
+            "x": float(x),
+            "y": float(y),
+            "width": float(largura),
+            "height": float(altura),
+            "color": cor_borda,
+            "svgContent": conteudo_svg.strip(),
+            "label": legenda.strip(),
+        }
+        await self.abrir_lousa()
         return await self._publicar_na_lousa("add", element)
 
     @function_tool(description="Adiciona à lousa uma imagem pública por URL HTTPS. Não use links privados nem temporários que exijam login; para fotos locais, peça ao usuário para carregá-las pela lousa.")
