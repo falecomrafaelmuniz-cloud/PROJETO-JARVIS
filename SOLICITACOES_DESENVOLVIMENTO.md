@@ -4,6 +4,7 @@
 
 | ID | Data / Hora | Título | Arquivo Alvo | Prioridade | Status |
 |---|---|---|---|---|---|
+| #10 | 06/11/2026 02:25:00 | **Visão da tela em tempo real para aulas e navegação multi-aba dinâmica** | `backend/agent.py, backend/jarvis_browser.py, backend/prompts.py` | ALTA | ✅ concluido |
 | #9 | 06/11/2026 01:31:09 | **Remover lousa e implantar ensino visual com abertura direta no navegador** | `frontend/components/app/session-view.tsx, backend/agent.py` | ALTA | ✅ concluido |
 | #8 | 06/11/2026 00:16:56 | **Corrigir interação com elementos SVG na lousa de ensino** | `frontend/components/app/teaching-board.tsx` | ALTA | ✅ concluido |
 | #7 | 05/11/2026 23:20:48 | **Modernização e otimização da Lousa de Ensino** | `frontend/components/app/teaching-board.tsx` | ALTA | ✅ concluido |
@@ -15,9 +16,9 @@
 | #1 | 05/11/2026 02:21:35 | **Modernização da Lousa de Ensino** | `frontend/components/app/teaching-board.tsx` | ALTA | ✅ concluido |
 
 ## Detalhes da Última Solicitação:
-- **ID**: #9
-- **Título**: Remover lousa e implantar ensino visual com abertura direta no navegador
-- **Arquivo Alvo**: `frontend/components/app/session-view.tsx` & `backend/agent.py`
-- **Descrição**: Remoção completa do componente da lousa de ensino da interface e de todas as ferramentas de desenho/giz, substituindo por um novo fluxo de ensino direto: ao solicitar uma aula ou explicação sobre qualquer tema, o Jarvis abre imediatamente a página oficial ilustrada (Wikipédia, artigos científicos e esquemas reais) no navegador Chrome em tela cheia e conduz uma explicação didática falada em tempo real sincronizada com o que o usuário visualiza na tela.
+- **ID**: #10
+- **Título**: Visão da tela em tempo real para aulas e navegação multi-aba dinâmica
+- **Arquivo Alvo**: `backend/agent.py`, `backend/jarvis_browser.py`, `backend/jarvis_chrome_extension/service_worker.js`, `backend/prompts.py`
+- **Descrição**: O Jarvis agora tem visão computacional em tempo real da tela: ao abrir o recurso visual inicial no Chrome (vídeo 3D no YouTube, esquemas e infográficos), ele captura e analisa a tela ao vivo, conectando sua explicação por voz exatamente ao que o usuário está enxergando na tela. Além disso, o Jarvis não fica preso a apenas 1 página: ele pode abrir recursos adicionais em novas abas (`abrir_recurso_adicional_aula` e `abrir_site` com `nova_aba=True`) sem fechar nem sobrescrever o conteúdo anterior, permitindo uma aula interativa, rica e com múltiplos materiais abertos simultaneamente.
 - **Prioridade**: ALTA
 - **Status**: ✅ Concluído com sucesso pelo Antigravity!

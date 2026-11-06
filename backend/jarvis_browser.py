@@ -77,7 +77,7 @@ class JarvisChrome:
                     }
         return {"url": "", "title": ""}
 
-    def open_url(self, url):
+    def open_url(self, url, nova_aba=False):
         parsed_url = urlparse(url)
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise JarvisBrowserError("Só posso abrir endereços web HTTP ou HTTPS.")
@@ -85,16 +85,16 @@ class JarvisChrome:
         with self._open_lock:
             now = time.monotonic()
             with self._pending_lock:
-                if url == self._last_opened_url and (now - self._last_opened_at) < 2.0:
+                if not nova_aba and url == self._last_opened_url and (now - self._last_opened_at) < 2.0:
                     return "jarvis_tab"
 
             try:
                 self._ensure_bridge()
             except JarvisBrowserError:
-                return self._open_default_browser(url)
+                return self._open_default_browser(url, nova_aba=nova_aba)
 
             if not self._wait_for_extension():
-                return self._open_default_browser(url)
+                return self._open_default_browser(url, nova_aba=nova_aba)
 
             # Substitui comandos antigos que ainda não foram despachados na fila para evitar abrir várias URLs em sequência
             while not self._commands.empty():
@@ -129,6 +129,7 @@ class JarvisChrome:
                 {
                     "request_id": request_id,
                     "url": url,
+                    "nova_aba": bool(nova_aba),
                     "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
                 }
             )
@@ -139,7 +140,7 @@ class JarvisChrome:
                     ever_conn = self._ever_connected
                 if pending["dispatched"].is_set() or ever_conn:
                     return "jarvis_tab"
-                return self._open_default_browser(url)
+                return self._open_default_browser(url, nova_aba=nova_aba)
 
             result = pending["result"]
             if not result or not result.get("ok"):
@@ -264,10 +265,14 @@ class JarvisChrome:
             return ""
 
     @staticmethod
-    def _open_default_browser(url):
+    def _open_default_browser(url, nova_aba=False):
         try:
-            os.startfile(url)
-        except OSError as error:
+            if nova_aba:
+                import webbrowser
+                webbrowser.open_new_tab(url)
+            else:
+                os.startfile(url)
+        except Exception as error:
             raise JarvisBrowserError(
                 f"Não foi possível abrir o link no navegador padrão: {error}"
             ) from error

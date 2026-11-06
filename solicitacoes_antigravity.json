@@ -98,5 +98,16 @@
     "status": "concluido",
     "origem": "Comando direto do usuário no chat",
     "concluido_em": "06/11/2026 01:36:00"
+  },
+  {
+    "id": 10,
+    "data_hora": "06/11/2026 02:25:00",
+    "titulo": "Visão da tela em tempo real para aulas e navegação multi-aba dinâmica",
+    "descricao": "Dotar o Jarvis de visão em tempo real do que está na tela do usuário ao iniciar uma aula e durante a explicação, conectando sua fala com os elementos visuais reais exibidos (vídeos 3D, diagramas, esquemas em corte). Permitir abertura de múltiplos recursos e abas adicionais no Chrome (abrir_recurso_adicional_aula e abrir_site com nova_aba=True) sem sobrescrever o conteúdo anterior, tornando a aula dinâmica, visual e interativa.",
+    "arquivo_sugerido": "backend/agent.py, backend/jarvis_browser.py, backend/jarvis_chrome_extension/service_worker.js, backend/prompts.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando direto do usuário no chat",
+    "concluido_em": "06/11/2026 02:35:00"
   }
 ]

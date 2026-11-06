@@ -186,7 +186,7 @@ async function handleCommand(command) {
       const mode = await focusOrMaximizeJarvisTab(command.target);
       result = { request_id: command.request_id, ok: Boolean(mode), mode };
     } else {
-      await openInJarvisTab(command.url);
+      await openInJarvisTab(command.url, Boolean(command.nova_aba));
       result = { request_id: command.request_id, ok: true };
     }
   } catch (error) {
@@ -385,7 +385,33 @@ async function focusOrMaximizeJarvisTab(target) {
   return "tab_focused_and_maximized";
 }
 
-async function openInJarvisTab(url) {
+async function openInJarvisTab(url, novaAba = false) {
+  // Se novaAba for true, abre diretamente em uma nova aba para permitir múltiplos recursos simultâneos
+  if (novaAba) {
+    try {
+      const activeTabs = await chrome.tabs.query({
+        active: true,
+        lastFocusedWindow: true,
+      });
+      const activeTab = activeTabs[0];
+      let windowId = activeTab ? activeTab.windowId : undefined;
+      const options = { url, active: true };
+      if (Number.isInteger(windowId)) {
+        options.windowId = windowId;
+      }
+      if (activeTab && activeTab.windowId === windowId) {
+        options.index = activeTab.index + 1;
+      }
+      const newTab = await chrome.tabs.create(options);
+      if (newTab && newTab.windowId) {
+        await chrome.windows.update(newTab.windowId, { focused: true });
+      }
+      return;
+    } catch {
+      // fallback
+    }
+  }
+
   // Se for uma ação dentro do Google Mail, reutiliza SEMPRE a mesma aba do Gmail
   if (typeof url === "string" && url.includes("mail.google.com")) {
     try {

@@ -111,8 +111,9 @@
 
 --------------------------------------------------------------------------------
 
-🟣 [ROXO - 8. Ensino Didático e Aulas Visuais no Navegador]
-  🟣 8.1. pesquisar_assunto_para_aula: Pesquisa um assunto na web em alta velocidade, localiza o artigo mais completo e ilustrado (Wikipédia, portais científicos ou esquemas técnicos), ABRE DIRETAMENTE na tela do navegador Chrome do usuário com esquemas e fotos reais em tela cheia, e fornece o roteiro didático estruturado para o Jarvis ensinar por voz guiando o que está na tela.
+🟣 [ROXO - 8. Ensino Didático Visual, Visão da Tela e Aulas Multi-Aba]
+  🟣 8.1. pesquisar_assunto_para_aula: Pesquisa vídeos/animações 3D no YouTube e infográficos ricos no Google (sem Wikipédia), ABRE DIRETAMENTE na tela do Chrome, captura a tela ao vivo com visão computacional para ver o que está sendo exibido e fornece o roteiro didático para o Jarvis ensinar por voz relacionando com o que o aluno está vendo.
+  🟣 8.2. abrir_recurso_adicional_aula: Abre novos recursos complementares em novas abas ao lado (diagramas em corte, esquemas técnicos, novos vídeos ou infográficos) durante a aula sem fechar a aba anterior, inspecionando visualmente a nova tela para continuar a explicação.
 
 --------------------------------------------------------------------------------
 

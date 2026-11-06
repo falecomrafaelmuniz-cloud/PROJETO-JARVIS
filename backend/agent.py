@@ -1358,9 +1358,24 @@ class Assistant(Agent):
 
             try:
                 print(f"[AULA VISUAL] Abrindo página na tela do usuário: {nome_alvo} ({url_alvo})")
-                await asyncio.to_thread(jarvis_chrome.open_url, url_alvo)
+                await asyncio.to_thread(jarvis_chrome.open_url, url_alvo, False)
             except Exception as e_navegador:
                 logger_memoria.warning("evento=aula_abrir_navegador status=aviso erro=%s", str(e_navegador))
+
+            # Aguarda renderização e foca a visão do Jarvis na tela do usuário
+            visao_tela = ""
+            try:
+                await asyncio.sleep(1.4)
+                img_tela = await asyncio.to_thread(self._capturar_imagem_tela)
+                if img_tela:
+                    prompt_visao = (
+                        f"Você é o Jarvis observando a tela aberta do usuário para dar uma aula sobre '{assunto}'. "
+                        "Descreva em 3 ou 4 tópicos objetivos o que está visível na tela agora (vídeo, animação 3D, esquemas, componentes ou diagramas), "
+                        "para que sua fala se conecte diretamente com o que o aluno está enxergando na tela."
+                    )
+                    visao_tela = await asyncio.to_thread(self._chamar_gemini_visao, img_tela, prompt_visao)
+            except Exception as e_vis:
+                logger_memoria.warning("evento=aula_captura_visao status=aviso erro=%s", str(e_vis))
 
             duracao_ms = int((time.monotonic() - pesquisa_iniciada) * 1000)
             logger_memoria.info(
@@ -1373,15 +1388,81 @@ class Assistant(Agent):
             roteiro = str(estrutura.get("roteiro_fala") or estrutura.get("ideia_central") or "").strip()
             conceitos_txt = " | ".join(str(c) for c in (estrutura.get("conceitos") or [])[:4])
             resumo_retorno = (
-                f"O conteúdo visual rico sobre '{assunto}' JÁ FOI ABERTO na tela do navegador Chrome do usuário ({nome_alvo} - {url_alvo}). "
-                f"NÃO FOI USADA WIKIPÉDIA. "
-                f"Comece IMEDIATAMENTE a ensinar e explicar o assunto em voz alta com entusiasmo, autoridade e clareza didática (não chame mais nenhuma ferramenta), guiando o usuário pelo que está na tela:\n"
-                f"Roteiro de explicação: {roteiro}\n"
-                f"Pontos-chave: {conceitos_txt}\n"
-                f"Analogia: {estrutura.get('analogia', '')} | Exemplo prático: {estrutura.get('exemplo', '')}."
+                f"O conteúdo visual rico sobre '{assunto}' JÁ ESTÁ ABERTO na tela do Chrome do usuário ({nome_alvo} - {url_alvo}).\n"
+            )
+            if visao_tela and not visao_tela.startswith("Aviso:"):
+                resumo_retorno += (
+                    f"=== VISÃO REAL DA TELA (O que o usuário está vendo agora) ===\n"
+                    f"{visao_tela}\n"
+                    f"=============================================================\n"
+                )
+            resumo_retorno += (
+                f"ORIENTAÇÃO DIDÁTICA PARA A AULA:\n"
+                f"1. Comece IMEDIATAMENTE a ensinar e explicar o assunto em voz alta com clareza, empolgação e autoridade didática.\n"
+                f"2. Conecte sua explicação aos elementos visuais que você viu na tela ('Como você pode ver aqui...', 'repare no compressor...', 'observe a câmara de combustão...').\n"
+                f"3. Roteiro sugerido: {roteiro}\n"
+                f"4. Pontos centrais: {conceitos_txt}\n"
+                f"5. Analogia: {estrutura.get('analogia', '')} | Exemplo: {estrutura.get('exemplo', '')}\n"
+                f"6. VOCÊ PODE ABRIR OUTROS LUGARES E ABAS CONFORME A AULA AVANÇA: Se quiser mostrar um diagrama em corte, esquema técnico, infográfico ou comparativo, use a ferramenta `abrir_recurso_adicional_aula(termo_ou_topico=..., tipo_recurso=...)` (isso abrirá uma nova aba ao lado sem fechar a atual e te dará a visão da nova tela).\n"
+                f"7. Se quiser inspecionar novamente a tela a qualquer momento ou responder a perguntas específicas do usuário sobre o que está na tela, chame `analisar_tela_ou_janela_ativa`.\n"
+                f"Não precisa ser robótico nem falar exclusivamente da tela a todo instante; desenvolva a aula com fluidez, conduzindo o usuário e usando o visual para apoiar a explicação."
             )
             self._ultima_pesquisa_cache = (chave_cache, time.monotonic(), resumo_retorno)
             return resumo_retorno
+
+    @function_tool(
+        description=(
+            "Abre um recurso visual complementar em uma NOVA ABA no Chrome durante uma aula ou explicação "
+            "(ex: diagramas em corte, esquemas técnicos, infográficos ou comparações no Google Imagens ou YouTube). "
+            "Use para enriquecer a aula abrindo novos lugares enquanto você ensina, sem fechar a aba anterior. "
+            "Ele já analisa visualmente a nova tela e te retorna o que apareceu para você continuar explicando."
+        )
+    )
+    async def abrir_recurso_adicional_aula(
+        self,
+        termo_ou_topico: str,
+        tipo_recurso: str = "esquema",
+    ) -> str:
+        termo = (termo_ou_topico or "").strip()
+        if not termo:
+            return "Aviso: Nenhum tópico informado para o recurso adicional."
+
+        tipo = (tipo_recurso or "esquema").strip().lower()
+        if any(k in tipo for k in ("video", "vídeo", "youtube", "animacao", "animação")):
+            url_alvo = f"https://www.youtube.com/results?search_query={url_quote(termo + ' 3d animacao')}"
+            nome = f"Vídeo/Animação 3D de {termo}"
+        elif any(k in tipo for k in ("artigo", "site", "guia", "portal", "leitura")):
+            url_alvo = f"https://www.google.com/search?q={url_quote(termo + ' explicacao tecnica funcionamento')}"
+            nome = f"Guia/Artigo de {termo}"
+        else:
+            url_alvo = f"https://www.google.com/search?q={url_quote(termo + ' esquema diagrama infografico corte')}&tbm=isch"
+            nome = f"Diagrama/Esquema de {termo}"
+
+        try:
+            print(f"[AULA RECURSO EXTRA] Abrindo nova aba: {nome} ({url_alvo})")
+            await asyncio.to_thread(jarvis_chrome.open_url, url_alvo, True)
+        except Exception as e_nav:
+            logger_memoria.warning("evento=aula_recurso_extra status=aviso erro=%s", str(e_nav))
+
+        visao = ""
+        try:
+            await asyncio.sleep(1.4)
+            img = await asyncio.to_thread(self._capturar_imagem_tela)
+            if img:
+                prompt_vis = (
+                    f"Você é o Jarvis observando a nova tela aberta sobre '{termo}'. "
+                    "Descreva em 3 tópicos diretos e objetivos os elementos visuais principais (diagramas, fotos ou cortes) "
+                    "para apoiar a sua fala e guiar o aluno."
+                )
+                visao = await asyncio.to_thread(self._chamar_gemini_visao, img, prompt_vis)
+        except Exception as e_v:
+            logger_memoria.warning("evento=aula_recurso_extra_visao status=aviso erro=%s", str(e_v))
+
+        msg = f"Nova aba com '{nome}' aberta com sucesso ao lado na tela do usuário ({url_alvo})."
+        if visao and not visao.startswith("Aviso:"):
+            msg += f"\n=== VISÃO DA NOVA TELA ABERTA ===\n{visao}\n================================="
+        msg += "\nContinue conduzindo a aula em voz alta, integrando essa nova visão à sua explicação!"
+        return msg
 
     async def _buscar_video_youtube(self, consulta: str) -> tuple[str | None, str | None]:
         termo = consulta.strip()
@@ -1505,8 +1586,8 @@ class Assistant(Agent):
         except Exception as erro:
             return f"Aviso: não foi possível enviar o comando de mídia: {erro}"
 
-    @function_tool(description="Abre um endereço web no Chrome padrão; reutiliza a aba da Jarvis quando a extensão está ativa.")
-    async def abrir_site(self, url: str, nome_site: str):
+    @function_tool(description="Abre um endereço web no Chrome. Se nova_aba for True, abre em uma nova aba ao lado sem fechar a atual.")
+    async def abrir_site(self, url: str, nome_site: str, nova_aba: bool = False):
         url_final = url.strip()
         # Se o modelo tentar abrir uma página de busca do YouTube, converte automaticamente para o vídeo direto tocando
         yt_search_match = re.search(
@@ -1530,13 +1611,13 @@ class Assistant(Agent):
             await self._navegar_no_gmail_navegador(url_final)
             return "Gmail aberto e focado na mesma aba do navegador."
 
-        print(f"[AÇÃO] O Jarvis está abrindo o site: {nome_site} ({url_final})")
+        print(f"[AÇÃO] O Jarvis está abrindo o site: {nome_site} ({url_final}) [nova_aba={nova_aba}]")
         try:
-            resultado = await asyncio.to_thread(jarvis_chrome.open_url, url_final)
+            resultado = await asyncio.to_thread(jarvis_chrome.open_url, url_final, nova_aba)
         except JarvisBrowserError as erro:
             return f"Aviso: Não foi possível abrir {nome_site} no navegador da Jarvis: {erro}"
         if resultado == "jarvis_tab":
-            return "Ação executada com sucesso na aba da Jarvis do Chrome."
+            return f"Ação executada com sucesso na aba do Chrome ({'nova aba' if nova_aba else 'aba ativa'})."
         return "Ação executada com sucesso no navegador padrão do computador."
 
     @function_tool(description="Abre um programa ou aplicativo no computador.")
@@ -2573,11 +2654,11 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Analisa visualmente em tempo real o que está aberto na tela do computador do usuário "
+            "Analisa visualmente em tempo real o que está aparecendo na tela do computador do usuário "
             "(usando visão multimodal avançada do Gemini). "
-            "Use sempre que o usuário perguntar 'o que está na minha tela?', 'lê essa tela/janela para mim', "
-            "'resume o que está aberto aqui', 'encontra tal informação nessa tela', 'qual o erro que apareceu?', "
-            "ou pedir para analisar imagens, gráficos, sites ou aplicativos visíveis na tela."
+            "Use sempre que o usuário perguntar 'o que você está vendo?', 'lê essa tela para mim', "
+            "'está vendo essa parte?', 'qual o erro?', 'resume o que está aberto aqui', "
+            "ou durante uma aula quando você quiser checar a tela para comentar elementos visuais ou diagramas específicos."
         )
     )
     async def analisar_tela_ou_janela_ativa(self, pergunta_ou_foco: str = ""):
