@@ -164,5 +164,16 @@
     "status": "concluido",
     "origem": "Comando direto do usuário no chat",
     "concluido_em": "07/11/2026 02:17:00"
+  },
+  {
+    "id": 16,
+    "data_hora": "07/11/2026 02:35:00",
+    "titulo": "Fix: Fixar Acelerador com Ponteiro no topo, impedir auto-hide e persistência do Painel Trader",
+    "descricao": "Correção completa para garantir que o Acelerador com o Ponteiro (Tacômetro) e o Painel Trader permaneçam sempre visíveis: 1) O mostrador do Acelerador com ponteiro foi fixado no topo do Painel Quant, fora da área de rolagem, garantindo que nunca suba ou fique escondido ao carregar os ativos; 2) Desativado o auto-hide da barra de controles inferior quando o modo Trader estiver ativo; 3) Persistência de abertura do painel no LocalStorage para não fechar sozinho; 4) Restrição do drag do mouse apenas ao cabeçalho para evitar deslocamento indesejado.",
+    "arquivo_sugerido": "frontend/components/app/quant-panel.tsx, frontend/components/agents-ui/agent-control-bar.tsx, frontend/components/app/session-view.tsx",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando direto do usuário no chat",
+    "concluido_em": "07/11/2026 02:36:00"
   }
 ]

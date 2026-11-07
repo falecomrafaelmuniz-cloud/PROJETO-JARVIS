@@ -328,8 +328,8 @@ export function AgentControlBar({
       setIsVisible(true);
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
 
-      // Não oculta se: Chat aberto OU Barra travada
-      if (!isChatOpen && !isChatOpenUncontrolled && !isLocked) {
+      // Não oculta se: Chat aberto OU Barra travada OU Modo Trader B3 ativo
+      if (!isChatOpen && !isChatOpenUncontrolled && !isLocked && !isTraderOpen) {
         hideTimeoutRef.current = setTimeout(() => {
           setIsVisible(false);
         }, 3000); // 3 segundos de inatividade
@@ -343,7 +343,7 @@ export function AgentControlBar({
       window.removeEventListener('mousemove', handleMouseMove);
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
     };
-  }, [isChatOpen, isChatOpenUncontrolled, isLocked]);
+  }, [isChatOpen, isChatOpenUncontrolled, isLocked, isTraderOpen]);
 
   const handleSendMessage = async (message: string) => {
     await send(message);

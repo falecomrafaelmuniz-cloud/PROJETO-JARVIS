@@ -161,10 +161,14 @@ export async function GET() {
   symbols.forEach((symbol, idx) => {
     const cfg = SYMBOL_CONFIG[symbol];
     const r = results[idx];
-    const data =
-      r.status === 'fulfilled' && r.value.price > 0
-        ? r.value
-        : { price: 0, changePercent: 0 };
+    const safeChange =
+      r.status === 'fulfilled' && Number.isFinite(r.value.changePercent)
+        ? r.value.changePercent
+        : 0;
+    const safePrice =
+      r.status === 'fulfilled' && Number.isFinite(r.value.price)
+        ? r.value.price
+        : 0;
 
     assets.push({
       symbol,
@@ -173,13 +177,13 @@ export async function GET() {
       correlation: cfg.correlation,
       currency: cfg.currency,
       weight: cfg.weight,
-      price: data.price,
-      changePercent: data.changePercent,
+      price: safePrice,
+      changePercent: safeChange,
     });
 
     // Se o ativo tem cotação/variação, computa no acelerador
-    if (data.changePercent !== 0) {
-      weightedSum += data.changePercent * cfg.weight;
+    if (safeChange !== 0) {
+      weightedSum += safeChange * cfg.weight;
       totalAbsWeight += Math.abs(cfg.weight);
     }
   });
@@ -187,6 +191,7 @@ export async function GET() {
   // Normaliza o acelerador entre -100% e +100%
   // 1.5% de movimento médio ponderado representa 100% no acelerador
   let rawScore = totalAbsWeight > 0 ? (weightedSum / (totalAbsWeight * 1.5)) * 100 : 0;
+  if (!Number.isFinite(rawScore)) rawScore = 0;
   rawScore = Math.max(-100, Math.min(100, rawScore));
   const biasScore = Math.round(rawScore);
 

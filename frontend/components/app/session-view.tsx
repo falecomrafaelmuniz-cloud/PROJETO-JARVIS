@@ -274,7 +274,33 @@ export const SessionView = ({
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
-  const [traderOpen, setTraderOpen] = useState(true);
+  const [traderOpen, setTraderOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const saved = localStorage.getItem('jarvis-trader-open');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleTrader = React.useCallback(() => {
+    setTraderOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('jarvis-trader-open', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleCloseTrader = React.useCallback(() => {
+    setTraderOpen(false);
+    try {
+      localStorage.setItem('jarvis-trader-open', 'false');
+    } catch {}
+  }, []);
+
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const vantaEffectRef = useRef<VantaEffect | null>(null);
   const {
@@ -359,15 +385,15 @@ export const SessionView = ({
       <LocationSharing />
       <NeuralNetworkVisualizer />
       <EmailComposer />
-      <QuantPanel isOpen={traderOpen} onClose={() => setTraderOpen(false)} />
+      <QuantPanel isOpen={traderOpen} onClose={handleCloseTrader} />
 
       {/* Botão de Atalho Rápido TRADER B3 no Topo */}
       {!traderOpen && (
         <button
           type="button"
-          onClick={() => setTraderOpen(true)}
+          onClick={handleToggleTrader}
           title="Abrir Painel Quant Trader B3"
-          className="pointer-events-auto absolute top-3 left-3 z-30 flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-black/85 px-3 py-1.5 font-mono text-xs font-bold text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] backdrop-blur-xl hover:bg-emerald-500/20 hover:border-emerald-400 transition-all cursor-pointer"
+          className="pointer-events-auto absolute top-3 left-[18.5rem] z-40 flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-black/85 px-3 py-1.5 font-mono text-xs font-bold text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] backdrop-blur-xl hover:bg-emerald-500/20 hover:border-emerald-400 transition-all cursor-pointer"
         >
           <TrendingUp className="size-4 text-emerald-400 animate-pulse" />
           <span>TRADER B3</span>
@@ -456,7 +482,7 @@ export const SessionView = ({
             onDisconnect={handleDisconnect}
             onIsChatOpenChange={setChatOpen}
             isTraderOpen={traderOpen}
-            onToggleTrader={() => setTraderOpen((prev) => !prev)}
+            onToggleTrader={handleToggleTrader}
           />
         </div>
       </MotionBottom>
