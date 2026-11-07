@@ -4,6 +4,7 @@
 
 | ID | Data / Hora | Título | Arquivo Alvo | Prioridade | Status |
 |---|---|---|---|---|---|
+| #17 | 07/11/2026 02:50:00 | **Remover TRADER B3 da barra de ferramentas e deixar botão flutuante arrastável e redimensionável ciano** | `frontend/components/agents-ui/agent-control-bar.tsx, frontend/components/app/session-view.tsx` | ALTA | ✅ concluido |
 | #16 | 07/11/2026 02:35:00 | **Fix: Fixar Acelerador com Ponteiro no topo, impedir auto-hide e persistência do Painel Trader** | `frontend/components/app/quant-panel.tsx, frontend/components/agents-ui/agent-control-bar.tsx, frontend/components/app/session-view.tsx` | ALTA | ✅ concluido |
 | #15 | 07/11/2026 02:15:00 | **Botão TRADER B3 e Painel Quant com Acelerador de Viés e Ativos Correlacionados** | `frontend/components/app/quant-panel.tsx, frontend/app/api/quant-data/route.ts, frontend/components/agents-ui/agent-control-bar.tsx, frontend/components/app/session-view.tsx` | ALTA | ✅ concluido |
 | #14 | 07/11/2026 01:40:00 | **Especialista em Day Trade no Mini Índice (WIN - B3) & Plataforma Profit (Nelogica)** | `backend/trader_wini.py, backend/agent.py, backend/prompts.py, frontend/components/app/activity-panel.tsx` | ALTA | ✅ concluido |
@@ -22,9 +23,9 @@
 | #1 | 05/11/2026 02:21:35 | **Modernização da Lousa de Ensino** | `frontend/components/app/teaching-board.tsx` | ALTA | ✅ concluido |
 
 ## Detalhes da Última Solicitação:
-- **ID**: #16
-- **Título**: Fix: Fixar Acelerador com Ponteiro no topo, impedir auto-hide e persistência do Painel Trader
-- **Arquivo Alvo**: `frontend/components/app/quant-panel.tsx`, `frontend/components/agents-ui/agent-control-bar.tsx`, `frontend/components/app/session-view.tsx`
-- **Descrição**: Correção completa para garantir que o Acelerador com o Ponteiro (Tacômetro) e o Painel Trader permaneçam sempre visíveis: 1) O mostrador do Acelerador com ponteiro foi fixado no topo do Painel Quant, fora da área de rolagem, garantindo que nunca suba ou fique escondido ao carregar os ativos; 2) Desativado o auto-hide da barra de controles inferior quando o modo Trader estiver ativo; 3) Persistência de abertura do painel no LocalStorage para não fechar sozinho; 4) Restrição do drag do mouse apenas ao cabeçalho para evitar deslocamento indesejado.
+- **ID**: #17
+- **Título**: Remover TRADER B3 da barra de ferramentas e deixar botão flutuante arrastável e redimensionável ciano
+- **Arquivo Alvo**: `frontend/components/agents-ui/agent-control-bar.tsx`, `frontend/components/app/session-view.tsx`
+- **Descrição**: Remoção do botão TRADER B3 da barra inferior de controles (junto ao microfone e sair). O acionamento agora é feito exclusivamente pelo botão flutuante de estilo Jarvis (cor ciano, efeito holográfico de vidro), que conta com suporte total a drag-and-drop para mover livremente pela tela e redimensionamento por arraste de borda via useDraggableFloating.
 - **Prioridade**: ALTA
 - **Status**: ✅ Concluído com sucesso pelo Antigravity!

@@ -2,7 +2,7 @@
 
 import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import { Track } from 'livekit-client';
-import { Loader, MessageSquareTextIcon, Pin, Power, SendHorizontal, TrendingUp } from 'lucide-react';
+import { Loader, MessageSquareTextIcon, Pin, Power, SendHorizontal } from 'lucide-react';
 import { motion } from 'motion/react';
 import { type ReceivedMessage, useChat } from '@livekit/components-react';
 import { AgentDisconnectButton } from '@/components/agents-ui/agent-disconnect-button';
@@ -211,14 +211,6 @@ export interface AgentControlBarProps extends UseInputControlsProps {
    * Messages to display inside the compact control bar chat drawer.
    */
   messages?: ReceivedMessage[];
-  /**
-   * Whether the Quant Trader B3 panel is open.
-   */
-  isTraderOpen?: boolean;
-  /**
-   * Callback to toggle the Quant Trader B3 panel.
-   */
-  onToggleTrader?: () => void;
 }
 
 /**
@@ -254,8 +246,6 @@ export function AgentControlBar({
   onDeviceError,
   onIsChatOpenChange,
   messages = [],
-  isTraderOpen = false,
-  onToggleTrader,
   className,
   ...props
 }: AgentControlBarProps & ComponentProps<'div'>) {
@@ -328,8 +318,8 @@ export function AgentControlBar({
       setIsVisible(true);
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
 
-      // Não oculta se: Chat aberto OU Barra travada OU Modo Trader B3 ativo
-      if (!isChatOpen && !isChatOpenUncontrolled && !isLocked && !isTraderOpen) {
+      // Não oculta se: Chat aberto OU Barra travada
+      if (!isChatOpen && !isChatOpenUncontrolled && !isLocked) {
         hideTimeoutRef.current = setTimeout(() => {
           setIsVisible(false);
         }, 3000); // 3 segundos de inatividade
@@ -343,7 +333,7 @@ export function AgentControlBar({
       window.removeEventListener('mousemove', handleMouseMove);
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
     };
-  }, [isChatOpen, isChatOpenUncontrolled, isLocked, isTraderOpen]);
+  }, [isChatOpen, isChatOpenUncontrolled, isLocked]);
 
   const handleSendMessage = async (message: string) => {
     await send(message);
@@ -530,30 +520,6 @@ export function AgentControlBar({
               >
                 <MessageSquareTextIcon />
               </Toggle>
-            )}
-
-            {/* Botão Especialista TRADER B3 */}
-            {onToggleTrader && (
-              <button
-                type="button"
-                onClick={onToggleTrader}
-                title={isTraderOpen ? 'Ocultar Painel Quant Trader B3' : 'Abrir Painel Quant Trader B3'}
-                className={cn(
-                  'ml-1 flex items-center gap-1.5 rounded-full px-3 py-1.5 font-mono text-xs font-bold tracking-wider transition-all duration-300 select-none',
-                  isTraderOpen
-                    ? 'border border-emerald-400/60 bg-emerald-500/20 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400/50'
-                    : 'border border-cyan-500/30 bg-[#1da3b9]/10 text-cyan-200/80 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-emerald-300'
-                )}
-              >
-                <TrendingUp className={cn('size-3.5', isTraderOpen ? 'text-emerald-400 animate-pulse' : 'text-cyan-400')} />
-                <span className="hidden sm:inline">TRADER B3</span>
-                <span
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    isTraderOpen ? 'bg-emerald-400 shadow-[0_0_6px_#10b981]' : 'bg-cyan-400/60'
-                  )}
-                />
-              </button>
             )}
           </div>
 

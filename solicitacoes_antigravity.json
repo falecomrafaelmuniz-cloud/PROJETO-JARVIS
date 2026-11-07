@@ -175,5 +175,16 @@
     "status": "concluido",
     "origem": "Comando direto do usuário no chat",
     "concluido_em": "07/11/2026 02:36:00"
+  },
+  {
+    "id": 17,
+    "data_hora": "07/11/2026 02:50:00",
+    "titulo": "Remover TRADER B3 da barra de ferramentas e deixar botão flutuante arrastável e redimensionável ciano",
+    "descricao": "Remoção do botão TRADER B3 da barra inferior de controles (junto ao microfone e sair). O acionamento agora é feito exclusivamente pelo botão flutuante de estilo Jarvis (cor ciano, efeito holográfico de vidro), que conta com suporte total a drag-and-drop para mover livremente pela tela e redimensionamento por arraste de borda via useDraggableFloating.",
+    "arquivo_sugerido": "frontend/components/agents-ui/agent-control-bar.tsx, frontend/components/app/session-view.tsx",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando direto do usuário no chat",
+    "concluido_em": "07/11/2026 02:51:00"
   }
 ]

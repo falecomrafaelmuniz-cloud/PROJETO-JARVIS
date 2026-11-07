@@ -316,6 +316,13 @@ export const SessionView = ({
     isResizingEdge: isOrbResizingEdge,
     dragHandlers: orbDragHandlers,
   } = useDraggableFloating('jarvis-pos-vanta-orb-v1', { circular: true });
+  const {
+    style: traderButtonDragStyle,
+    isDragging: isTraderButtonDragging,
+    isResizingEdge: isTraderButtonResizingEdge,
+    wasDragged: wasTraderButtonDragged,
+    dragHandlers: traderButtonDragHandlers,
+  } = useDraggableFloating('jarvis-pos-trader-button-v1');
 
   // Monitora participantes para detectar Persona (Alice/Járvis)
   const participants = useRemoteParticipants();
@@ -387,19 +394,52 @@ export const SessionView = ({
       <EmailComposer />
       <QuantPanel isOpen={traderOpen} onClose={handleCloseTrader} />
 
-      {/* Botão de Atalho Rápido TRADER B3 no Topo */}
-      {!traderOpen && (
+      {/* Botão flutuante arrastável e redimensionável TRADER B3 no padrão Ciano */}
+      <div
+        style={traderButtonDragStyle}
+        {...traderButtonDragHandlers}
+        className={cn(
+          'pointer-events-auto absolute top-3 left-[calc(min(17rem,50vw-1.125rem)+0.75rem)] z-30 inline-flex touch-none items-center gap-1.5 select-none transition-all duration-200',
+          isTraderButtonResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
+          isTraderButtonDragging ? 'cursor-grabbing' : 'cursor-grab'
+        )}
+      >
         <button
           type="button"
-          onClick={handleToggleTrader}
-          title="Abrir Painel Quant Trader B3"
-          className="pointer-events-auto absolute top-3 left-[18.5rem] z-40 flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-black/85 px-3 py-1.5 font-mono text-xs font-bold text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] backdrop-blur-xl hover:bg-emerald-500/20 hover:border-emerald-400 transition-all cursor-pointer"
+          onClick={() => {
+            if (wasTraderButtonDragged()) return;
+            handleToggleTrader();
+          }}
+          title={
+            traderOpen
+              ? 'Painel Trader B3 Ativo · Clique para Ocultar'
+              : 'Painel Trader B3 Oculto · Clique para Abrir'
+          }
+          aria-label={traderOpen ? 'Ocultar Painel Trader B3' : 'Abrir Painel Trader B3'}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wider uppercase transition-all duration-200 backdrop-blur-2xl',
+            traderOpen
+              ? 'border border-cyan-400/50 bg-black/85 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/30'
+              : 'border border-white/10 bg-black/70 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-300'
+          )}
         >
-          <TrendingUp className="size-4 text-emerald-400 animate-pulse" />
-          <span>TRADER B3</span>
-          <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
+          <TrendingUp
+            className={cn(
+              'size-3.5 transition-colors',
+              traderOpen
+                ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse'
+                : 'text-slate-500'
+            )}
+          />
+          <span className="hidden sm:inline">Trader B3</span>
+          <span
+            className={cn(
+              'size-2 rounded-full transition-all',
+              traderOpen ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
+            )}
+          />
         </button>
-      )}
+      </div>
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
@@ -481,8 +521,6 @@ export const SessionView = ({
             isConnected={true}
             onDisconnect={handleDisconnect}
             onIsChatOpenChange={setChatOpen}
-            isTraderOpen={traderOpen}
-            onToggleTrader={handleToggleTrader}
           />
         </div>
       </MotionBottom>
