@@ -106,6 +106,23 @@ const TOOL_LABELS: Record<string, string> = {
   analisar_tela_ou_janela_ativa: 'Analisando o que está na sua tela',
   ler_ou_resumir_documento_ou_pdf: 'Lendo e analisando documento/PDF',
   consultar_e_adicionar_em_planilha: 'Consultando/atualizando Planilha Google',
+  trader_ler_tela_profit: 'Analisando tela do Profit (WIN / Fluxo / Gráfico)',
+  trader_painel_pre_mercado: 'Montando panorama do pré-mercado (EWZ/DI/S&P)',
+  trader_buscar_dado_mercado: 'Consultando cotação de mercado em tempo real',
+  trader_noticias_mercado: 'Consultando notícias e catalisadores macro',
+  trader_consultar_biblioteca: 'Consultando livros e manuais técnicos de trading',
+  trader_indexar_biblioteca: 'Indexando novos livros/PDFs da Biblioteca Trader',
+  trader_guia_profit: 'Consultando guia de configuração do Profit',
+  trader_criar_indicador_ntsl: 'Programando indicador/coloração NTSL para o Profit',
+  trader_agir_na_tela: 'Executando comando na tela do Profit',
+  trader_preparar_ordem: 'Preparando ordem com Stop Loss e Alvo técnico',
+  trader_executar_ordem_pendente: 'Enviando ordem confirmada para o Profit',
+  trader_zerar_posicao_e_cancelar_ordens: 'Zerando posição e cancelando ordens no Profit',
+  trader_registrar_resultado: 'Registrando trade no Diário do Operador',
+  trader_status_e_risco: 'Checando risco diário e status das ordens',
+  trader_configurar_limites: 'Configurando limites de risco operacional',
+  trader_iniciar_monitoramento: 'Iniciando monitoramento contínuo do Profit',
+  trader_parar_monitoramento: 'Parando monitoramento contínuo do Profit',
 };
 
 const MAX_RUNNING_DURATION_MS = 35_000;

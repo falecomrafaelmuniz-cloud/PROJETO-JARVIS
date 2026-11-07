@@ -125,3 +125,25 @@
   ⚪ 9.3. obter_horario_brasilia: Consulta a data e o horário exato de Brasília (America/Sao_Paulo).
   ⚪ 9.4. obter_localizacao_atual: Obtém a localização atual compartilhada na sessão (cidade, estado, país e coordenadas).
 
+--------------------------------------------------------------------------------
+
+💹 [VERDE-OURO - 10. Trader Especialista no Mini Índice (WIN - B3) & Profit Nelogica]
+  💹 10.1. trader_ler_tela_profit: Captura e analisa a tela do Profit em tempo real (gráficos 5m/2m/Renko, VWAP, médias, Book de Ofertas e Times & Trades).
+  💹 10.2. trader_painel_pre_mercado: Gera panorama completo antes das 09h com EWZ, S&P 500, Nasdaq, VIX, DXY, Petróleo Brent, Minério, Juros Futuros (DI) e notícias.
+  💹 10.3. trader_buscar_dado_mercado: Consulta cotações em tempo real de ativos globais, commodities e ações de peso da B3.
+  💹 10.4. trader_noticias_mercado: Busca as notícias financeiras e catalisadores macro mais recentes.
+  💹 10.5. trader_consultar_biblioteca: Consulta a biblioteca RAG com livros, manuais, técnicas de Price Action, Tape Reading e fluxo.
+  💹 10.6. trader_indexar_biblioteca: Lê e indexa novos PDFs, MDs e TXTs adicionados à pasta `backend/Biblioteca_Trader`.
+  💹 10.7. trader_guia_profit: Fornece o guia detalhado de configuração de layout, janelas, OCO e indicadores no Profit.
+  💹 10.8. trader_criar_indicador_ntsl: Gera código de indicador ou regra de coloração em NTSL, salva em arquivo e copia para o Clipboard.
+  💹 10.9. trader_agir_na_tela: Executa ações na janela do Profit (focar, atalhos de compra/venda, zoom, rolagem).
+  💹 10.10. trader_preparar_ordem: Prepara e valida ordem semi-automática com cálculo de risco em R$, Stop Loss e Alvo técnico (aguarda voz do operador).
+  💹 10.11. trader_executar_ordem_pendente: Envia a ordem para o Profit após o operador dizer "executa", "confirmo" ou "entra".
+  💹 10.12. trader_zerar_posicao_e_cancelar_ordens: Zera posição a mercado instantaneamente e cancela ordens abertas no Profit.
+  💹 10.13. trader_registrar_resultado: Registra o resultado do trade no Diário do Operador (`Diario_Trader.jsonl`).
+  💹 10.14. trader_status_e_risco: Exibe o saldo do dia, perda máxima restante, número de operações e limites de risco.
+  💹 10.15. trader_configurar_limites: Ajusta limites de perda diária (R$), meta de ganho diária e máximo de contratos por operação.
+  💹 10.16. trader_iniciar_monitoramento: Ativa o monitoramento contínuo em segundo plano da tela do Profit.
+  💹 10.17. trader_parar_monitoramento: Pausa o monitoramento contínuo em segundo plano.
+
+

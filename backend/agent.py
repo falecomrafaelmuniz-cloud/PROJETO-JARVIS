@@ -52,6 +52,13 @@ from livekit.plugins import (
 from google_workspace import GoogleWorkspaceError, google_workspace
 from jarvis_browser import JarvisBrowserError, jarvis_chrome
 from prompts import AGENT_INSTRUCTION, SESSION_INSTRUCTION
+from trader_wini import (
+    TraderMixin,
+    monitorar_profit,
+    biblioteca_trader,
+    PASTA_BIBLIOTECA,
+    PASTA_INDICADORES,
+)
 
 load_dotenv()
 
@@ -178,10 +185,11 @@ def _update_session_location(
     logger_memoria.info("evento=localizacao status=disponivel_na_sessao")
 
 
-class Assistant(Agent):
+class Assistant(Agent, TraderMixin):
     def __init__(self, location_state: dict[str, float | str], room: rtc.Room) -> None:
         self.location_state = location_state
         self.board_room = room
+        self._trader_init()
         self._pesquisa_lock = asyncio.Lock()
         self._ultima_pesquisa_cache: tuple[str, float, str] | None = None
         self._rascunho_email: dict = {
@@ -5244,7 +5252,8 @@ async def entrypoint(ctx: agents.JobContext):
     await ctx.connect()
     metrics_task = asyncio.create_task(_publish_system_metrics(ctx.room))
     email_watch_task = asyncio.create_task(_monitorar_chegada_emails(session, assistant))
-    session.on("close", lambda _: (metrics_task.cancel(), email_watch_task.cancel()))
+    trader_watch_task = asyncio.create_task(monitorar_profit(session, assistant))
+    session.on("close", lambda _: (metrics_task.cancel(), email_watch_task.cancel(), trader_watch_task.cancel()))
 
     await session.generate_reply( 
         instructions=SESSION_INSTRUCTION + "\nCumprimente o usuário de forma breve e confiante."
