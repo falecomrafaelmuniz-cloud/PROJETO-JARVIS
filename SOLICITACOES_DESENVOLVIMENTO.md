@@ -4,6 +4,7 @@
 
 | ID | Data / Hora | Título | Arquivo Alvo | Prioridade | Status |
 |---|---|---|---|---|---|
+| #15 | 07/11/2026 02:15:00 | **Botão TRADER B3 e Painel Quant com Acelerador de Viés e Ativos Correlacionados** | `frontend/components/app/quant-panel.tsx, frontend/app/api/quant-data/route.ts, frontend/components/agents-ui/agent-control-bar.tsx, frontend/components/app/session-view.tsx` | ALTA | ✅ concluido |
 | #14 | 07/11/2026 01:40:00 | **Especialista em Day Trade no Mini Índice (WIN - B3) & Plataforma Profit (Nelogica)** | `backend/trader_wini.py, backend/agent.py, backend/prompts.py, frontend/components/app/activity-panel.tsx` | ALTA | ✅ concluido |
 | #13 | 06/11/2026 03:17:00 | **Preservação total de abas anteriores, fala concisa ancorada na tela e pergunta de fechamento** | `backend/agent.py, backend/jarvis_browser.py, backend/jarvis_chrome_extension/service_worker.js, backend/prompts.py` | ALTA | ✅ concluido |
 | #12 | 06/11/2026 03:03:00 | **Condução autônoma da aula sem perguntas de permissão e ritmo adequado com nova aba garantida** | `backend/agent.py, backend/jarvis_browser.py, backend/prompts.py` | ALTA | ✅ concluido |
@@ -20,9 +21,9 @@
 | #1 | 05/11/2026 02:21:35 | **Modernização da Lousa de Ensino** | `frontend/components/app/teaching-board.tsx` | ALTA | ✅ concluido |
 
 ## Detalhes da Última Solicitação:
-- **ID**: #14
-- **Título**: Especialista em Day Trade no Mini Índice (WIN - B3) & Plataforma Profit (Nelogica)
-- **Arquivo Alvo**: `backend/trader_wini.py`, `backend/agent.py`, `backend/prompts.py`, `frontend/components/app/activity-panel.tsx`
-- **Descrição**: Sistema completo de trading no Mini Índice da B3 com Profit: 1) Módulo RAG na pasta `backend/Biblioteca_Trader` com ChromaDB para livros, técnicas de fluxo/Price Action; 2) Painel de pré-mercado antes das 09h com EWZ, S&P 500, Nasdaq, VIX, DXY, Petróleo, DI1 e notícias; 3) Visão computacional da tela do Profit em tempo real; 4) Programação e exportação de indicadores NTSL; 5) Guia detalhado de configuração de layout do Profit; 6) Execução semi-automática em conta simulador com confirmação vocal obrigatória do operador, stop loss e alvos técnicos automáticos.
+- **ID**: #15
+- **Título**: Botão TRADER B3 e Painel Quant com Acelerador de Viés e Ativos Correlacionados
+- **Arquivo Alvo**: `frontend/components/app/quant-panel.tsx`, `frontend/app/api/quant-data/route.ts`, `frontend/components/agents-ui/agent-control-bar.tsx`, `frontend/components/app/session-view.tsx`
+- **Descrição**: Criação do botão brilhante TRADER B3 na barra inferior e no cabeçalho superior para acionar e ocultar a área de trading. Criação do Painel Quant flutuante e arrastável contendo: 1) Acelerador de Viés (Quant Gauge / Tacômetro estilo velocímetro com ponteiro dinâmico e gradiente de cor do vermelho ao verde neon); 2) Termômetro em porcentagem dos 11 principais ativos correlacionados que movem o Mini Índice (EWZ, S&P 500, Nasdaq, USD/BRL, DXY, Treasury 10Y, Petróleo Brent, PETR4, VALE3, ITUB4 e WIN); 3) Endpoint Next.js `/api/quant-data` com cotações em tempo real e cálculo de viés ponderado; 4) Botões de comandos rápidos para ler a tela do Profit, pré-mercado e zeragem emergencial.
 - **Prioridade**: ALTA
 - **Status**: ✅ Concluído com sucesso pelo Antigravity!

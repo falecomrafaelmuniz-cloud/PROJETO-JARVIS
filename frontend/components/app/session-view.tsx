@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { TrendingUp } from 'lucide-react';
 import {
   useRemoteParticipants,
   useSessionContext,
@@ -20,6 +21,7 @@ import { EmailComposer } from '@/components/app/email-composer';
 import { LocationSharing } from '@/components/app/location-sharing';
 import { SystemDashboard } from '@/components/app/system-dashboard';
 import { NeuralNetworkVisualizer } from '@/components/app/neural-network';
+import { QuantPanel } from '@/components/app/quant-panel';
 import { TileLayout } from '@/components/app/tile-layout';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
@@ -272,6 +274,7 @@ export const SessionView = ({
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
+  const [traderOpen, setTraderOpen] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const vantaEffectRef = useRef<VantaEffect | null>(null);
   const {
@@ -356,6 +359,21 @@ export const SessionView = ({
       <LocationSharing />
       <NeuralNetworkVisualizer />
       <EmailComposer />
+      <QuantPanel isOpen={traderOpen} onClose={() => setTraderOpen(false)} />
+
+      {/* Botão de Atalho Rápido TRADER B3 no Topo */}
+      {!traderOpen && (
+        <button
+          type="button"
+          onClick={() => setTraderOpen(true)}
+          title="Abrir Painel Quant Trader B3"
+          className="pointer-events-auto absolute top-3 left-3 z-30 flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-black/85 px-3 py-1.5 font-mono text-xs font-bold text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] backdrop-blur-xl hover:bg-emerald-500/20 hover:border-emerald-400 transition-all cursor-pointer"
+        >
+          <TrendingUp className="size-4 text-emerald-400 animate-pulse" />
+          <span>TRADER B3</span>
+          <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
+        </button>
+      )}
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
@@ -437,6 +455,8 @@ export const SessionView = ({
             isConnected={true}
             onDisconnect={handleDisconnect}
             onIsChatOpenChange={setChatOpen}
+            isTraderOpen={traderOpen}
+            onToggleTrader={() => setTraderOpen((prev) => !prev)}
           />
         </div>
       </MotionBottom>
