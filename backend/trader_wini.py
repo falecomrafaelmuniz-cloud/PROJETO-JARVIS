@@ -14,6 +14,7 @@ import ctypes
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -30,7 +31,11 @@ from PIL import Image
 
 logger = logging.getLogger("jarvis.memoria")
 
-TZ = ZoneInfo("America/Sao_Paulo")
+try:
+    TZ = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    from datetime import timezone, timedelta
+    TZ = timezone(timedelta(hours=-3))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASTA_BIBLIOTECA = os.path.join(BASE_DIR, "Biblioteca_Trader")
 PASTA_INDICADORES = os.path.join(BASE_DIR, "Indicadores_NTSL")
@@ -487,6 +492,68 @@ def _quebrar(texto: str, tamanho: int = 1300, sobreposicao: int = 200) -> list[s
     return [p for p in partes if len(p) > 40]
 
 
+class _ColecaoFallback:
+    def __init__(self, caminho_json: str):
+        self.caminho = caminho_json
+        self.dados = self._carregar()
+
+    def _carregar(self) -> list[dict]:
+        if os.path.exists(self.caminho):
+            try:
+                with open(self.caminho, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return []
+        return []
+
+    def _salvar(self):
+        try:
+            with open(self.caminho, "w", encoding="utf-8") as f:
+                json.dump(self.dados, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def count(self) -> int:
+        return len(self.dados)
+
+    def delete(self, where: dict):
+        fonte = where.get("fonte")
+        if fonte:
+            self.dados = [d for d in self.dados if d.get("metadata", {}).get("fonte") != fonte]
+            self._salvar()
+
+    def add(self, ids: list[str], documents: list[str], embeddings: list[list[float]], metadatas: list[dict]):
+        for doc_id, doc, emb, meta in zip(ids, documents, embeddings, metadatas):
+            self.dados.append({
+                "id": doc_id,
+                "document": doc,
+                "embedding": emb,
+                "metadata": meta,
+            })
+        self._salvar()
+
+    def query(self, query_embeddings: list[list[float]], n_results: int = 5) -> dict:
+        if not self.dados or not query_embeddings:
+            return {"documents": [[]], "metadatas": [[]]}
+        q_emb = query_embeddings[0]
+        q_norm = math.sqrt(sum(x * x for x in q_emb)) or 1.0
+        scores = []
+        for item in self.dados:
+            d_emb = item.get("embedding") or []
+            if not d_emb:
+                continue
+            dot = sum(a * b for a, b in zip(q_emb, d_emb))
+            d_norm = math.sqrt(sum(y * y for y in d_emb)) or 1.0
+            sim = dot / (q_norm * d_norm)
+            scores.append((sim, item["document"], item.get("metadata", {})))
+        scores.sort(key=lambda x: x[0], reverse=True)
+        top = scores[:n_results]
+        return {
+            "documents": [[item[1] for item in top]],
+            "metadatas": [[item[2] for item in top]],
+        }
+
+
 class BibliotecaTrader:
     EXTENSOES = {".pdf", ".txt", ".md", ".csv", ".docx"}
 
@@ -495,11 +562,15 @@ class BibliotecaTrader:
 
     def _colecao(self):
         if self._col is None:
-            import chromadb
+            try:
+                import chromadb
 
-            os.makedirs(DB_BIBLIOTECA, exist_ok=True)
-            cliente = chromadb.PersistentClient(path=DB_BIBLIOTECA)
-            self._col = cliente.get_or_create_collection("livros_trader", metadata={"hnsw:space": "cosine"})
+                os.makedirs(DB_BIBLIOTECA, exist_ok=True)
+                cliente = chromadb.PersistentClient(path=DB_BIBLIOTECA)
+                self._col = cliente.get_or_create_collection("livros_trader", metadata={"hnsw:space": "cosine"})
+            except Exception as e:
+                logger.warning(f"ChromaDB indisponível ({e}). Usando base vetorial JSON nativa.")
+                self._col = _ColecaoFallback(os.path.join(BASE_DIR, "biblioteca_trader_db.json"))
         return self._col
 
     def _arquivos(self) -> list[str]:
