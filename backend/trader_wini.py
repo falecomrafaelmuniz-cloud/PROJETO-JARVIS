@@ -50,18 +50,19 @@ VALOR_PONTO_WIN = 0.20  # R$ por ponto por contrato (tick de 5 pontos = R$ 1,00)
 
 CONFIG_PADRAO: dict = {
     "modo": "simulador",  # "simulador" (padrão seguro) ou "real"
-    "max_contratos": 2,
-    "risco_max_por_trade_reais": 60.0,
-    "perda_max_dia_reais": 150.0,
-    "max_trades_dia": 8,
+    "max_contratos": 6,
+    "risco_max_por_trade_reais": 360.0,
+    "perda_max_dia_reais": 900.0,
+    "max_trades_dia": 20,
     "stop_min_pontos": 40,
-    "stop_max_pontos": 150,
+    "stop_max_pontos": 250,
     "rr_minimo": 1.0,
     "inicio_operacao": "09:05",
     "fim_operacao": "17:30",
-    "validade_ordem_segundos": 120,
+    "permitir_replay": True,
+    "validade_ordem_segundos": 180,
     "pausa_apos_stops_seguidos": 3,
-    "pausa_minutos": 20,
+    "pausa_minutos": 15,
 }
 
 
@@ -666,10 +667,17 @@ class TraderMixin:
         problemas = []
         agora = datetime.now(TZ)
         hhmm = agora.strftime("%H:%M")
-        if agora.weekday() >= 5:
-            problemas.append("Hoje não é dia de pregão (fim de semana).")
-        if not (cfg["inicio_operacao"] <= hhmm <= cfg["fim_operacao"]):
-            problemas.append(f"Fora da janela de operação ({cfg['inicio_operacao']}–{cfg['fim_operacao']}); agora são {hhmm}.")
+        eh_simulador = cfg.get("modo", "simulador") == "simulador"
+        eh_replay = bool(cfg.get("permitir_replay", True))
+
+        # Restrição de fim de semana e horário aplica-se apenas em conta REAL
+        # No simulador e replay de mercado (estudos/treinos), é 100% liberado!
+        if not (eh_simulador or eh_replay):
+            if agora.weekday() >= 5:
+                problemas.append("Hoje não é dia de pregão (fim de semana) para conta REAL. Para treinar no Replay, mude para o modo Simulador.")
+            if not (cfg["inicio_operacao"] <= hhmm <= cfg["fim_operacao"]):
+                problemas.append(f"Fora da janela de operação da conta real ({cfg['inicio_operacao']}–{cfg['fim_operacao']}); agora são {hhmm}.")
+
         if estado.get("travado"):
             problemas.append(f"Operações travadas hoje: {estado.get('motivo_trava')}.")
         if time.time() < float(estado.get("pausa_ate") or 0):
