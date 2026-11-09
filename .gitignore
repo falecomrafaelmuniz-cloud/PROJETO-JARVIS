@@ -18,6 +18,11 @@ bin/
 memoria_jarvis/
 memoria_jarvis_local_backup_*/
 Memorias_do_Jarvis.txt
+backend/tarefas_agendadas.json
+backend/lembretes_jarvis.json
+backend/lembretes_anexos/
+backend/alertas_email.json
+backend/.limpeza_teste_rafael_ok
 *.log
 
 *.jsonl

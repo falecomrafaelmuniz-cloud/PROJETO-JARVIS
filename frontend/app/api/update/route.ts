@@ -25,6 +25,40 @@ function resolveGitExecutable(): string {
   return 'git';
 }
 
+export async function GET() {
+  try {
+    const repoRoot = path.resolve(process.cwd(), '..');
+    const gitExe = resolveGitExecutable();
+
+    await execFileAsync(gitExe, ['fetch', 'origin', 'main'], {
+      cwd: repoRoot,
+      timeout: 15_000,
+    });
+
+    const { stdout: localHead } = await execFileAsync(gitExe, ['rev-parse', 'HEAD'], {
+      cwd: repoRoot,
+    });
+    const { stdout: remoteHead } = await execFileAsync(gitExe, ['rev-parse', 'origin/main'], {
+      cwd: repoRoot,
+    });
+
+    const localSha = localHead.trim();
+    const remoteSha = remoteHead.trim();
+
+    return NextResponse.json({
+      status: 'ok',
+      updateAvailable: localSha !== remoteSha,
+      localCommit: localSha.slice(0, 7),
+      remoteCommit: remoteSha.slice(0, 7),
+    });
+  } catch {
+    return NextResponse.json({
+      status: 'ok',
+      updateAvailable: false,
+    });
+  }
+}
+
 export async function POST() {
   try {
     const repoRoot = path.resolve(process.cwd(), '..');
@@ -67,19 +101,26 @@ export async function POST() {
       );
       commitSummary = logOut.trim();
 
-      // Tenta pull com --autostash para não perder alterações locais em andamento
+      // Tenta pull com --autostash; se houver qualquer conflito local em código, sincroniza exatamente com origin/main
       try {
         await execFileAsync(gitExe, ['pull', '--rebase', '--autostash', 'origin', 'main'], {
           cwd: repoRoot,
           timeout: 45_000,
         });
       } catch {
-        // Fallback: aborta eventual rebase em conflito e faz merge simples com autostash
         await execFileAsync(gitExe, ['rebase', '--abort'], { cwd: repoRoot }).catch(() => {});
-        await execFileAsync(gitExe, ['pull', '--no-rebase', '--autostash', 'origin', 'main'], {
-          cwd: repoRoot,
-          timeout: 45_000,
-        });
+        try {
+          await execFileAsync(gitExe, ['pull', '--no-rebase', '--autostash', 'origin', 'main'], {
+            cwd: repoRoot,
+            timeout: 45_000,
+          });
+        } catch {
+          await execFileAsync(gitExe, ['merge', '--abort'], { cwd: repoRoot }).catch(() => {});
+          await execFileAsync(gitExe, ['reset', '--hard', 'origin/main'], {
+            cwd: repoRoot,
+            timeout: 30_000,
+          });
+        }
       }
     }
 

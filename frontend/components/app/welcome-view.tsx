@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Power, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -39,7 +39,30 @@ export const WelcomeView = ({
         Boolean((window as unknown as { __jarvisShutDown?: boolean }).__jarvisShutDown))
   );
   const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const checkUpdates = async () => {
+      try {
+        const res = await fetch('/api/update', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && typeof data.updateAvailable === 'boolean') {
+          setUpdateAvailable(data.updateAvailable);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    checkUpdates();
+    const timer = setInterval(checkUpdates, 60_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   const handleUpdateJarvis = async () => {
     if (updateState === 'updating') return;
@@ -135,7 +158,10 @@ export const WelcomeView = ({
           ) : (
             <>
               <RefreshCw className="mr-1.5 size-3.5" />
-              Atualizar Jarvis
+              {updateAvailable ? 'Atualizar Jarvis (Nova Versão!)' : 'Atualizar Jarvis'}
+              {updateAvailable && (
+                <span className="ml-2 size-2 animate-ping rounded-full bg-emerald-400" />
+              )}
             </>
           )}
         </Button>

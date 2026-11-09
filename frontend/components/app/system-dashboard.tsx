@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
+import { Check, RefreshCw } from 'lucide-react';
 import { useRoomContext, useSessionContext } from '@livekit/components-react';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import {
@@ -97,6 +98,57 @@ export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDash
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [locationStatus, setLocationStatus] = useState<DashboardLocationStatus>('requesting');
   const [locationCoordinates, setLocationCoordinates] = useState<DashboardCoordinates | null>(null);
+  const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const checkUpdates = async () => {
+      try {
+        const res = await fetch('/api/update', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && typeof data.updateAvailable === 'boolean') {
+          setUpdateAvailable(data.updateAvailable);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    checkUpdates();
+    const timer = setInterval(checkUpdates, 60_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const handleUpdateClick = async () => {
+    if (updateState === 'updating') return;
+    setUpdateState('updating');
+    setUpdateMsg('Atualizando pelo GitHub...');
+    try {
+      const res = await fetch('/api/update', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || data.status === 'error') {
+        throw new Error(data.message || 'Erro ao atualizar');
+      }
+      setUpdateState('success');
+      setUpdateAvailable(false);
+      setUpdateMsg(data.message || 'Atualizado!');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      setUpdateState('error');
+      setUpdateMsg(err instanceof Error ? err.message : 'Falha na atualização');
+      setTimeout(() => {
+        setUpdateState('idle');
+        setUpdateMsg(null);
+      }, 4000);
+    }
+  };
 
   useEffect(() => {
     setMetrics(null);
@@ -191,6 +243,38 @@ export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDash
           className="flex items-center gap-1.5"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <button
+            type="button"
+            onClick={handleUpdateClick}
+            disabled={updateState === 'updating'}
+            title={
+              updateAvailable
+                ? 'Nova atualização disponível no GitHub! Clique para atualizar'
+                : 'Buscar atualizações do Jarvis no GitHub'
+            }
+            className={cn(
+              'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-medium transition',
+              updateState === 'updating'
+                ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200'
+                : updateState === 'success'
+                  ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-200'
+                  : updateAvailable
+                    ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200 shadow-[0_0_10px_rgba(16,185,129,0.35)]'
+                    : 'border-white/15 bg-white/5 text-white/75 hover:border-cyan-400/40 hover:text-cyan-200'
+            )}
+          >
+            {updateState === 'updating' ? (
+              <RefreshCw className="size-2.5 animate-spin" />
+            ) : updateState === 'success' ? (
+              <Check className="size-2.5 text-emerald-300" />
+            ) : (
+              <RefreshCw className="size-2.5" />
+            )}
+            <span>{updateState === 'updating' ? 'Atualizando...' : 'Atualizar'}</span>
+            {updateAvailable && updateState === 'idle' && (
+              <span className="size-1.5 animate-ping rounded-full bg-emerald-400" />
+            )}
+          </button>
           {onToggleReminders && (
             <button
               type="button"
@@ -212,6 +296,11 @@ export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDash
           </span>
         </div>
       </div>
+      {updateMsg && (
+        <div className="border-b border-white/10 bg-cyan-950/40 px-3 py-1 text-[9px] text-cyan-200">
+          {updateMsg}
+        </div>
+      )}
 
       <div className="space-y-2 p-2 text-[9px]">
         <section aria-label="Uso do sistema" className="space-y-1.5">
