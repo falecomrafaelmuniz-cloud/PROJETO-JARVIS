@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { TrendingUp } from 'lucide-react';
+import { ListChecks, TrendingUp, Workflow } from 'lucide-react';
 import {
   useRemoteParticipants,
   useSessionContext,
@@ -16,9 +16,11 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { ActivityPanel } from '@/components/app/activity-panel';
+import { AutomationsPanel } from '@/components/app/automations-panel';
 import { ClockWidget } from '@/components/app/clock-widget';
 import { EmailComposer } from '@/components/app/email-composer';
 import { LocationSharing } from '@/components/app/location-sharing';
+import { RemindersPanel } from '@/components/app/reminders-panel';
 import { SystemDashboard } from '@/components/app/system-dashboard';
 import { NeuralNetworkVisualizer } from '@/components/app/neural-network';
 import { QuantPanel } from '@/components/app/quant-panel';
@@ -301,6 +303,74 @@ export const SessionView = ({
     } catch {}
   }, []);
 
+  const [automationsOpen, setAutomationsOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const saved = localStorage.getItem('jarvis-automations-open');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleAutomations = React.useCallback(() => {
+    setAutomationsOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('jarvis-automations-open', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleCloseAutomations = React.useCallback(() => {
+    setAutomationsOpen(false);
+    try {
+      localStorage.setItem('jarvis-automations-open', 'false');
+    } catch {}
+  }, []);
+
+  const handleOpenAutomations = React.useCallback(() => {
+    setAutomationsOpen(true);
+    try {
+      localStorage.setItem('jarvis-automations-open', 'true');
+    } catch {}
+  }, []);
+
+  const [remindersOpen, setRemindersOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const saved = localStorage.getItem('jarvis-reminders-open');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleReminders = React.useCallback(() => {
+    setRemindersOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('jarvis-reminders-open', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleCloseReminders = React.useCallback(() => {
+    setRemindersOpen(false);
+    try {
+      localStorage.setItem('jarvis-reminders-open', 'false');
+    } catch {}
+  }, []);
+
+  const handleOpenReminders = React.useCallback(() => {
+    setRemindersOpen(true);
+    try {
+      localStorage.setItem('jarvis-reminders-open', 'true');
+    } catch {}
+  }, []);
+
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const vantaEffectRef = useRef<VantaEffect | null>(null);
   const {
@@ -323,6 +393,20 @@ export const SessionView = ({
     wasDragged: wasTraderButtonDragged,
     dragHandlers: traderButtonDragHandlers,
   } = useDraggableFloating('jarvis-pos-trader-button-v1');
+  const {
+    style: automationsButtonDragStyle,
+    isDragging: isAutomationsButtonDragging,
+    isResizingEdge: isAutomationsButtonResizingEdge,
+    wasDragged: wasAutomationsButtonDragged,
+    dragHandlers: automationsButtonDragHandlers,
+  } = useDraggableFloating('jarvis-pos-automations-button-v1');
+  const {
+    style: remindersButtonDragStyle,
+    isDragging: isRemindersButtonDragging,
+    isResizingEdge: isRemindersButtonResizingEdge,
+    wasDragged: wasRemindersButtonDragged,
+    dragHandlers: remindersButtonDragHandlers,
+  } = useDraggableFloating('jarvis-pos-reminders-button-v1');
 
   // Monitora participantes para detectar Persona (Alice/Járvis)
   const participants = useRemoteParticipants();
@@ -387,12 +471,25 @@ export const SessionView = ({
     <section className="relative flex h-svh w-svw flex-col overflow-hidden bg-black" {...props}>
       <VantaController vantaRef={vantaEffectRef} />
       <ActivityPanel />
-      <SystemDashboard />
+      <SystemDashboard
+        remindersOpen={remindersOpen}
+        onToggleReminders={handleToggleReminders}
+      />
       <ClockWidget />
       <LocationSharing />
       <NeuralNetworkVisualizer />
       <EmailComposer />
       <QuantPanel isOpen={traderOpen} onClose={handleCloseTrader} />
+      <AutomationsPanel
+        isOpen={automationsOpen}
+        onClose={handleCloseAutomations}
+        onOpenRequest={handleOpenAutomations}
+      />
+      <RemindersPanel
+        isOpen={remindersOpen}
+        onClose={handleCloseReminders}
+        onOpenRequest={handleOpenReminders}
+      />
 
       {/* Botão flutuante arrastável e redimensionável TRADER B3 no padrão Ciano */}
       <div
@@ -436,6 +533,100 @@ export const SessionView = ({
             className={cn(
               'size-2 rounded-full transition-all',
               traderOpen ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Botão flutuante arrastável e redimensionável AUTOMAÇÕES no padrão Ciano */}
+      <div
+        style={automationsButtonDragStyle}
+        {...automationsButtonDragHandlers}
+        className={cn(
+          'pointer-events-auto absolute top-3 left-[calc(min(17rem,50vw-1.125rem)+9.5rem)] z-30 inline-flex touch-none items-center gap-1.5 select-none transition-all duration-200',
+          isAutomationsButtonResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
+          isAutomationsButtonDragging ? 'cursor-grabbing' : 'cursor-grab'
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (wasAutomationsButtonDragged()) return;
+            handleToggleAutomations();
+          }}
+          title={
+            automationsOpen
+              ? 'Painel de Automações Ativo · Clique para Ocultar'
+              : 'Painel de Automações Oculto · Clique para Abrir'
+          }
+          aria-label={automationsOpen ? 'Ocultar Painel de Automações' : 'Abrir Painel de Automações'}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wider uppercase transition-all duration-200 backdrop-blur-2xl',
+            automationsOpen
+              ? 'border border-cyan-400/50 bg-black/85 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/30'
+              : 'border border-white/10 bg-black/70 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-300'
+          )}
+        >
+          <Workflow
+            className={cn(
+              'size-3.5 transition-colors',
+              automationsOpen
+                ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse'
+                : 'text-slate-500'
+            )}
+          />
+          <span className="hidden sm:inline">Automações</span>
+          <span
+            className={cn(
+              'size-2 rounded-full transition-all',
+              automationsOpen ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Botão flutuante arrastável e redimensionável LEMBRETES no padrão Ciano */}
+      <div
+        style={remindersButtonDragStyle}
+        {...remindersButtonDragHandlers}
+        className={cn(
+          'pointer-events-auto absolute top-3 left-[calc(min(17rem,50vw-1.125rem)+18.75rem)] z-30 inline-flex touch-none items-center gap-1.5 select-none transition-all duration-200',
+          isRemindersButtonResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
+          isRemindersButtonDragging ? 'cursor-grabbing' : 'cursor-grab'
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (wasRemindersButtonDragged()) return;
+            handleToggleReminders();
+          }}
+          title={
+            remindersOpen
+              ? 'Painel de Lembretes Ativo · Clique para Ocultar'
+              : 'Painel de Lembretes Oculto · Clique para Abrir'
+          }
+          aria-label={remindersOpen ? 'Ocultar Painel de Lembretes' : 'Abrir Painel de Lembretes'}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wider uppercase transition-all duration-200 backdrop-blur-2xl',
+            remindersOpen
+              ? 'border border-cyan-400/50 bg-black/85 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/30'
+              : 'border border-white/10 bg-black/70 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-300'
+          )}
+        >
+          <ListChecks
+            className={cn(
+              'size-3.5 transition-colors',
+              remindersOpen
+                ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse'
+                : 'text-slate-500'
+            )}
+          />
+          <span className="hidden sm:inline">Lembretes</span>
+          <span
+            className={cn(
+              'size-2 rounded-full transition-all',
+              remindersOpen ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
             )}
           />
         </button>

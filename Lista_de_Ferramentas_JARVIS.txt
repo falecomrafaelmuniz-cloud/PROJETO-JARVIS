@@ -12,7 +12,8 @@
   🔵 1.7. fechar_programa: Fecha um programa executável do Windows em execução.
   🔵 1.8. minimizar_item_ou_janela: Minimiza qualquer janela, pasta, programa, aba/site específico ou todas as janelas.
   🔵 1.9. maximizar_ou_restaurar_item_ou_janela: Maximiza, restaura ou traz para frente qualquer janela, pasta, programa, aba/site específico ou todas as janelas.
-  🔵 1.10. tirar_print_e_salvar: Tira um print (screenshot) em alta resolução de qualquer monitor (tela do mouse, tela 1, tela 2, tela da esquerda/direita, todas as telas ou tela de um programa) e salva na pasta específica solicitada.
+  🔵 1.10. mover_aba_ou_janela_para_tela: Destaca e move qualquer aba do navegador (ex: Drive, YouTube, Gmail), programa ou pasta aberta para outro monitor/tela (Tela 1, Tela 2, Tela 3, direita, esquerda, cima).
+  🔵 1.11. tirar_print_e_salvar: Tira um print (screenshot) em alta resolução de qualquer monitor (tela do mouse, tela 1, tela 2, tela da esquerda/direita, todas as telas ou tela de um programa) e salva na pasta específica solicitada.
   🔵 1.11. executar_comando_terminal: Executa comandos no terminal do Windows.
   🔵 1.12. listar_arquivos_projeto_jarvis: Lista as pastas e arquivos que compõem o código-fonte do próprio Jarvis.
   🔵 1.13. pesquisar_termo_no_codigo: Busca instantaneamente palavras, funções ou componentes em todo o código-fonte do Jarvis.
@@ -108,6 +109,10 @@
   🔴 7.22. configurar_aviso_chegada_email: Ativa alerta por voz (e etiqueta automática) quando chegar novo e-mail.
   🔴 7.23. listar_avisos_chegada_email: Lista todos os alertas ativos de chegada de e-mails.
   🔴 7.24. remover_aviso_chegada_email: Desativa alertas de chegada de e-mail.
+  🔴 7.25. criar_ou_configurar_automacao: Cria ou atualiza uma automação agendada no painel de Automações (remetente/busca no Gmail -> pasta no Google Drive).
+  🔴 7.26. executar_automacao_agendada_agora: Executa imediatamente uma automação criada no painel de Automações.
+  🔴 7.27. listar_automacoes_agendadas: Lista todas as automações criadas no painel de Automações, status, horários e último resultado.
+  🔴 7.28. excluir_automacao_agendada: Exclui uma automação criada no painel de Automações.
 
 --------------------------------------------------------------------------------
 
@@ -127,23 +132,5 @@
 
 --------------------------------------------------------------------------------
 
-💹 [VERDE-OURO - 10. Trader Especialista no Mini Índice (WIN - B3) & Profit Nelogica]
-  💹 10.1. trader_ler_tela_profit: Captura e analisa a tela do Profit em tempo real (gráficos 5m/2m/Renko, VWAP, médias, Book de Ofertas e Times & Trades).
-  💹 10.2. trader_painel_pre_mercado: Gera panorama completo antes das 09h com EWZ, S&P 500, Nasdaq, VIX, DXY, Petróleo Brent, Minério, Juros Futuros (DI) e notícias.
-  💹 10.3. trader_buscar_dado_mercado: Consulta cotações em tempo real de ativos globais, commodities e ações de peso da B3.
-  💹 10.4. trader_noticias_mercado: Busca as notícias financeiras e catalisadores macro mais recentes.
-  💹 10.5. trader_consultar_biblioteca: Consulta a biblioteca RAG com livros, manuais, técnicas de Price Action, Tape Reading e fluxo.
-  💹 10.6. trader_indexar_biblioteca: Lê e indexa novos PDFs, MDs e TXTs adicionados à pasta `backend/Biblioteca_Trader`.
-  💹 10.7. trader_guia_profit: Fornece o guia detalhado de configuração de layout, janelas, OCO e indicadores no Profit.
-  💹 10.8. trader_criar_indicador_ntsl: Gera código de indicador ou regra de coloração em NTSL, salva em arquivo e copia para o Clipboard.
-  💹 10.9. trader_agir_na_tela: Executa ações na janela do Profit (focar, atalhos de compra/venda, zoom, rolagem).
-  💹 10.10. trader_preparar_ordem: Prepara e valida ordem semi-automática com cálculo de risco em R$, Stop Loss e Alvo técnico (aguarda voz do operador).
-  💹 10.11. trader_executar_ordem_pendente: Envia a ordem para o Profit após o operador dizer "executa", "confirmo" ou "entra".
-  💹 10.12. trader_zerar_posicao_e_cancelar_ordens: Zera posição a mercado instantaneamente e cancela ordens abertas no Profit.
-  💹 10.13. trader_registrar_resultado: Registra o resultado do trade no Diário do Operador (`Diario_Trader.jsonl`).
-  💹 10.14. trader_status_e_risco: Exibe o saldo do dia, perda máxima restante, número de operações e limites de risco.
-  💹 10.15. trader_configurar_limites: Ajusta limites de perda diária (R$), meta de ganho diária e máximo de contratos por operação.
-  💹 10.16. trader_iniciar_monitoramento: Ativa o monitoramento contínuo em segundo plano da tela do Profit.
-  💹 10.17. trader_parar_monitoramento: Pausa o monitoramento contínuo em segundo plano.
 
 

@@ -12,6 +12,7 @@ import uuid
 import json
 import logging
 import math
+import mimetypes
 import re
 import tempfile
 import time
@@ -50,15 +51,9 @@ from livekit.plugins import (
     google
 )
 from google_workspace import GoogleWorkspaceError, google_workspace
+from jarvis_automacoes import gerenciador_automacoes
 from jarvis_browser import JarvisBrowserError, jarvis_chrome
 from prompts import AGENT_INSTRUCTION, SESSION_INSTRUCTION
-from trader_wini import (
-    TraderMixin,
-    monitorar_profit,
-    biblioteca_trader,
-    PASTA_BIBLIOTECA,
-    PASTA_INDICADORES,
-)
 
 load_dotenv()
 
@@ -185,11 +180,10 @@ def _update_session_location(
     logger_memoria.info("evento=localizacao status=disponivel_na_sessao")
 
 
-class Assistant(Agent, TraderMixin):
+class Assistant(Agent):
     def __init__(self, location_state: dict[str, float | str], room: rtc.Room) -> None:
         self.location_state = location_state
         self.board_room = room
-        self._trader_init()
         self._pesquisa_lock = asyncio.Lock()
         self._ultima_pesquisa_cache: tuple[str, float, str] | None = None
         self._rascunho_email: dict = {
@@ -222,6 +216,11 @@ class Assistant(Agent, TraderMixin):
                 voice="Charon",
                 temperature=0.6,
                 thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+                tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
+                context_window_compression=genai_types.ContextWindowCompressionConfig(
+                    trigger_tokens=22000,
+                    sliding_window=genai_types.SlidingWindow(target_tokens=14000),
+                ),
             ),
         )
 
@@ -616,6 +615,37 @@ class Assistant(Agent, TraderMixin):
 
     def buscar_pasta(self, nome_pasta: str):
         pasta_usuario = os.path.expanduser("~")
+        nome_limpo = (
+            (nome_pasta or "")
+            .strip()
+            .lower()
+            .replace("pasta ", "")
+            .replace("a pasta ", "")
+            .strip(" \"'/\\")
+        )
+        mapa_pastas_sistema = {
+            "downloads": [os.path.join(pasta_usuario, "Downloads")],
+            "download": [os.path.join(pasta_usuario, "Downloads")],
+            "transferencias": [os.path.join(pasta_usuario, "Downloads")],
+            "transferências": [os.path.join(pasta_usuario, "Downloads")],
+            "desktop": [os.path.join(pasta_usuario, "Desktop"), os.path.join(pasta_usuario, "Área de Trabalho")],
+            "area de trabalho": [os.path.join(pasta_usuario, "Desktop"), os.path.join(pasta_usuario, "Área de Trabalho")],
+            "área de trabalho": [os.path.join(pasta_usuario, "Desktop"), os.path.join(pasta_usuario, "Área de Trabalho")],
+            "documentos": [os.path.join(pasta_usuario, "Documents"), os.path.join(pasta_usuario, "Documentos")],
+            "documents": [os.path.join(pasta_usuario, "Documents"), os.path.join(pasta_usuario, "Documentos")],
+            "imagens": [os.path.join(pasta_usuario, "Pictures"), os.path.join(pasta_usuario, "Imagens")],
+            "pictures": [os.path.join(pasta_usuario, "Pictures"), os.path.join(pasta_usuario, "Imagens")],
+            "fotos": [os.path.join(pasta_usuario, "Pictures"), os.path.join(pasta_usuario, "Imagens")],
+            "videos": [os.path.join(pasta_usuario, "Videos"), os.path.join(pasta_usuario, "Vídeos")],
+            "vídeos": [os.path.join(pasta_usuario, "Videos"), os.path.join(pasta_usuario, "Vídeos")],
+            "musicas": [os.path.join(pasta_usuario, "Music"), os.path.join(pasta_usuario, "Músicas")],
+            "músicas": [os.path.join(pasta_usuario, "Music"), os.path.join(pasta_usuario, "Músicas")],
+        }
+        if nome_limpo in mapa_pastas_sistema:
+            for cand in mapa_pastas_sistema[nome_limpo]:
+                if os.path.isdir(cand):
+                    return cand
+
         locais_rapidos = [
             os.path.join(pasta_usuario, "Downloads"),
             os.path.join(pasta_usuario, "Desktop"),
@@ -630,16 +660,18 @@ class Assistant(Agent, TraderMixin):
             try:
                 for item in os.listdir(local):
                     caminho_item = os.path.join(local, item)
-                    if os.path.isdir(caminho_item) and item.lower() == nome_pasta.lower():
+                    if os.path.isdir(caminho_item) and item.lower() in (nome_pasta.lower(), nome_limpo):
                         return caminho_item
             except OSError as e:
                 print(f"[AVISO] Não foi possível consultar '{local}': {e}")
                 
         for root, dirs, files in os.walk(pasta_usuario):
             dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['AppData', 'Local Settings']]
-            if nome_pasta.lower() in [d.lower() for d in dirs]:
-                idx = [d.lower() for d in dirs].index(nome_pasta.lower())
-                return os.path.join(root, dirs[idx])
+            dirs_low = [d.lower() for d in dirs]
+            for alvo_n in (nome_pasta.lower(), nome_limpo):
+                if alvo_n and alvo_n in dirs_low:
+                    idx = dirs_low.index(alvo_n)
+                    return os.path.join(root, dirs[idx])
         return None
 
     def buscar_atalho_programa(self, nome_programa: str):
@@ -674,12 +706,32 @@ class Assistant(Agent, TraderMixin):
         class POINT(ctypes.Structure):
             _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
-        monitores_raw: list[tuple[int, int, int, int]] = []
+        class MONITORINFOEXW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("rcMonitor", RECT),
+                ("rcWork", RECT),
+                ("dwFlags", wintypes.DWORD),
+                ("szDevice", wintypes.WCHAR * 32),
+            ]
+
+        monitores_info: list[tuple[int, int, int, int, int]] = []
 
         def _monitor_enum_proc(hMonitor, hdcMonitor, lprcMonitor, dwData):
-            if lprcMonitor:
+            mi = MONITORINFOEXW()
+            mi.cbSize = ctypes.sizeof(MONITORINFOEXW)
+            if user32.GetMonitorInfoW(hMonitor, ctypes.byref(mi)):
+                r = mi.rcMonitor
+                m_num = 99
+                match_d = re.search(r"(\d+)$", mi.szDevice or "")
+                if match_d:
+                    m_num = int(match_d.group(1))
+                elif mi.dwFlags & 1:
+                    m_num = 1
+                monitores_info.append((m_num, int(r.left), int(r.top), int(r.right), int(r.bottom)))
+            elif lprcMonitor:
                 r = lprcMonitor.contents
-                monitores_raw.append((int(r.left), int(r.top), int(r.right), int(r.bottom)))
+                monitores_info.append((99, int(r.left), int(r.top), int(r.right), int(r.bottom)))
             return True
 
         MONITORENUMPROC = ctypes.WINFUNCTYPE(
@@ -694,8 +746,9 @@ class Assistant(Agent, TraderMixin):
         except Exception:
             pass
 
-        # Ordena monitores da esquerda para a direita, de cima para baixo
-        monitores = sorted(monitores_raw, key=lambda m: (m[0], m[1]))
+        # Ordena monitores pelo número oficial do Windows (DISPLAY1 = Tela 1, DISPLAY2 = Tela 2, DISPLAY3 = Tela 3)
+        monitores_ordenados = sorted(monitores_info, key=lambda m: (m[0], m[1], m[2]))
+        monitores = [(m[1], m[2], m[3], m[4]) for m in monitores_ordenados]
         if not monitores:
             w_pad = user32.GetSystemMetrics(0) or 1920
             h_pad = user32.GetSystemMetrics(1) or 1080
@@ -938,6 +991,18 @@ class Assistant(Agent, TraderMixin):
                     return {"erro": "Biblioteca pypdf não instalada no ambiente. Execute: pip install pypdf"}
                 try:
                     reader = pypdf.PdfReader(caminho)
+                    if reader.is_encrypted:
+                        senhas_tentativa = ["2138", "879", ""]
+                        for t_auto in gerenciador_automacoes.listar_agendados():
+                            s_auto = str(t_auto.get("senha_anexo") or "").strip()
+                            if s_auto and s_auto not in senhas_tentativa:
+                                senhas_tentativa.insert(0, s_auto)
+                        for s_try in senhas_tentativa:
+                            try:
+                                if reader.decrypt(s_try):
+                                    break
+                            except Exception:
+                                continue
                     total_pags = len(reader.pages)
                     textos = []
                     for idx, pag in enumerate(reader.pages[:35], start=1):
@@ -1631,9 +1696,122 @@ class Assistant(Agent, TraderMixin):
         except Exception as erro:
             return f"Aviso: não foi possível enviar o comando de mídia: {erro}"
 
-    @function_tool(description="Abre um endereço web no Chrome. Se nova_aba for True, abre em uma nova aba ao lado sem fechar a atual.")
-    async def abrir_site(self, url: str, nome_site: str, nova_aba: bool = False):
-        url_final = url.strip()
+    def _abrir_no_desktop_interativo(
+        self,
+        alvo_exec: str,
+        argumentos: str = "",
+        termos_foco: list[str] | None = None,
+    ) -> None:
+        """Abre um aplicativo, atalho ou pasta diretamente no desktop interativo (Winsta0\\Default) e traz a janela para a frente."""
+        alvo = str(alvo_exec).strip()
+        args = str(argumentos or "").strip()
+        eh_atalho_ou_pasta = alvo.lower().endswith(".lnk") or os.path.isdir(alvo)
+
+        launched = False
+        if not eh_atalho_ou_pasta:
+            cmd_direto = f'"{alvo}" {args}'.strip() if " " in alvo else f"{alvo} {args}".strip()
+            launched = jarvis_chrome._spawn_on_interactive_desktop(cmd_direto, show_window=1)
+
+        if not launched:
+            cmd_start = f'cmd.exe /c start "" "{alvo}" {args}'.strip()
+            jarvis_chrome._spawn_on_interactive_desktop(
+                cmd_start,
+                show_window=0,
+                creation_flags=0x08000000,
+            )
+
+        if not termos_foco:
+            return
+        time.sleep(0.55)
+        try:
+            user32 = ctypes.windll.user32
+            try:
+                hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+                if hdesk:
+                    user32.SetThreadDesktop(hdesk)
+            except Exception:
+                pass
+            encontrados = []
+            termos_low = [t.lower() for t in termos_foco if t]
+
+            def _enum_cb(hwnd, _):
+                if user32.IsWindowVisible(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buff, length + 1)
+                        title = (buff.value or "").lower()
+                        if any(t in title for t in termos_low):
+                            encontrados.append(hwnd)
+                return True
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+            user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+            if encontrados:
+                hwnd = encontrados[0]
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                try:
+                    class _RECT(ctypes.Structure):
+                        _fields_ = [
+                            ("left", ctypes.c_long),
+                            ("top", ctypes.c_long),
+                            ("right", ctypes.c_long),
+                            ("bottom", ctypes.c_long),
+                        ]
+                    rc = _RECT()
+                    if user32.GetWindowRect(hwnd, ctypes.byref(rc)):
+                        mon_x, mon_y, mon_w, mon_h, _ = self._obter_retangulo_monitor_alvo("atual")
+                        cx = (rc.left + rc.right) // 2
+                        cy = (rc.top + rc.bottom) // 2
+                        if not (mon_x <= cx < mon_x + mon_w and mon_y <= cy < mon_y + mon_h):
+                            w_win = max(500, min(int(rc.right - rc.left), mon_w - 80))
+                            h_win = max(380, min(int(rc.bottom - rc.top), mon_h - 80))
+                            nx = mon_x + (mon_w - w_win) // 2
+                            ny = mon_y + (mon_h - h_win) // 2
+                            user32.MoveWindow(hwnd, int(nx), int(ny), int(w_win), int(h_win), True)
+                except Exception:
+                    pass
+                user32.SwitchToThisWindow(hwnd, True)
+                user32.keybd_event(0x12, 0, 0, 0)
+                user32.SetForegroundWindow(hwnd)
+                user32.keybd_event(0x12, 0, 2, 0)
+        except Exception:
+            pass
+
+    @function_tool(description="Abre um endereço web no Chrome em uma nova aba e traz o navegador para a frente.")
+    async def abrir_site(self, url: str, nome_site: str = "", nova_aba: bool = True, tela_destino: str = ""):
+        url_final = (url or nome_site or "").strip()
+        url_low = url_final.lower()
+        mapa_sites_rapidos = {
+            "youtube": "https://www.youtube.com",
+            "yt": "https://www.youtube.com",
+            "youtube music": "https://music.youtube.com",
+            "teste de internet": "https://fast.com",
+            "teste de velocidade": "https://fast.com",
+            "velocidade da internet": "https://fast.com",
+            "fast": "https://fast.com",
+            "fast.com": "https://fast.com",
+            "speedtest": "https://www.speedtest.net",
+            "speed test": "https://www.speedtest.net",
+            "google drive": "https://drive.google.com",
+            "drive": "https://drive.google.com",
+            "meu drive": "https://drive.google.com",
+            "gmail": "https://mail.google.com/mail/u/0/#inbox",
+            "email": "https://mail.google.com/mail/u/0/#inbox",
+            "e-mail": "https://mail.google.com/mail/u/0/#inbox",
+            "whatsapp": "https://web.whatsapp.com",
+            "whatsapp web": "https://web.whatsapp.com",
+            "google": "https://www.google.com",
+        }
+        if url_low in mapa_sites_rapidos:
+            url_final = mapa_sites_rapidos[url_low]
+        elif not url_final.startswith(("http://", "https://")):
+            if "." in url_final and " " not in url_final:
+                url_final = f"https://{url_final}"
+            else:
+                url_final = f"https://www.google.com/search?q={url_quote(url_final)}"
+
         # Se o modelo tentar abrir uma página de busca do YouTube, converte automaticamente para o vídeo direto tocando
         yt_search_match = re.search(
             r"youtube\.com/results\?search_query=([^&]+)", url_final, flags=re.IGNORECASE
@@ -1656,39 +1834,95 @@ class Assistant(Agent, TraderMixin):
             await self._navegar_no_gmail_navegador(url_final)
             return "Gmail aberto e focado na mesma aba do navegador."
 
-        print(f"[AÇÃO] O Jarvis está abrindo o site: {nome_site} ({url_final}) [nova_aba={nova_aba}]")
+        nome_exibicao = nome_site or url_final
+        print(f"[AÇÃO] O Jarvis está abrindo o site: {nome_exibicao} ({url_final}) [nova_aba={nova_aba}]")
         try:
             resultado = await asyncio.to_thread(jarvis_chrome.open_url, url_final, nova_aba)
         except JarvisBrowserError as erro:
-            return f"Aviso: Não foi possível abrir {nome_site} no navegador da Jarvis: {erro}"
+            return f"Aviso: Não foi possível abrir {nome_exibicao} no navegador da Jarvis: {erro}"
+
+        if tela_destino.strip():
+            await asyncio.sleep(0.4)
+            await self.mover_aba_ou_janela_para_tela(nome_exibicao, tela_destino.strip())
+
         if resultado == "jarvis_tab":
             return f"Ação executada com sucesso na aba do Chrome ({'nova aba' if nova_aba else 'aba ativa'})."
         return "Ação executada com sucesso no navegador padrão do computador."
 
-    @function_tool(description="Abre um programa ou aplicativo no computador.")
-    async def abrir_programa(self, nome_programa: str):
-        nome_limpo = nome_programa.lower().replace(".exe", "").strip()
+    @function_tool(description="Abre um programa ou aplicativo no computador (opcionalmente informando em qual tela/monitor abrir).")
+    async def abrir_programa(self, nome_programa: str, tela_destino: str = ""):
+        nome_limpo = (
+            (nome_programa or "")
+            .lower()
+            .replace(".exe", "")
+            .replace("o programa ", "")
+            .replace("aplicativo ", "")
+            .strip()
+        )
         print(f"[AÇÃO] O Jarvis está tentando abrir o programa: '{nome_limpo}'")
-        
+
+        # Se o usuário pediu para abrir o Painel de Automações ou Painel de Lembretes do Jarvis
+        if any(p in nome_limpo for p in ("automacoes", "automações", "automacao", "automação")):
+            return await self.listar_automacoes_agendadas()
+        if any(p in nome_limpo for p in ("lembretes", "lembrete")):
+            return await self.listar_lembretes_painel()
+
+        # Se o usuário pediu para abrir algo que na verdade é um site (ex: youtube, teste de internet, gmail, drive), redireciona para abrir_site
+        sites_redirecionados = {
+            "youtube": ("https://www.youtube.com", "YouTube"),
+            "teste de internet": ("https://fast.com", "Teste de Velocidade Fast.com"),
+            "teste de velocidade": ("https://fast.com", "Teste de Velocidade Fast.com"),
+            "fast": ("https://fast.com", "Fast.com"),
+            "fast.com": ("https://fast.com", "Fast.com"),
+            "speedtest": ("https://www.speedtest.net", "Speedtest"),
+            "gmail": ("https://mail.google.com/mail/u/0/#inbox", "Gmail"),
+            "google drive": ("https://drive.google.com", "Google Drive"),
+            "drive": ("https://drive.google.com", "Google Drive"),
+        }
+        if nome_limpo in sites_redirecionados:
+            u, n = sites_redirecionados[nome_limpo]
+            return await self.abrir_site(u, n, True, tela_destino=tela_destino)
+
         try:
-            caminho_atalho = self.buscar_atalho_programa(nome_limpo)
-            if caminho_atalho:
-                print(f"[INFO] Atalho encontrado em: {caminho_atalho}")
-                os.startfile(caminho_atalho)
-                await asyncio.sleep(0.5)
-                return f"Ação executada com SUCESSO."
-            
             dicionario = {
-                "google chrome": "chrome", "chrome": "chrome",
-                "bloco de notas": "notepad", "notepad": "notepad",
-                "calculadora": "calc", "vs code": "code", "vscode": "code",
-                "word": "winword", "excel": "excel", "powerpoint": "powerpnt", "edge": "msedge"
+                "google chrome": ("chrome.exe", ["google chrome", "chrome"]),
+                "chrome": ("chrome.exe", ["google chrome", "chrome"]),
+                "navegador": ("chrome.exe", ["google chrome", "chrome"]),
+                "bloco de notas": ("notepad.exe", ["bloco de notas", "notepad", "sem título", "untitled"]),
+                "notepad": ("notepad.exe", ["bloco de notas", "notepad", "sem título", "untitled"]),
+                "calculadora": ("calc.exe", ["calculadora", "calculator"]),
+                "calc": ("calc.exe", ["calculadora", "calculator"]),
+                "paint": ("mspaint.exe", ["paint"]),
+                "mspaint": ("mspaint.exe", ["paint"]),
+                "explorador de arquivos": ("explorer.exe", ["explorador de arquivos", "file explorer"]),
+                "explorador": ("explorer.exe", ["explorador de arquivos", "file explorer"]),
+                "explorer": ("explorer.exe", ["explorador de arquivos", "file explorer"]),
+                "cmd": ("cmd.exe", ["prompt de comando", "cmd"]),
+                "prompt de comando": ("cmd.exe", ["prompt de comando", "cmd"]),
+                "powershell": ("powershell.exe", ["powershell"]),
+                "vs code": ("code", ["visual studio code", "vscode"]),
+                "vscode": ("code", ["visual studio code", "vscode"]),
+                "word": ("winword", ["word"]),
+                "excel": ("excel", ["excel"]),
+                "powerpoint": ("powerpnt", ["powerpoint"]),
+                "edge": ("msedge.exe", ["edge"]),
             }
-            executavel = dicionario.get(nome_limpo, nome_limpo)
-            
-            subprocess.Popen(f"start {executavel}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            await asyncio.sleep(0.5)
-            return f"Ação executada com SUCESSO."
+            if nome_limpo in dicionario:
+                executavel, termos_foco = dicionario[nome_limpo]
+                await asyncio.to_thread(self._abrir_no_desktop_interativo, executavel, "", termos_foco)
+            else:
+                caminho_atalho = await asyncio.to_thread(self.buscar_atalho_programa, nome_limpo)
+                if caminho_atalho:
+                    print(f"[INFO] Atalho encontrado em: {caminho_atalho}")
+                    await asyncio.to_thread(self._abrir_no_desktop_interativo, caminho_atalho, "", [nome_limpo])
+                else:
+                    await asyncio.to_thread(self._abrir_no_desktop_interativo, nome_limpo, "", [nome_limpo])
+
+            if tela_destino.strip():
+                await asyncio.sleep(0.25)
+                res_move = await self.mover_aba_ou_janela_para_tela(nome_limpo, tela_destino.strip())
+                return f"Programa '{nome_programa}' aberto com SUCESSO. {res_move}"
+            return f"Programa '{nome_programa}' aberto com SUCESSO na tela."
         except Exception as e:
             return f"Aviso: Houve um erro ao tentar abrir o programa: {str(e)}"
 
@@ -1880,6 +2114,14 @@ class Assistant(Agent, TraderMixin):
     async def fechar_programa(self, nome_programa: str):
         nome_limpo = (nome_programa or "").lower().replace(".exe", "").replace("o programa", "").replace("aplicativo", "").strip()
 
+        if any(p in nome_limpo for p in ("automacoes", "automações", "automacao", "automação")):
+            await self._publicar_automacoes_sync("Painel de Automações fechado.", abrir_painel=False, fechar_painel=True)
+            return "Painel de Automações fechado com SUCESSO."
+        if any(p in nome_limpo for p in ("lembretes", "lembrete")):
+            lista = await asyncio.to_thread(self._carregar_e_limpar_lembretes)
+            await self._publicar_lembretes_sync(lista, abrir_painel=False)
+            return "Painel de Lembretes atualizado."
+
         # Se o usuário pediu para fechar algo que é na verdade um site ou aba da web, redireciona para fechar_aba_ou_site
         sites_conhecidos = {"drive", "google drive", "meu drive", "gmail", "youtube", "site", "aba", "guia", "pagina", "página", "whatsapp", "web"}
         if nome_limpo in sites_conhecidos or any(nome_limpo.endswith(ext) for ext in [".com", ".br", ".org", ".net", ".io"]) or any(k in nome_limpo for k in ["drive", "youtube", "gmail", "whatsapp", "site", "aba", "guia", "video", "vídeo"]):
@@ -1905,14 +2147,48 @@ class Assistant(Agent, TraderMixin):
 
         print(f"[AÇÃO] O Jarvis está fechando o programa: '{processo_alvo}'")
         try:
+            def _fechar_janelas_win32() -> int:
+                user32 = ctypes.windll.user32
+                try:
+                    hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+                    if hdesk:
+                        user32.SetThreadDesktop(hdesk)
+                except Exception:
+                    pass
+                termos = [nome_limpo, processo_alvo]
+                if processo_alvo == "notepad":
+                    termos.extend(["bloco de notas", "notepad"])
+                elif processo_alvo == "calculator":
+                    termos.extend(["calculadora", "calculator"])
+                fechadas = []
+
+                def _cb(hwnd, _):
+                    if user32.IsWindowVisible(hwnd):
+                        l = user32.GetWindowTextLengthW(hwnd)
+                        if l > 0:
+                            b = ctypes.create_unicode_buffer(l + 1)
+                            user32.GetWindowTextW(hwnd, b, l + 1)
+                            t = (b.value or "").lower()
+                            if any(k in t for k in termos if k):
+                                user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                                fechadas.append(hwnd)
+                    return True
+
+                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+                user32.EnumWindows(WNDENUMPROC(_cb), 0)
+                return len(fechadas)
+
+            qtd_win32 = await asyncio.to_thread(_fechar_janelas_win32)
+            if qtd_win32 > 0:
+                await asyncio.sleep(0.3)
+                return f"Programa '{nome_programa}' fechado com SUCESSO."
+
             nome_ps = processo_alvo.replace("'", "''")
             ps_command = f"""
             $proc = Get-Process -Name '{nome_ps}' -ErrorAction SilentlyContinue
             if ($proc) {{
                 $proc | ForEach-Object {{
-                    if (-not $_.CloseMainWindow()) {{
-                        Stop-Process -Id $_.Id -Force
-                    }}
+                    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
                 }}
                 Write-Output "SUCESSO"
             }} else {{
@@ -1920,7 +2196,7 @@ class Assistant(Agent, TraderMixin):
             }}
             """
             result = subprocess.run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps_command], capture_output=True, text=True, timeout=5)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
             saida = (result.stdout or "").strip()
             if "SUCESSO" in saida:
                 return f"Programa '{nome_programa}' fechado com SUCESSO."
@@ -1949,13 +2225,18 @@ class Assistant(Agent, TraderMixin):
         
         caminho_final = nome_ou_caminho
         if not os.path.exists(caminho_final):
-            caminho_final = self.buscar_pasta(nome_ou_caminho)
+            caminho_final = await asyncio.to_thread(self.buscar_pasta, nome_ou_caminho)
 
         if caminho_final and os.path.exists(caminho_final):
             try:
-                os.startfile(caminho_final)
-                await asyncio.sleep(0.5)
-                return f"Ação executada com SUCESSO."
+                nome_base = os.path.basename(os.path.normpath(caminho_final)).lower()
+                await asyncio.to_thread(
+                    self._abrir_no_desktop_interativo,
+                    "explorer.exe",
+                    f'"{caminho_final}"',
+                    [nome_base, "explorador", "explorer"],
+                )
+                return f"Pasta '{nome_ou_caminho}' aberta com SUCESSO na tela."
             except Exception as e:
                 return f"Aviso: Houve um erro no Windows. Erro: {str(e)}"
         else:
@@ -2403,6 +2684,260 @@ class Assistant(Agent, TraderMixin):
             return res_win
 
         return f"Aviso: Não encontrei nenhuma janela, pasta ou aba correspondente a '{alvo}' para maximizar/restaurar."
+
+    def _mover_janela_windows_para_monitor(
+        self,
+        alvo: str,
+        mon_x: int,
+        mon_y: int,
+        mon_w: int,
+        mon_h: int,
+        desc_monitor: str,
+        forcar_maximizar: bool = False,
+    ) -> str:
+        """Move uma janela, pasta ou aba destacada para as coordenadas de outro monitor via Win32 API."""
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        SW_SHOWMAXIMIZED = 3
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        try:
+            hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
+        alvo_limpo = (
+            (alvo or "atual")
+            .lower()
+            .replace("mover", "")
+            .replace("move", "")
+            .replace("passar", "")
+            .replace("passa", "")
+            .replace("jogar", "")
+            .replace("joga", "")
+            .replace("mandar", "")
+            .replace("manda", "")
+            .replace("transferir", "")
+            .replace("transfere", "")
+            .replace("a pasta", "")
+            .replace("o programa", "")
+            .replace("a janela", "")
+            .replace("a aba", "")
+            .replace("essa aba", "")
+            .replace("esta aba", "")
+            .replace("o site", "")
+            .replace("do google", "")
+            .strip()
+        )
+        if not alvo_limpo:
+            alvo_limpo = "atual"
+
+        def _posicionar_hwnd_no_monitor(hwnd: int, maximizar_preferido: bool = False) -> None:
+            estava_maximizada = bool(user32.IsZoomed(hwnd))
+            estava_minimizada = bool(user32.IsIconic(hwnd))
+            rc = RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rc))
+            larg_orig = max(400, int(rc.right - rc.left))
+            alt_orig = max(300, int(rc.bottom - rc.top))
+
+            # Precisa estar em estado 'normal' (restaurada) antes de MoveWindow para mudar o monitor associado no Windows
+            if estava_maximizada or estava_minimizada:
+                user32.ShowWindow(hwnd, SW_RESTORE)
+                time.sleep(0.06)
+
+            if estava_maximizada or maximizar_preferido or forcar_maximizar:
+                larg_nova = min(max(850, int(mon_w * 0.78)), mon_w - 60)
+                alt_nova = min(max(620, int(mon_h * 0.78)), mon_h - 60)
+                novo_x = mon_x + (mon_w - larg_nova) // 2
+                novo_y = mon_y + (mon_h - alt_nova) // 2
+                user32.MoveWindow(hwnd, int(novo_x), int(novo_y), int(larg_nova), int(alt_nova), True)
+                time.sleep(0.05)
+                user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
+            else:
+                larg_nova = min(larg_orig, mon_w - 40)
+                alt_nova = min(alt_orig, mon_h - 40)
+                novo_x = mon_x + (mon_w - larg_nova) // 2
+                novo_y = mon_y + (mon_h - alt_nova) // 2
+                user32.MoveWindow(hwnd, int(novo_x), int(novo_y), int(larg_nova), int(alt_nova), True)
+
+            try:
+                user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+
+        # 1. Janela em primeiro plano ("atual", "ativa", "essa", "isso")
+        if alvo_limpo in {"atual", "ativa", "esta", "essa", "isso", "janela", "janela atual", "aba", "aba atual"}:
+            fg = user32.GetForegroundWindow()
+            if fg:
+                _posicionar_hwnd_no_monitor(fg, maximizar_preferido=forcar_maximizar)
+                return f"Janela atual movida com sucesso para a {desc_monitor}."
+
+        termos_busca = [alvo_limpo]
+        mapa_sinonimos = {
+            "calculadora": ["calculadora", "calculator", "calc"],
+            "bloco de notas": ["bloco de notas", "notepad"],
+            "notepad": ["bloco de notas", "notepad"],
+            "vscode": ["visual studio code", "vscode", "vs code", "antigravity", "code"],
+            "vs code": ["visual studio code", "vscode", "vs code"],
+            "explorador": ["explorador de arquivos", "file explorer", "explorer"],
+            "pastas": ["explorador de arquivos", "file explorer"],
+            "downloads": ["downloads", "transferências"],
+            "documentos": ["documentos", "documents"],
+            "imagens": ["imagens", "pictures"],
+            "navegador": ["chrome", "edge", "brave", "firefox"],
+            "chrome": ["google chrome", "chrome"],
+            "youtube": ["youtube"],
+            "drive": ["google drive", "meu drive", "drive"],
+            "gmail": ["gmail", "mail.google"],
+            "email": ["gmail", "mail.google", "outlook"],
+            "whatsapp": ["whatsapp"],
+            "spotify": ["spotify"],
+            "word": ["word"],
+            "excel": ["excel"],
+            "powerpoint": ["powerpoint"],
+            "terminal": ["powershell", "prompt de comando", "terminal", "cmd"],
+            "jarvis": ["jarvis - assistente", "localhost:3000"],
+        }
+        for chave, lista in mapa_sinonimos.items():
+            if chave in alvo_limpo:
+                termos_busca.extend(lista)
+
+        janelas_encontradas: list[tuple[int, str]] = []
+
+        def enum_cb(hwnd, _):
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buff, length + 1)
+                    titulo = buff.value
+                    titulo_low = titulo.lower()
+                    # Protege a janela do Jarvis para não ser movida por engano
+                    if "jarvis" not in alvo_limpo and ("jarvis - assistente" in titulo_low or "localhost:3000" in titulo_low):
+                        return True
+                    if any(t in titulo_low for t in termos_busca if t):
+                        janelas_encontradas.append((hwnd, titulo))
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+
+        if janelas_encontradas:
+            hwnd_alvo, titulo_alvo = janelas_encontradas[0]
+            eh_app_pequeno = any(k in alvo_limpo for k in ("calculadora", "calc"))
+            _posicionar_hwnd_no_monitor(hwnd_alvo, maximizar_preferido=not eh_app_pequeno)
+            return f"'{titulo_alvo}' movido com sucesso para a {desc_monitor}."
+
+        return ""
+
+    @function_tool(
+        description=(
+            "Move ou passa qualquer aba/site aberto no navegador (ex.: aba do Google Drive, YouTube, Gmail, WhatsApp, aba atual) "
+            "ou qualquer programa, aplicativo ou pasta aberta do Windows (ex.: Calculadora, Bloco de Notas, pasta Downloads, VS Code) "
+            "para outra tela/monitor (ex.: 'tela 1', 'tela 2', 'tela 3', 'tela da direita', 'tela da esquerda', 'tela de cima', 'tela principal'). "
+            "Se for uma aba que está junto com outras abas no Chrome, ela destaca SOMENTE aquela aba em uma janela própria e a envia maximizada para a tela escolhida!"
+        )
+    )
+    async def mover_aba_ou_janela_para_tela(
+        self,
+        item_ou_aba: str = "atual",
+        tela_destino: str = "tela 2",
+    ) -> str:
+        alvo_norm = (item_ou_aba or "atual").strip().lower()
+        print(f"[AÇÃO] O Jarvis está movendo '{item_ou_aba}' para '{tela_destino}'")
+
+        mon_x, mon_y, mon_w, mon_h, desc_monitor = await asyncio.to_thread(
+            self._obter_retangulo_monitor_alvo, tela_destino
+        )
+
+        eh_site_ou_aba = any(
+            k in alvo_norm
+            for k in ("aba", "guia", "site", "youtube", "drive", "gmail", "whatsapp", "google")
+        )
+
+        # 1. Se for aba/site do Chrome, destaca a aba via extensão e posiciona no monitor alvo
+        if eh_site_ou_aba:
+            try:
+                res_ext = await asyncio.to_thread(
+                    jarvis_chrome.move_tab_to_monitor,
+                    alvo_norm,
+                    mon_x,
+                    mon_y,
+                    mon_w,
+                    mon_h,
+                )
+                if res_ext and res_ext.get("ok"):
+                    await asyncio.sleep(0.15)
+                    await asyncio.to_thread(
+                        self._mover_janela_windows_para_monitor,
+                        alvo_norm if alvo_norm not in {"aba", "guia", "site"} else "atual",
+                        mon_x,
+                        mon_y,
+                        mon_w,
+                        mon_h,
+                        desc_monitor,
+                        True,
+                    )
+                    titulo_aba = res_ext.get("title") or item_ou_aba
+                    return f"Aba '{titulo_aba}' destacada e enviada para a {desc_monitor} com sucesso."
+            except Exception as erro:
+                logger_memoria.warning("evento=mover_aba_ext status=erro motivo=%s", erro)
+
+        # 2. Movimentação nativa de programas, pastas do Explorer ou janelas abertas via Win32
+        res_win = await asyncio.to_thread(
+            self._mover_janela_windows_para_monitor,
+            alvo_norm,
+            mon_x,
+            mon_y,
+            mon_w,
+            mon_h,
+            desc_monitor,
+            eh_site_ou_aba,
+        )
+        if res_win:
+            return res_win
+
+        # 3. Se o programa/pasta ainda não estava aberto quando o usuário pediu 'abre X na tela Y', abre agora e move!
+        programas_auto_abertura = {
+            "bloco de notas": "notepad.exe",
+            "notepad": "notepad.exe",
+            "calculadora": "calc.exe",
+            "calc": "calc.exe",
+            "paint": "mspaint.exe",
+            "mspaint": "mspaint.exe",
+            "explorador": "explorer.exe",
+            "explorador de arquivos": "explorer.exe",
+        }
+        if alvo_norm in programas_auto_abertura:
+            await asyncio.to_thread(
+                self._abrir_no_desktop_interativo,
+                programas_auto_abertura[alvo_norm],
+                "",
+                [alvo_norm, "sem título", "notepad", "calculadora"],
+            )
+            res_win2 = await asyncio.to_thread(
+                self._mover_janela_windows_para_monitor,
+                alvo_norm,
+                mon_x,
+                mon_y,
+                mon_w,
+                mon_h,
+                desc_monitor,
+                False,
+            )
+            if res_win2:
+                return res_win2
+
+        return f"Aviso: Não encontrei nenhuma aba, pasta ou janela aberta correspondente a '{item_ou_aba}' para mover para a {desc_monitor}."
 
     def _resolver_pasta_destino_print(self, pasta_destino: str) -> str:
         pasta_usuario = os.path.expanduser("~")
@@ -4947,11 +5482,345 @@ class Assistant(Agent, TraderMixin):
         except Exception as e:
             return f"Aviso: Erro ao instalar biblioteca: {e}"
 
+    async def _publicar_automacoes_sync(
+        self,
+        mensagem: str = "",
+        abrir_painel: bool = True,
+        fechar_painel: bool = False,
+    ) -> None:
+        try:
+            tarefas = await asyncio.to_thread(gerenciador_automacoes.listar_agendados)
+            payload = {
+                "type": "jarvis_automations_sync",
+                "automations": tarefas,
+                "message": mensagem,
+                "open_panel": abrir_painel,
+                "close_panel": fechar_painel,
+            }
+            await self.board_room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False),
+                topic="jarvis.automations",
+            )
+        except Exception as erro:
+            logger_memoria.warning("evento=publicar_automacoes_sync status=erro motivo=%s", erro)
+
+    @function_tool(
+        description=(
+            "Cria ou atualiza uma automação/rotina agendada no painel de Automações do Jarvis. "
+            "Toda automação busca anexos no Gmail conforme o remetente ou termo informado e salva automaticamente "
+            "na pasta escolhida do Google Drive (opcionalmente organizando em subpastas de Ano/Mês). "
+            "Se o PDF tiver senha para abrir (ex.: '2138'), informe em `senha_anexo` para que o Jarvis remova a senha automaticamente antes de salvar no Drive."
+        )
+    )
+    async def criar_ou_configurar_automacao(
+        self,
+        nome: str,
+        remetente_ou_busca: str,
+        pasta_drive: str,
+        horario: str = "08:00",
+        frequencia: str = "diario",
+        tipo_arquivo: str = "pdf",
+        organizar_por_ano_mes: bool = True,
+        ativo: bool = True,
+        id_tarefa: str = "",
+        senha_anexo: str = "",
+    ) -> str:
+        t = await asyncio.to_thread(
+            gerenciador_automacoes.criar_ou_atualizar_agendamento,
+            nome,
+            remetente_ou_busca,
+            pasta_drive,
+            horario,
+            frequencia,
+            tipo_arquivo,
+            organizar_por_ano_mes,
+            True,
+            ativo,
+            id_tarefa,
+            senha_anexo,
+        )
+        info_senha = f", senha PDF '{t.get('senha_anexo')}' (desbloqueio automático)" if t.get("senha_anexo") else ""
+        msg = (
+            f"Automação '{t.get('nome')}' salva com sucesso: busca '{t.get('remetente_ou_busca')}', "
+            f"pasta Drive '{t.get('pasta_drive')}', frequência '{t.get('frequencia')}' às {t.get('horario')}{info_senha}."
+        )
+        await self._publicar_automacoes_sync(msg)
+        return msg
+
+    @function_tool(
+        description=(
+            "Executa imediatamente uma automação/rotina agendada que foi criada no painel de Automações do Jarvis "
+            "(equivalente ao botão 'Executar agora'). Informe o nome ou ID da automação criada."
+        )
+    )
+    async def executar_automacao_agendada_agora(
+        self,
+        id_ou_nome_tarefa: str,
+    ) -> str:
+        print(f"[AUTOMAÇÃO] Disparo manual imediato: '{id_ou_nome_tarefa}'")
+        resultado = await asyncio.to_thread(
+            gerenciador_automacoes.executar_agora,
+            id_ou_nome_tarefa,
+        )
+        msg = str(resultado.get("mensagem") or "Automação executada.")
+        await self._publicar_automacoes_sync(msg)
+        return msg
+
+    @function_tool(
+        description=(
+            "Abre o Painel de Automações na tela do Jarvis e lista todas as automações e rotinas criadas "
+            "(status ATIVO/PAUSADO, horário programado, filtro do Gmail, pasta do Drive e resultado da última execução)."
+        )
+    )
+    async def listar_automacoes_agendadas(self) -> str:
+        tarefas = await asyncio.to_thread(gerenciador_automacoes.listar_agendados)
+        await self._publicar_automacoes_sync("Painel de Automações aberto.", abrir_painel=True)
+        if not tarefas:
+            return "Painel de Automações aberto na tela! Nenhuma automação criada até o momento. Você pode criar clicando no botão '+ Criar' em Automações ou pedindo por voz."
+        linhas: list[str] = []
+        for t in tarefas:
+            status = "ATIVO" if t.get("ativo", True) else "PAUSADO"
+            linhas.append(
+                f"- [{status}] {t.get('nome')} | Horário: {t.get('horario')} ({t.get('frequencia')}) "
+                f"| Busca Gmail: {t.get('remetente_ou_busca')} | Pasta Drive: {t.get('pasta_drive')} "
+                f"| Último resultado: {t.get('ultimo_resultado', 'N/A')}"
+            )
+        return "Painel de Automações aberto na tela do Jarvis! Automações criadas:\n" + "\n".join(linhas)
+
+    @function_tool(
+        description="Exclui/remove uma automação agendada do painel de Automações do Jarvis pelo nome ou ID."
+    )
+    async def excluir_automacao_agendada(
+        self,
+        id_ou_nome_tarefa: str,
+    ) -> str:
+        removida = await asyncio.to_thread(
+            gerenciador_automacoes.excluir_agendamento,
+            id_ou_nome_tarefa,
+        )
+        if removida:
+            msg = f"Automação '{id_ou_nome_tarefa}' removida com sucesso."
+            await self._publicar_automacoes_sync(msg)
+            return msg
+        return f"Não encontrei nenhuma automação com o nome ou ID '{id_ou_nome_tarefa}'."
+
+    def _caminho_arquivo_lembretes(self) -> str:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "lembretes_jarvis.json")
+
+    def _carregar_e_limpar_lembretes(self) -> list[dict]:
+        caminho = self._caminho_arquivo_lembretes()
+        if not os.path.exists(caminho):
+            return []
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+            if not isinstance(dados, list):
+                return []
+            hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d")
+            ativos = [
+                item
+                for item in dados
+                if not (
+                    item.get("status") == "concluido"
+                    and item.get("concluido_em_data")
+                    and str(item.get("concluido_em_data")) < hoje
+                )
+            ]
+            if len(ativos) != len(dados):
+                with open(caminho, "w", encoding="utf-8") as f:
+                    json.dump(ativos, f, indent=2, ensure_ascii=False)
+            return ativos
+        except Exception:
+            return []
+
+    def _salvar_lembretes(self, lista: list[dict]) -> None:
+        caminho = self._caminho_arquivo_lembretes()
+        with open(caminho, "w", encoding="utf-8") as f:
+            json.dump(lista, f, indent=2, ensure_ascii=False)
+
+    async def _publicar_lembretes_sync(self, lista: list[dict], abrir_painel: bool = True) -> None:
+        try:
+            payload = {
+                "type": "jarvis_reminders_sync",
+                "reminders": lista,
+                "open_panel": abrir_painel,
+            }
+            await self.board_room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False),
+                topic="jarvis.reminders",
+            )
+        except Exception as erro:
+            logger_memoria.warning("evento=publicar_lembretes_sync status=erro motivo=%s", erro)
+
+    @function_tool(
+        description=(
+            "Adiciona um novo lembrete numerado no Painel de Lembretes da tela (todo lembrete novo entra automaticamente "
+            "como PENDENTE em vermelho). Opcionalmente permite anexar um arquivo de qualquer extensão (PDF, foto, print, etc.) "
+            "informando `caminho_arquivo_anexo` (ou 'print' para capturar um print da tela e anexar ao lembrete)."
+        )
+    )
+    async def adicionar_lembrete_painel(
+        self,
+        texto_lembrete: str,
+        caminho_arquivo_anexo: str = "",
+    ) -> str:
+        agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+        anexos_salvos: list[dict] = []
+
+        arq_raw = (caminho_arquivo_anexo or "").strip()
+        if arq_raw:
+            caminho_origem = ""
+            if arq_raw.lower() in {"print", "tela", "screenshot", "captura"}:
+                caminho_origem = await asyncio.to_thread(
+                    self._capturar_imagem_clipboard_ou_tela,
+                    False,
+                    "Print_Lembrete",
+                ) or ""
+            elif os.path.isfile(arq_raw):
+                caminho_origem = os.path.abspath(arq_raw)
+
+            if caminho_origem and os.path.isfile(caminho_origem):
+                pasta_anexos = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lembretes_anexos")
+                os.makedirs(pasta_anexos, exist_ok=True)
+                nome_orig = os.path.basename(caminho_origem)
+                att_id = f"att-{int(time.time()*1000)}-{uuid.uuid4().hex[:5]}"
+                nome_salvo = f"{att_id}_{re.sub(r'[^a-zA-Z0-9._-]', '_', nome_orig)[:60]}"
+                destino_anexo = os.path.join(pasta_anexos, nome_salvo)
+                try:
+                    shutil.copy2(caminho_origem, destino_anexo)
+                    mime_guess, _ = mimetypes.guess_type(nome_orig)
+                    anexos_salvos.append(
+                        {
+                            "id": att_id,
+                            "nome": nome_orig,
+                            "mime": mime_guess or "application/octet-stream",
+                            "arquivo_salvo": nome_salvo,
+                        }
+                    )
+                except Exception as erro_copia:
+                    logger_memoria.warning("evento=anexo_lembrete status=erro motivo=%s", erro_copia)
+
+        lista = await asyncio.to_thread(self._carregar_e_limpar_lembretes)
+        novo = {
+            "id": f"rem-{uuid.uuid4().hex[:8]}",
+            "texto": texto_lembrete.strip(),
+            "status": "pendente",
+            "criado_em": agora.strftime("%d/%m %H:%M"),
+            "concluido_em_data": "",
+            "anexos": anexos_salvos,
+        }
+        lista.append(novo)
+        await asyncio.to_thread(self._salvar_lembretes, lista)
+        await self._publicar_lembretes_sync(lista, abrir_painel=True)
+        info_anexo = f" com anexo '{anexos_salvos[0]['nome']}'" if anexos_salvos else ""
+        return f"Lembrete #{len(lista)} ('{novo['texto']}'){info_anexo} adicionado como PENDENTE no painel de Lembretes!"
+
+    @function_tool(
+        description=(
+            "Altera a cor/status de um lembrete no Painel de Lembretes pelo número (1, 2, 3...) ou texto: "
+            "'vermelho' (pendente/urgente), 'amarelo' (em andamento) ou 'verde' (concluído, que apaga automaticamente no dia seguinte)."
+        )
+    )
+    async def atualizar_status_lembrete(
+        self,
+        numero_ou_texto: str,
+        cor_ou_status: str = "verde",
+    ) -> str:
+        s_raw = (cor_ou_status or "verde").strip().lower()
+        if any(p in s_raw for p in ("amarelo", "andamento", "yellow")):
+            novo_status = "em_andamento"
+            nome_cor = "Amarelo (Em andamento)"
+        elif any(p in s_raw for p in ("vermelho", "pendente", "urgente", "red")):
+            novo_status = "pendente"
+            nome_cor = "Vermelho (Pendente)"
+        else:
+            novo_status = "concluido"
+            nome_cor = "Verde (Concluído — será apagado amanhã)"
+
+        lista = await asyncio.to_thread(self._carregar_e_limpar_lembretes)
+        if not lista:
+            return "Não há nenhum lembrete cadastrado no painel no momento."
+
+        alvo_str = str(numero_ou_texto or "").strip().lower()
+        num_match = re.search(r"\d+", alvo_str)
+        encontrado = None
+        if num_match:
+            idx = int(num_match.group(0)) - 1
+            if 0 <= idx < len(lista):
+                encontrado = lista[idx]
+        if encontrado is None:
+            for item in lista:
+                if alvo_str in str(item.get("texto") or "").lower() or alvo_str == str(item.get("id") or "").lower():
+                    encontrado = item
+                    break
+
+        if encontrado is None:
+            return f"Não encontrei o lembrete '{numero_ou_texto}'."
+
+        hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d")
+        encontrado["status"] = novo_status
+        encontrado["concluido_em_data"] = hoje if novo_status == "concluido" else ""
+        await asyncio.to_thread(self._salvar_lembretes, lista)
+        await self._publicar_lembretes_sync(lista, abrir_painel=True)
+        return f"Lembrete '{encontrado.get('texto')}' atualizado para {nome_cor}."
+
+    @function_tool(
+        description="Abre o Painel de Lembretes na tela e lista todos os lembretes ativos e seus status (Vermelho, Amarelo ou Verde)."
+    )
+    async def listar_lembretes_painel(self) -> str:
+        lista = await asyncio.to_thread(self._carregar_e_limpar_lembretes)
+        await self._publicar_lembretes_sync(lista, abrir_painel=True)
+        if not lista:
+            return "O painel de Lembretes está aberto, mas ainda não há nenhum lembrete cadastrado."
+        linhas = []
+        for idx, item in enumerate(lista, start=1):
+            st = item.get("status", "pendente")
+            cor = "VERMELHO (Pendente)" if st == "pendente" else "AMARELO (Em andamento)" if st == "em_andamento" else "VERDE (Concluído)"
+            linhas.append(f"{idx:02d}. [{cor}] {item.get('texto')}")
+        return "Lembretes no painel:\n" + "\n".join(linhas)
+
+    @function_tool(
+        description="Exclui/apaga imediatamente um lembrete do Painel de Lembretes pelo número (1, 2, 3...) ou texto."
+    )
+    async def excluir_lembrete_painel(self, numero_ou_texto: str) -> str:
+        lista = await asyncio.to_thread(self._carregar_e_limpar_lembretes)
+        if not lista:
+            return "Não há lembretes para excluir."
+        alvo_str = str(numero_ou_texto or "").strip().lower()
+        num_match = re.search(r"\d+", alvo_str)
+        removido = None
+        if num_match:
+            idx = int(num_match.group(0)) - 1
+            if 0 <= idx < len(lista):
+                removido = lista.pop(idx)
+        if removido is None:
+            for i, item in enumerate(lista):
+                if alvo_str in str(item.get("texto") or "").lower() or alvo_str == str(item.get("id") or "").lower():
+                    removido = lista.pop(i)
+                    break
+        if removido is None:
+            return f"Não encontrei o lembrete '{numero_ou_texto}'."
+        await asyncio.to_thread(self._salvar_lembretes, lista)
+        await self._publicar_lembretes_sync(lista, abrir_painel=True)
+        return f"Lembrete '{removido.get('texto')}' excluído do painel."
+
     # --- FIM DAS FERRAMENTAS ---
+
+async def _destravar_thinking_watchdog(session: AgentSession, timeout: float = 2.5):
+    """Garante que o agente nunca fique travado no estado 'thinking' após executar uma ferramenta."""
+    try:
+        await asyncio.sleep(timeout)
+        if session.agent_state == "thinking":
+            logger_memoria.warning("evento=watchdog_thinking status=destravando_agente_para_listening")
+            session._update_agent_state("listening")
+    except Exception as erro:
+        logger_memoria.warning("evento=watchdog_thinking status=erro motivo=%s", erro)
+
 
 async def _publish_tool_activity(
     room: rtc.Room,
     events: asyncio.Queue[ToolExecutionUpdatedEvent | None],
+    session: AgentSession | None = None,
 ):
     while True:
         event = await events.get()
@@ -4973,6 +5842,8 @@ async def _publish_tool_activity(
                 "id": update.call_id,
                 "status": update.status,
             }
+            if session is not None:
+                asyncio.create_task(_destravar_thinking_watchdog(session))
         else:
             continue
 
@@ -5081,6 +5952,16 @@ def _handle_room_data(
                 asyncio.create_task(agent._publicar_rascunho_email())
             if payload.get("action") == "send_now":
                 asyncio.create_task(agent.confirmar_e_enviar_email())
+        return
+    if data_packet.topic == "jarvis.automations":
+        try:
+            payload = json.loads(data_packet.data)
+        except Exception:
+            return
+        if payload.get("type") == "jarvis_automation_run_now":
+            id_tarefa = str(payload.get("id") or "").strip()
+            if id_tarefa:
+                asyncio.create_task(agent.executar_automacao_agendada_agora(id_tarefa))
 
 
 async def _monitorar_chegada_emails(session: AgentSession, assistant: Assistant):
@@ -5169,6 +6050,37 @@ async def _monitorar_chegada_emails(session: AgentSession, assistant: Assistant)
                 logger_memoria.warning("evento=alerta_email_voz status=erro motivo=%s", erro)
 
 
+async def _monitorar_automacoes_agendadas(session: AgentSession, assistant: Assistant):
+    """Executa em segundo plano as automações agendadas criadas pelo usuário e avisa por voz quando arquivar novos arquivos."""
+    await asyncio.sleep(8)
+    while True:
+        try:
+            resultados = await asyncio.to_thread(
+                gerenciador_automacoes.verificar_e_executar_pendentes
+            )
+            if resultados:
+                await assistant._publicar_automacoes_sync(abrir_painel=False)
+            for res in resultados:
+                arquivos = res.get("arquivos_salvos") or []
+                if arquivos:
+                    pasta_dest = res.get("pasta_destino") or "Google Drive"
+                    nomes_arq = ", ".join(arquivos)
+                    try:
+                        await session.generate_reply(
+                            instructions=(
+                                f"AVISO DE AUTOMAÇÃO CONCLUÍDA: A automação '{res.get('tarefa')}' acabou de rodar, "
+                                f"encontrou {len(arquivos)} arquivo(s) novo(s) ({nomes_arq}) no Gmail e já salvou automaticamente "
+                                f"na pasta '{pasta_dest}' do Google Drive. Avise o usuário de forma breve e prestativa!"
+                            )
+                        )
+                    except Exception as erro_voz:
+                        logger_memoria.warning("evento=alerta_automacao_voz status=erro motivo=%s", erro_voz)
+        except Exception as erro:
+            logger_memoria.warning("evento=monitorar_automacoes status=erro motivo=%s", erro)
+
+        await asyncio.sleep(20)
+
+
 _PADRAO_PEDIDO_EMAIL = re.compile(
     r"\b("
     r"(mandar|manda|enviar|envia|escrever|escreve|redigir|redige|criar|cria|fazer|faz|preparar|prepara)\b.{0,35}\b(e-?mail|email)"
@@ -5205,6 +6117,7 @@ def _verificar_texto_abrir_rascunho(texto: str, eh_usuario: bool, agent: Assista
 
 
 async def entrypoint(ctx: agents.JobContext):
+    jarvis_chrome.start_bridge()
     session = AgentSession()
     location_state: dict[str, float | str] = {}
     activity_events: asyncio.Queue[ToolExecutionUpdatedEvent | None] = asyncio.Queue()
@@ -5238,13 +6151,13 @@ async def entrypoint(ctx: agents.JobContext):
     session.on("conversation_item_added", _on_item_added)
     session.on("tool_execution_updated", activity_events.put_nowait)
     session.on("close", lambda _: activity_events.put_nowait(None))
-    asyncio.create_task(_publish_tool_activity(ctx.room, activity_events))
+    asyncio.create_task(_publish_tool_activity(ctx.room, activity_events, session))
 
     await session.start( 
         room=ctx.room,
         agent=assistant,
         room_input_options=RoomInputOptions(
-            video_enabled=True,
+            video_enabled=False,
             noise_cancellation=noise_cancellation.BVC() if '.livekit.cloud' in os.environ.get('LIVEKIT_URL', '') else None,
         ),
     )
@@ -5252,8 +6165,8 @@ async def entrypoint(ctx: agents.JobContext):
     await ctx.connect()
     metrics_task = asyncio.create_task(_publish_system_metrics(ctx.room))
     email_watch_task = asyncio.create_task(_monitorar_chegada_emails(session, assistant))
-    trader_watch_task = asyncio.create_task(monitorar_profit(session, assistant))
-    session.on("close", lambda _: (metrics_task.cancel(), email_watch_task.cancel(), trader_watch_task.cancel()))
+    automacoes_watch_task = asyncio.create_task(_monitorar_automacoes_agendadas(session, assistant))
+    session.on("close", lambda _: (metrics_task.cancel(), email_watch_task.cancel(), automacoes_watch_task.cancel()))
 
     await session.generate_reply( 
         instructions=SESSION_INSTRUCTION + "\nCumprimente o usuário de forma breve e confiante."

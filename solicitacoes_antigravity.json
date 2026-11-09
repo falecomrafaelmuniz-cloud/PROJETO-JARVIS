@@ -186,5 +186,75 @@
     "status": "concluido",
     "origem": "Comando direto do usuário no chat",
     "concluido_em": "07/11/2026 02:51:00"
+  },
+  {
+    "id": 18,
+    "data_hora": "08/11/2026 14:52:11",
+    "titulo": "Corrigir seleção automática de microfone para priorizar o padrão do sistema",
+    "descricao": "O Jarvis trocou automaticamente para o microfone da webcam em vez do padrão. O usuário solicitou que fosse revertido. Por favor, analise a causa raiz no backend (jarvis_browser.py ou similar) e no frontend (agent-control-bar.tsx) para garantir que o dispositivo de áudio padrão do sistema seja sempre priorizado e que trocas automáticas indesejadas sejam prevenidas. Implementar lógica de seleção e fixação do dispositivo padrão.",
+    "arquivo_sugerido": "backend/jarvis_browser.py, frontend/components/agents-ui/agent-control-bar.tsx",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 19,
+    "data_hora": "08/11/2026 23:38:10",
+    "titulo": "Integração de voz para criação de Zaps no Zapier",
+    "descricao": "Integrar a capacidade de criar e gerenciar automações do Zapier diretamente através de comandos de voz no chat, permitindo que o usuário configure gatilhos e ações (ex: salvar boletos da Graiche AP no Google Drive) conversando com o Jarvis, sem precisar navegar manualmente na interface do Zapier.",
+    "arquivo_sugerido": "backend/agent.py",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 20,
+    "data_hora": "09/11/2026 00:11:32",
+    "titulo": "CANCELAR Solicitação #19",
+    "descricao": "Cancelar solicitação #19 conforme pedido do usuário. A funcionalidade de integração de voz para criação de Zaps no Zapier será revisitada no futuro.",
+    "arquivo_sugerido": "backend/agent.py",
+    "prioridade": "Baixa",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 21,
+    "data_hora": "09/11/2026 01:36:19",
+    "titulo": "Suporte a senha em boletos Graiche",
+    "descricao": "Adicionar funcionalidade na automação de boletos para inserir automaticamente a senha de arquivos protegidos (últimos 3 dígitos do CPF do usuário) ao salvar no Google Drive. Atualmente, os arquivos são salvos, mas permanecem protegidos.",
+    "arquivo_sugerido": "backend/agent.py",
+    "prioridade": "Média",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 22,
+    "data_hora": "09/11/2026 03:40:37",
+    "titulo": "Adicionar botão de Lembretes no HUD",
+    "descricao": "Adicionar um botão de 'Lembretes' no painel esquerdo do HUD (frontend/components/app/system-dashboard.tsx). Este botão deve abrir uma interface simples para visualizar, adicionar e gerenciar lembretes rápidos e anotações. Prioridade: Média.",
+    "arquivo_sugerido": "frontend/components/app/system-dashboard.tsx",
+    "prioridade": "normal",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 23,
+    "data_hora": "09/11/2026 03:42:37",
+    "titulo": "Implementar Painel de Lembretes com Status Visual e Expiração Automática",
+    "descricao": "O botão 'Lembretes' deve abrir um painel lateral similar ao de 'Atividades e Tarefas', seguindo o mesmo estilo visual (frontend/components/app/activity-panel.tsx). Os lembretes devem ser numerados (1, 2, 3...) e ter um sistema de status visual: Vermelho (pendente/urgente), Amarelo (em andamento) e Verde (concluído). Após concluído (status verde), o lembrete deve ser automaticamente apagado no dia seguinte.",
+    "arquivo_sugerido": "frontend/components/app/system-dashboard.tsx",
+    "prioridade": "Alta",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 24,
+    "data_hora": "09/11/2026 04:11:16",
+    "titulo": "Melhorar estabilidade e precisão das operações de navegador (abrir, maximizar, focar)",
+    "descricao": "O Jarvis está enfrentando dificuldades intermitentes para abrir, maximizar e gerenciar abas e sites no navegador (`abrir_site`, `maximizar_ou_restaurar_item_ou_janela`). É necessário revisar e modernizar o módulo `jarvis_browser.py` para garantir abertura instantânea, localização visual precisa e controle robusto de abas e janelas, suportando múltiplos monitores e restaurando o foco corretamente. Prioridade: ALTA.",
+    "arquivo_sugerido": "backend/jarvis_browser.py",
+    "prioridade": "ALTA",
+    "status": "concluido",
+    "origem": "Comando de voz do usuário via Jarvis"
   }
 ]

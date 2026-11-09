@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { TokenSource } from 'livekit-client';
+import { useEffect, useMemo } from 'react';
+import { Room, TokenSource } from 'livekit-client';
 import { useSession } from '@livekit/components-react';
 import { WarningIcon } from '@phosphor-icons/react/dist/ssr';
 import type { AppConfig } from '@/app-config';
@@ -34,10 +34,39 @@ export function App({ appConfig }: AppProps) {
       : TokenSource.endpoint('/api/connection-details');
   }, [appConfig]);
 
-  const session = useSession(
-    tokenSource,
-    appConfig.agentName ? { agentName: appConfig.agentName } : undefined
-  );
+  const room = useMemo(() => {
+    return new Room({
+      audioCaptureDefaults: {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
+  }, []);
+
+  const sessionOptions = useMemo(() => {
+    return {
+      room,
+      ...(appConfig.agentName ? { agentName: appConfig.agentName } : {}),
+    };
+  }, [room, appConfig.agentName]);
+
+  const session = useSession(tokenSource, sessionOptions);
+
+  // Previne suspensão da aba pelo navegador quando estiver em segundo plano
+  useEffect(() => {
+    let wakeLock: any = null;
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').then((lock) => {
+        wakeLock = lock;
+      }).catch(() => {});
+    }
+    return () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, []);
 
   // Hook de Auto-Reconexão
   useAutoReconnect(session);

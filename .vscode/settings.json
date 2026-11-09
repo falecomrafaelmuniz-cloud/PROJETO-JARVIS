@@ -1,0 +1,6 @@
+﻿{
+    "git.enableSmartCommit":  true,
+    "git.enabled":  true,
+    "git.path":  "C:\\Users\\user\\AppData\\Local\\Programs\\Git\\cmd\\git.exe",
+    "git.confirmSync":  false
+}

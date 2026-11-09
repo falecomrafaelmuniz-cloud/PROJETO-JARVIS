@@ -16,10 +16,10 @@ class JarvisBrowserError(RuntimeError):
 
 class JarvisChrome:
     _PORTS = range(47865, 47885)
-    _EXTENSION_WAIT_TIMEOUT = 4.5
+    _EXTENSION_WAIT_TIMEOUT = 0.4
     _REQUEST_TIMEOUT = 8.0
     _EXTENSION_POLL_TIMEOUT = 1.5
-    _EXTENSION_ALIVE_WINDOW = 20.0
+    _EXTENSION_ALIVE_WINDOW = 4.5
 
     def __init__(self):
         self.extension_dir = Path(__file__).parent / "jarvis_chrome_extension"
@@ -38,6 +38,8 @@ class JarvisChrome:
         self._active_tab = {"url": "", "title": "", "updated_at": 0.0}
         self._gmail_tab = {"url": "", "title": "", "updated_at": 0.0}
         self._ext_version = ""
+
+    def start_bridge(self) -> None:
         try:
             self._ensure_bridge()
         except Exception:
@@ -83,19 +85,13 @@ class JarvisChrome:
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise JarvisBrowserError("Só posso abrir endereços web HTTP ou HTTPS.")
 
-        # SEMPRE abre em nova aba no Chrome para preservar 100% das abas abertas anteriormente pelo usuário
-        if nova_aba:
-            try:
-                subprocess.Popen(f'start chrome "{url}"', shell=True)
-                return "jarvis_tab"
-            except Exception:
-                return self._open_default_browser(url, nova_aba=True)
-
         with self._open_lock:
             now = time.monotonic()
             with self._pending_lock:
                 if url == self._last_opened_url and (now - self._last_opened_at) < 2.0:
                     return "jarvis_tab"
+                self._last_opened_url = url
+                self._last_opened_at = now
 
             try:
                 self._ensure_bridge()
@@ -143,18 +139,18 @@ class JarvisChrome:
                 }
             )
 
-            if not pending["event"].wait(self._REQUEST_TIMEOUT):
+            if not pending["event"].wait(2.5):
                 with self._pending_lock:
                     self._pending.pop(request_id, None)
-                    ever_conn = self._ever_connected
-                if pending["dispatched"].is_set() or ever_conn:
+                if pending["dispatched"].is_set():
+                    self._focus_chrome_window()
                     return "jarvis_tab"
                 return self._open_default_browser(url, nova_aba=nova_aba)
 
             result = pending["result"]
             if not result or not result.get("ok"):
-                reason = result.get("error") if result else "resposta vazia"
-                raise JarvisBrowserError(f"A extensão não conseguiu abrir o link: {reason}")
+                return self._open_default_browser(url, nova_aba=nova_aba)
+            self._focus_chrome_window()
             return "jarvis_tab"
 
     def close_tab(self, target: str = "atual") -> bool:
@@ -202,7 +198,7 @@ class JarvisChrome:
 
             if not self._wait_for_extension():
                 return ""
-            if self._ext_version != "2":
+            if self._ext_version not in ("2", "3"):
                 return ""
 
             request_id = uuid.uuid4().hex
@@ -242,7 +238,7 @@ class JarvisChrome:
 
             if not self._wait_for_extension():
                 return ""
-            if self._ext_version != "2":
+            if self._ext_version not in ("2", "3"):
                 return ""
 
             request_id = uuid.uuid4().hex
@@ -273,19 +269,209 @@ class JarvisChrome:
                 return str(result["mode"])
             return ""
 
+    def move_tab_to_monitor(
+        self,
+        target: str,
+        left: int,
+        top: int,
+        width: int,
+        height: int,
+    ) -> dict:
+        with self._open_lock:
+            try:
+                self._ensure_bridge()
+            except JarvisBrowserError:
+                return {"ok": False}
+
+            if not self._wait_for_extension():
+                return {"ok": False}
+
+            ext_v = self._ext_version
+
+        # Se a extensão no Chrome ainda estiver na v2 em memória, destaca a aba usando minimize_tab + focus_tab!
+        if ext_v == "2":
+            min_mode = self.minimize_tab_or_window(target)
+            if min_mode:
+                time.sleep(0.15)
+                foc_mode = self.focus_or_maximize_tab(target)
+                return {"ok": bool(foc_mode or min_mode), "mode": "detached_via_v2"}
+            return {"ok": False}
+
+        if ext_v != "3":
+            return {"ok": False}
+
+        with self._open_lock:
+            request_id = uuid.uuid4().hex
+            pending = {
+                "event": threading.Event(),
+                "dispatched": threading.Event(),
+                "result": None,
+            }
+            with self._pending_lock:
+                self._pending[request_id] = pending
+
+            self._commands.put(
+                {
+                    "request_id": request_id,
+                    "action": "move_tab_to_monitor",
+                    "target": target,
+                    "left": int(left),
+                    "top": int(top),
+                    "width": int(width),
+                    "height": int(height),
+                    "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
+                }
+            )
+
+            if not pending["event"].wait(self._REQUEST_TIMEOUT):
+                with self._pending_lock:
+                    self._pending.pop(request_id, None)
+                return {"ok": False}
+
+            result = pending["result"]
+            if isinstance(result, dict):
+                return result
+            return {"ok": False}
+
     @staticmethod
-    def _open_default_browser(url, nova_aba=False):
+    def _focus_chrome_window():
         try:
-            if nova_aba:
-                import webbrowser
-                webbrowser.open_new_tab(url)
-            else:
-                os.startfile(url)
+            import ctypes
+            user32 = ctypes.windll.user32
+            try:
+                hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+                if hdesk:
+                    user32.SetThreadDesktop(hdesk)
+            except Exception:
+                pass
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            preferred_hwnds = []
+            fallback_hwnds = []
+
+            def _cb(hwnd, _lparam):
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length <= 0:
+                    return True
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                title = (buf.value or "").lower()
+                if any(b in title for b in ("google chrome", "chrome", "edge", "brave")):
+                    if "jarvis - assistente" not in title and "localhost:3000" not in title:
+                        preferred_hwnds.append(hwnd)
+                    else:
+                        fallback_hwnds.append(hwnd)
+                return True
+
+            user32.EnumWindows(WNDENUMPROC(_cb), 0)
+            target_hwnds = preferred_hwnds or fallback_hwnds
+            if target_hwnds:
+                hwnd = target_hwnds[0]
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, 3)  # SW_SHOWMAXIMIZED
+                user32.SwitchToThisWindow(hwnd, True)
+                user32.keybd_event(0x12, 0, 0, 0)  # ALT down
+                user32.SetForegroundWindow(hwnd)
+                user32.keybd_event(0x12, 0, 2, 0)  # ALT up
+        except Exception:
+            pass
+
+    @staticmethod
+    def _spawn_on_interactive_desktop(cmd_line: str, show_window: int = 1, creation_flags: int = 0) -> bool:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        try:
+            hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
+        class STARTUPINFOW(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("lpReserved", wintypes.LPWSTR),
+                ("lpDesktop", wintypes.LPWSTR),
+                ("lpTitle", wintypes.LPWSTR),
+                ("dwX", wintypes.DWORD),
+                ("dwY", wintypes.DWORD),
+                ("dwXSize", wintypes.DWORD),
+                ("dwYSize", wintypes.DWORD),
+                ("dwXCountChars", wintypes.DWORD),
+                ("dwYCountChars", wintypes.DWORD),
+                ("dwFillAttribute", wintypes.DWORD),
+                ("dwFlags", wintypes.DWORD),
+                ("wShowWindow", wintypes.WORD),
+                ("cbReserved2", wintypes.WORD),
+                ("lpReserved2", ctypes.c_void_p),
+                ("hStdInput", wintypes.HANDLE),
+                ("hStdOutput", wintypes.HANDLE),
+                ("hStdError", wintypes.HANDLE),
+            ]
+
+        class PROCESS_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("hProcess", wintypes.HANDLE),
+                ("hThread", wintypes.HANDLE),
+                ("dwProcessId", wintypes.DWORD),
+                ("dwThreadId", wintypes.DWORD),
+            ]
+
+        si = STARTUPINFOW()
+        si.cb = ctypes.sizeof(STARTUPINFOW)
+        si.lpDesktop = "Winsta0\\Default"
+        si.dwFlags = 1  # STARTF_USESHOWWINDOW
+        si.wShowWindow = int(show_window)
+        pi = PROCESS_INFORMATION()
+
+        cmd_buf = ctypes.create_unicode_buffer(cmd_line)
+        ok = kernel32.CreateProcessW(
+            None,
+            cmd_buf,
+            None,
+            None,
+            False,
+            int(creation_flags),
+            None,
+            None,
+            ctypes.byref(si),
+            ctypes.byref(pi),
+        )
+        if ok:
+            kernel32.CloseHandle(pi.hProcess)
+            kernel32.CloseHandle(pi.hThread)
+            return True
+        return False
+
+    @classmethod
+    def _open_default_browser(cls, url, nova_aba=False):
+        try:
+            candidatos_chrome = [
+                os.path.join(os.environ.get("PROGRAMFILES", r"C:\Program Files"), r"Google\Chrome\Application\chrome.exe"),
+                os.path.join(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"), r"Google\Chrome\Application\chrome.exe"),
+                os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Google\Chrome\Application\chrome.exe"),
+            ]
+            chrome_exe = next((p for p in candidatos_chrome if p and os.path.isfile(p)), None)
+            launched = False
+            if chrome_exe:
+                launched = cls._spawn_on_interactive_desktop(f'"{chrome_exe}" "{url}"', show_window=1)
+            if not launched:
+                launched = cls._spawn_on_interactive_desktop(
+                    f'cmd.exe /c start "" "{url}"',
+                    show_window=0,
+                    creation_flags=0x08000000,
+                )
+            time.sleep(0.35)
+            cls._focus_chrome_window()
         except Exception as error:
             raise JarvisBrowserError(
                 f"Não foi possível abrir o link no navegador padrão: {error}"
             ) from error
-        return "default_browser"
+        return "jarvis_tab"
 
     def _perform_hardware_click(self, x: int, y: int):
         now = time.monotonic()
@@ -437,12 +623,9 @@ class JarvisChrome:
                             if pending is not None:
                                 pending["dispatched"].set()
                         payload_cmd = {"request_id": command["request_id"]}
-                        if command.get("url"):
-                            payload_cmd["url"] = command["url"]
-                        if command.get("action"):
-                            payload_cmd["action"] = command["action"]
-                        if command.get("target"):
-                            payload_cmd["target"] = command["target"]
+                        for key in ("url", "nova_aba", "action", "target", "left", "top", "width", "height"):
+                            if key in command and command[key] is not None:
+                                payload_cmd[key] = command[key]
                         self._send_json(200, payload_cmd)
                         return
                 with browser._pending_lock:

@@ -1,20 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
 import { useRoomContext, useSessionContext } from '@livekit/components-react';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import {
   type DashboardCoordinates,
   type DashboardLocationStatus,
-  type DashboardNotification,
   dashboardEvents,
-  notifyDashboard,
 } from '@/lib/jarvis-dashboard';
 import { cn } from '@/lib/shadcn/utils';
 
 const SYSTEM_TOPIC = 'jarvis.system';
-const MAX_NOTIFICATIONS = 5;
 
 interface SystemMetrics {
   cpuPercent: number;
@@ -76,15 +73,6 @@ function formatMemory(bytes: number) {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function formatNotificationTime(date: Date) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(date);
-}
-
 const LOCATION_LABELS: Record<DashboardLocationStatus, string> = {
   offline: 'Sessão desconectada',
   requesting: 'Obtendo localização...',
@@ -92,7 +80,12 @@ const LOCATION_LABELS: Record<DashboardLocationStatus, string> = {
   unavailable: 'Indisponível',
 };
 
-export function SystemDashboard() {
+interface SystemDashboardProps {
+  remindersOpen?: boolean;
+  onToggleReminders?: () => void;
+}
+
+export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDashboardProps = {}) {
   const room = useRoomContext();
   const { isConnected } = useSessionContext();
   const {
@@ -102,18 +95,13 @@ export function SystemDashboard() {
     dragHandlers,
   } = useDraggableFloating('jarvis-pos-system-dashboard-v1');
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
-  const [notifications, setNotifications] = useState<DashboardNotification[]>([]);
   const [locationStatus, setLocationStatus] = useState<DashboardLocationStatus>('requesting');
   const [locationCoordinates, setLocationCoordinates] = useState<DashboardCoordinates | null>(null);
-  const cpuWarningActive = useRef(false);
-  const memoryWarningActive = useRef(false);
 
   useEffect(() => {
     setMetrics(null);
     setLocationStatus(isConnected ? 'requesting' : 'offline');
     setLocationCoordinates(null);
-    cpuWarningActive.current = false;
-    memoryWarningActive.current = false;
   }, [isConnected]);
 
   useEffect(() => {
@@ -130,31 +118,10 @@ export function SystemDashboard() {
         const nextMetrics = parseSystemMetrics(packet);
         if (nextMetrics) {
           setMetrics(nextMetrics);
-
-          const cpuIsHigh = nextMetrics.cpuPercent >= 90;
-          if (cpuIsHigh && !cpuWarningActive.current) {
-            notifyDashboard(`Uso alto de CPU: ${nextMetrics.cpuPercent.toFixed(0)}%.`, 'warning');
-          }
-          cpuWarningActive.current = cpuIsHigh;
-
-          const memoryIsHigh = nextMetrics.memoryPercent >= 90;
-          if (memoryIsHigh && !memoryWarningActive.current) {
-            notifyDashboard(
-              `Uso alto de memória: ${nextMetrics.memoryPercent.toFixed(0)}%.`,
-              'warning'
-            );
-          }
-          memoryWarningActive.current = memoryIsHigh;
         }
       } catch (error) {
         console.warn('Não foi possível ler as métricas do sistema recebidas.', error);
       }
-    };
-
-    const handleNotification = (event: Event) => {
-      const notification = (event as CustomEvent<DashboardNotification>).detail;
-      if (!notification?.message || !notification?.id) return;
-      setNotifications((current) => [notification, ...current].slice(0, MAX_NOTIFICATIONS));
     };
 
     const handleLocation = (event: Event) => {
@@ -186,13 +153,11 @@ export function SystemDashboard() {
     };
 
     room.on(RoomEvent.DataReceived, handleData);
-    window.addEventListener(dashboardEvents.notification, handleNotification);
     window.addEventListener(dashboardEvents.location, handleLocation);
     window.addEventListener(dashboardEvents.coordinates, handleCoordinates);
 
     return () => {
       room.off(RoomEvent.DataReceived, handleData);
-      window.removeEventListener(dashboardEvents.notification, handleNotification);
       window.removeEventListener(dashboardEvents.location, handleLocation);
       window.removeEventListener(dashboardEvents.coordinates, handleCoordinates);
     };
@@ -222,10 +187,30 @@ export function SystemDashboard() {
           <h2 className="text-xs font-semibold tracking-wide">Painéis do Jarvis</h2>
           <p className="mt-0.5 text-[9px] text-white/50">Monitoramento desta sessão</p>
         </div>
-        <span className="flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-medium text-cyan-300">
-          <span className="size-1.5 animate-pulse rounded-full bg-cyan-400" />
-          Ativo
-        </span>
+        <div
+          className="flex items-center gap-1.5"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {onToggleReminders && (
+            <button
+              type="button"
+              onClick={onToggleReminders}
+              title="Abrir/Ocultar Painel de Lembretes"
+              className={cn(
+                'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-medium transition',
+                remindersOpen
+                  ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
+                  : 'border-white/15 bg-white/5 text-white/75 hover:border-cyan-400/40 hover:text-cyan-200'
+              )}
+            >
+              <span>Lembretes</span>
+            </button>
+          )}
+          <span className="flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-medium text-cyan-300">
+            <span className="size-1.5 animate-pulse rounded-full bg-cyan-400" />
+            Ativo
+          </span>
+        </div>
       </div>
 
       <div className="space-y-2 p-2 text-[9px]">
@@ -279,59 +264,6 @@ export function SystemDashboard() {
             </div>
           )}
         </section>
-
-        <section aria-label="Notificações em tempo real" className="border-t border-white/10 pt-2">
-          <div className="mb-1 flex items-center justify-between">
-            <h3 className="font-semibold tracking-wide text-white/60 uppercase">Notificações</h3>
-            <span className="text-white/45">{notifications.length}</span>
-          </div>
-          {notifications.length === 0 ? (
-            <p className="text-white/45">Nenhuma notificação recente.</p>
-          ) : (
-            <ul aria-live="polite" className="space-y-1">
-              {notifications.map((notification) => (
-                <li
-                  key={notification.id}
-                  className={
-                    notification.level === 'error'
-                      ? 'text-red-300'
-                      : notification.level === 'warning'
-                        ? 'text-amber-200'
-                        : 'text-white/75'
-                  }
-                >
-                  <time className="mr-1 font-mono text-white/40">
-                    {formatNotificationTime(new Date(notification.createdAt))}
-                  </time>
-                  <span>{notification.message}</span>
-                  {notification.detail && (
-                    <span className="ml-1 text-white/50">{notification.detail}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <p className="border-t border-white/10 pt-1 text-[8px] text-white/40">
-          Localização aproximada via OpenStreetMap; máximo de 1 consulta por segundo.{' '}
-          <a
-            className="underline underline-offset-2 hover:text-white/70"
-            href="https://www.openstreetmap.org/copyright"
-            rel="noreferrer"
-            target="_blank"
-          >
-            © OpenStreetMap contributors
-          </a>
-          {' · '}
-          <a
-            className="underline underline-offset-2 hover:text-white/70"
-            href="https://operations.osmfoundation.org/policies/nominatim/"
-            rel="noreferrer"
-            target="_blank"
-          >
-            política de uso
-          </a>
-        </p>
       </div>
     </aside>
   );

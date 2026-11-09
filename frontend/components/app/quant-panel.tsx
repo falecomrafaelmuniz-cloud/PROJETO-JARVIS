@@ -1,20 +1,15 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   TrendingUp,
   TrendingDown,
-  Activity,
   RefreshCw,
   Gauge,
   X,
   Minimize2,
   Maximize2,
-  AlertOctagon,
-  Eye,
-  FileText,
 } from 'lucide-react';
-import { useRoomContext, useVoiceAssistant } from '@livekit/components-react';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -43,8 +38,6 @@ interface QuantPanelProps {
 }
 
 export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
-  const room = useRoomContext();
-  const { state: agentState } = useVoiceAssistant();
   const {
     style: dragStyle,
     isDragging,
@@ -85,34 +78,16 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
     return () => clearInterval(interval);
   }, [isOpen, fetchQuantData]);
 
-  // Função para enviar comando de texto para o chat do Jarvis
-  const enviarComandoJarvis = async (texto: string) => {
-    try {
-      if (!room || !room.localParticipant) return;
-      const encoder = new TextEncoder();
-      const payload = encoder.encode(
-        JSON.stringify({
-          type: 'user_chat_command',
-          text: texto,
-          timestamp: Date.now(),
-        })
-      );
-      await room.localParticipant.publishData(payload, { reliable: true });
-    } catch (e) {
-      console.warn('Erro ao disparar comando:', e);
-    }
-  };
-
   if (!isOpen) return null;
 
   const rawScore = Number(quantData?.biasScore);
   const biasScore = Number.isFinite(rawScore) ? Math.max(-100, Math.min(100, rawScore)) : 0;
-  const biasState = quantData?.biasState ?? 'MOMENTO EM EQUILÍBRIO';
+  const biasState = quantData?.biasState ?? 'MOMENTO EM EQUILÃBRIO';
 
-  // Ângulo do ponteiro: -90deg (venda max) a +90deg (compra max)
+  // Ã‚ngulo do ponteiro: -90deg (venda max) a +90deg (compra max)
   const needleAngle = Number.isFinite(biasScore) ? (biasScore / 100) * 90 : 0;
 
-  // Cores dinâmicas do acelerador
+  // Cores dinÃ¢micas do acelerador
   const getBiasColor = () => {
     if (biasScore >= 35) return 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10';
     if (biasScore >= 10) return 'text-emerald-300 border-emerald-400/30 bg-emerald-400/10';
@@ -138,11 +113,11 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
         isDragging || isResizingEdge ? 'shadow-[0_0_35px_rgba(6,182,212,0.45)] ring-1 ring-cyan-300/80' : ''
       )}
     >
-      {/* Visual de linhas holográficas nos cantos superiores */}
+      {/* Visual de linhas hologrÃ¡ficas nos cantos superiores */}
       <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent" />
       <div className="pointer-events-none absolute -top-1 left-1/2 h-1.5 w-16 -translate-x-1/2 rounded-full bg-cyan-400/50 blur-xs" />
 
-      {/* HEADER DO PAINEL (ÁREA DE ARRASTO) */}
+      {/* HEADER DO PAINEL (ÃREA DE ARRASTO) */}
       <div
         {...dragHandlers}
         title="Arraste por aqui para mover o painel"
@@ -158,12 +133,12 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
           <div>
             <div className="flex items-center gap-1.5">
               <h2 className="font-mono text-xs font-bold tracking-wider text-cyan-100 uppercase">
-                Painel Quant · Trader B3
+                Painel Quant Â· Trader B3
               </h2>
               <span className="flex size-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
             </div>
             <p className="text-[10px] text-white/50">
-              Mini Índice (WIN) · Correlações Globais
+              Mini Ãndice (WIN) Â· CorrelaÃ§Ãµes Globais
             </p>
           </div>
         </div>
@@ -172,7 +147,7 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
           <button
             type="button"
             onClick={fetchQuantData}
-            title="Atualizar cotações agora"
+            title="Atualizar cotaÃ§Ãµes agora"
             className="flex size-7 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-cyan-300 transition-colors cursor-pointer"
           >
             <RefreshCw className={cn('size-3.5', loading && 'animate-spin text-cyan-400')} />
@@ -199,20 +174,20 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
       {!minimized && (
         <>
           {/* ======================================================== */}
-          {/* SEÇÃO FIXA: ACELERADOR DE VIÉS QUANT (TACÔMETRO / SPEEDOMETER) */}
-          {/* Fica sempre visível no topo e NUNCA é escondido pelo scroll! */}
+          {/* SEÃ‡ÃƒO FIXA: ACELERADOR DE VIÃ‰S QUANT (TACÃ”METRO / SPEEDOMETER) */}
+          {/* Fica sempre visÃ­vel no topo e NUNCA Ã© escondido pelo scroll! */}
           {/* ======================================================== */}
           <div className="relative border-b border-cyan-500/20 bg-gradient-to-b from-white/[0.04] to-transparent p-3.5 shadow-inner">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold tracking-wider text-white/70 uppercase">
-                Acelerador de Viés (Momento)
+                Acelerador de ViÃ©s (Momento)
               </span>
               <span className="font-mono text-[10px] text-white/40">
                 {lastUpdated ? `Atualizado ${lastUpdated}` : 'Sincronizando...'}
               </span>
             </div>
 
-            {/* Medidor SVG Radial tipo Tacômetro com Ponteiro */}
+            {/* Medidor SVG Radial tipo TacÃ´metro com Ponteiro */}
             <div className="relative my-1.5 flex flex-col items-center justify-center">
               <svg viewBox="0 0 200 110" className="w-56 drop-shadow-[0_0_15px_rgba(6,182,212,0.25)]">
                 {/* Arco de fundo (gradiente vermelho -> ciano -> verde) */}
@@ -270,7 +245,7 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
                 </g>
               </svg>
 
-              {/* Rótulos do tacômetro */}
+              {/* RÃ³tulos do tacÃ´metro */}
               <div className="flex w-56 justify-between px-2 text-[9px] font-bold">
                 <span className="text-rose-400">VENDA (-100%)</span>
                 <span className="text-cyan-300">0%</span>
@@ -301,22 +276,22 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
             {/* Resumo Interpretativo de Mercado */}
             <div className="mt-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-center text-[10px] text-white/80">
               <span className="text-cyan-300 font-semibold">Resumo: </span>
-              {quantData?.summary ?? 'Obtendo cotações dos mercados...'}
+              {quantData?.summary ?? 'Obtendo cotaÃ§Ãµes dos mercados...'}
             </div>
           </div>
 
           {/* ======================================================== */}
-          {/* SEÇÃO ROLÁVEL: GRADE DOS ATIVOS E AÇÕES RÁPIDAS          */}
+          {/* SEÃ‡ÃƒO ROLÃVEL: GRADE DOS ATIVOS E AÃ‡Ã•ES RÃPIDAS          */}
           {/* ======================================================== */}
           <div
             data-no-drag="true"
             className="flex max-h-[min(38vh,17rem)] flex-col gap-3 overflow-y-auto p-3.5 [scrollbar-width:thin]"
           >
-            {/* GRADE DOS ATIVOS QUE INFLUENCIAM O MINI ÍNDICE */}
+            {/* GRADE DOS ATIVOS QUE INFLUENCIAM O MINI ÃNDICE */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-[11px] font-semibold tracking-wider text-white/70 uppercase">
-                  Termômetro de Ativos Correlacionados
+                  TermÃ´metro de Ativos Correlacionados
                 </span>
                 <span className="text-[9px] text-white/40">11 ativos</span>
               </div>
@@ -374,58 +349,6 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
                     </div>
                   );
                 })}
-              </div>
-            </div>
-
-            {/* BOTÕES DE AÇÕES RÁPIDAS COM O JARVIS */}
-            <div>
-              <span className="mb-1.5 block text-[11px] font-semibold tracking-wider text-white/70 uppercase">
-                Comandos Rápidos do Jarvis
-              </span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() =>
-                    enviarComandoJarvis('Jarvis, leia a tela do Profit e me informe o cenário agora.')
-                  }
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 hover:border-cyan-400 transition-colors shadow-sm cursor-pointer"
-                >
-                  <Eye className="size-3.5 text-cyan-300" />
-                  <span>Ler Tela Profit</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    enviarComandoJarvis('Jarvis, faça o panorama do pré-mercado de hoje.')
-                  }
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20 hover:border-emerald-400 transition-colors shadow-sm cursor-pointer"
-                >
-                  <Activity className="size-3.5 text-emerald-300" />
-                  <span>Pré-Mercado</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    enviarComandoJarvis('Jarvis, me apresente o guia de configuração do layout no Profit.')
-                  }
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-500/10 px-2 py-2 text-xs font-semibold text-purple-200 hover:bg-purple-500/20 hover:border-purple-400 transition-colors shadow-sm cursor-pointer"
-                >
-                  <FileText className="size-3.5 text-purple-300" />
-                  <span>Guia do Profit</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    enviarComandoJarvis('Jarvis, emergência! Zere a posição a mercado e cancele todas as ordens no Profit!')
-                  }
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/20 px-2 py-2 text-xs font-bold text-rose-200 hover:bg-rose-500/35 hover:border-rose-400 transition-colors shadow-[0_0_12px_rgba(244,63,94,0.25)] cursor-pointer"
-                >
-                  <AlertOctagon className="size-3.5 text-rose-400" />
-                  <span>Zerar / Pânico</span>
-                </button>
               </div>
             </div>
           </div>
