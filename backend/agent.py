@@ -40,13 +40,13 @@ from livekit import agents, rtc
 from livekit.agents import (
     AgentSession,
     Agent,
-    RoomInputOptions,
     ToolCallEnded,
     ToolCallStarted,
     ToolExecutionUpdatedEvent,
     function_tool,
 )
 from livekit.agents import utils as agent_utils
+from livekit.agents.voice import room_io
 from livekit.agents._exceptions import APIConnectionError
 from livekit.plugins import (
     noise_cancellation,
@@ -340,18 +340,31 @@ class Assistant(Agent):
         self._ultimo_destino_gmail: str = ""
         self._ultimo_tempo_gmail: float = 0.0
         self._gmail_ja_aberto_na_sessao: bool = False
+        live_model = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.8-live")
+        realtime_kwargs: dict = dict(
+            model=live_model,
+            voice="Charon",
+            temperature=0.6,
+            tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
+            realtime_input_config=genai_types.RealtimeInputConfig(
+                automatic_activity_detection=genai_types.AutomaticActivityDetection(
+                    start_of_speech_sensitivity=genai_types.StartSensitivity.START_SENSITIVITY_HIGH,
+                    end_of_speech_sensitivity=genai_types.EndSensitivity.END_SENSITIVITY_HIGH,
+                    prefix_padding_ms=100,
+                    silence_duration_ms=280,
+                )
+            ),
+            context_window_compression=genai_types.ContextWindowCompressionConfig(
+                trigger_tokens=32000,
+                sliding_window=genai_types.SlidingWindow(target_tokens=20000),
+            ),
+        )
+        if "2.5" in live_model:
+            realtime_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=0)
+
         super().__init__(
             instructions=AGENT_INSTRUCTION,
-            llm=google.beta.realtime.RealtimeModel(
-                voice="Charon",
-                temperature=0.6,
-                thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
-                tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
-                context_window_compression=genai_types.ContextWindowCompressionConfig(
-                    trigger_tokens=22000,
-                    sliding_window=genai_types.SlidingWindow(target_tokens=14000),
-                ),
-            ),
+            llm=google.beta.realtime.RealtimeModel(**realtime_kwargs),
         )
 
     def _carregar_alertas_email(self) -> list[dict]:
@@ -6096,23 +6109,25 @@ def _handle_room_data(
 
 async def _monitorar_chegada_emails(session: AgentSession, assistant: Assistant):
     """Monitora em segundo plano a chegada de novos e-mails no Gmail e avisa o usuário por voz quando bater com os alertas configurados."""
-    await asyncio.sleep(4)
-    try:
-        iniciais = await asyncio.to_thread(
-            google_workspace.list_gmail_messages,
-            "in:inbox is:unread newer_than:2d",
-            25,
-        )
-        for m in iniciais:
-            mid = m.get("id")
-            if mid:
-                assistant._ids_emails_ja_vistos.add(mid)
-    except Exception:
-        pass
-
+    inicializado = False
     while True:
         await asyncio.sleep(15)
         if not assistant._alertas_email:
+            continue
+        if not inicializado:
+            inicializado = True
+            try:
+                iniciais = await asyncio.to_thread(
+                    google_workspace.list_gmail_messages,
+                    "in:inbox is:unread newer_than:2d",
+                    25,
+                )
+                for m in iniciais:
+                    mid = m.get("id")
+                    if mid:
+                        assistant._ids_emails_ja_vistos.add(mid)
+            except Exception:
+                pass
             continue
         try:
             atuais = await asyncio.to_thread(
@@ -6248,7 +6263,11 @@ def _verificar_texto_abrir_rascunho(texto: str, eh_usuario: bool, agent: Assista
 
 async def entrypoint(ctx: agents.JobContext):
     jarvis_chrome.start_bridge()
-    session = AgentSession()
+    session = AgentSession(
+        vad=None,
+        turn_handling={"turn_detection": "realtime_llm"},
+        aec_warmup_duration=0.6,
+    )
     location_state: dict[str, float | str] = {}
     activity_events: asyncio.Queue[ToolExecutionUpdatedEvent | None] = asyncio.Queue()
     assistant = Assistant(location_state, ctx.room)
@@ -6297,25 +6316,30 @@ async def entrypoint(ctx: agents.JobContext):
     session.on("close", _on_session_close)
     asyncio.create_task(_publish_tool_activity(ctx.room, activity_events, session))
 
-    await session.start( 
+    usar_bvc = (
+        os.environ.get("JARVIS_USE_BVC", "0") == "1"
+        and ".livekit.cloud" in os.environ.get("LIVEKIT_URL", "")
+    )
+    await session.start(
         room=ctx.room,
         agent=assistant,
-        room_input_options=RoomInputOptions(
-            video_enabled=False,
+        room_options=room_io.RoomOptions(
+            audio_input=room_io.AudioInputOptions(
+                noise_cancellation=noise_cancellation.BVC() if usar_bvc else None,
+            ),
+            video_input=False,
             close_on_disconnect=True,
-            noise_cancellation=noise_cancellation.BVC() if '.livekit.cloud' in os.environ.get('LIVEKIT_URL', '') else None,
         ),
     )
 
-    await ctx.connect()
     metrics_task = asyncio.create_task(_publish_system_metrics(ctx.room))
     email_watch_task = asyncio.create_task(_monitorar_chegada_emails(session, assistant))
     automacoes_watch_task = asyncio.create_task(_monitorar_automacoes_agendadas(session, assistant))
     session.on("close", lambda _: (metrics_task.cancel(), email_watch_task.cancel(), automacoes_watch_task.cancel()))
 
-    await session.generate_reply( 
+    await session.generate_reply(
         instructions=SESSION_INSTRUCTION + "\nCumprimente o usuário de forma breve e confiante."
     )
 
 if __name__ == "__main__":
-    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint))
+    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint, num_idle_processes=1))
