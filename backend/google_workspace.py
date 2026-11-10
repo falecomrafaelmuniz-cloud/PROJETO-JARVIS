@@ -243,10 +243,13 @@ class GoogleWorkspace:
             "itens": items,
         }
 
-    @staticmethod
-    def _execute(request):
+    _api_call_lock = threading.RLock()
+
+    @classmethod
+    def _execute(cls, request):
         try:
-            return request.execute()
+            with cls._api_call_lock:
+                return request.execute()
         except HttpError as error:
             status = getattr(error.resp, "status", "desconhecido")
             raise GoogleWorkspaceError(

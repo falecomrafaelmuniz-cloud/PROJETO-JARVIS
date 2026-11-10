@@ -46,10 +46,140 @@ from livekit.agents import (
     ToolExecutionUpdatedEvent,
     function_tool,
 )
+from livekit.agents import utils as agent_utils
+from livekit.agents._exceptions import APIConnectionError
 from livekit.plugins import (
     noise_cancellation,
     google
 )
+import livekit.plugins.google.realtime.realtime_api as lk_google_realtime
+
+# --- AUTO-RECUPERAÇÃO CONTRA EXPIRAÇÃO DE SESSÃO GEMINI LIVE (1008 Session Not Found) ---
+_orig_realtime_main_task = lk_google_realtime.RealtimeSession._main_task
+
+@agent_utils.log_exceptions(logger=lk_google_realtime.logger)
+async def _robust_gemini_main_task(self) -> None:
+    max_retries = self._opts.conn_options.max_retry
+
+    while not self._msg_ch.closed:
+        await self._close_active_session()
+        self._session_should_close.clear()
+        config = self._build_connect_config()
+        session = None
+        try:
+            lk_google_realtime.logger.debug("connecting to Gemini Realtime API...")
+            t0 = time.perf_counter()
+            async with self._client.aio.live.connect(
+                model=self._opts.model, config=config
+            ) as session:
+                self._report_connection_acquired(time.perf_counter() - t0)
+                async with self._session_lock:
+                    self._active_session = session
+
+                    turns_dict, _ = self._chat_ctx.copy(
+                        exclude_function_call=True,
+                        exclude_handoff=True,
+                        exclude_instructions=True,
+                        exclude_empty_message=True,
+                        exclude_config_update=True,
+                    ).to_provider_format(format="google", inject_dummy_user_message=False)
+                    turns = [lk_google_realtime.types.Content.model_validate(turn) for turn in turns_dict]
+                    if turns:
+                        await session.send_client_content(
+                            turns=turns,
+                            turn_complete=False,
+                        )
+
+                send_task = asyncio.create_task(
+                    self._send_task(session), name="gemini-realtime-send"
+                )
+                recv_task = asyncio.create_task(
+                    self._recv_task(session), name="gemini-realtime-recv"
+                )
+                restart_wait_task = asyncio.create_task(
+                    self._session_should_close.wait(), name="gemini-restart-wait"
+                )
+
+                done, pending = await asyncio.wait(
+                    [send_task, recv_task, restart_wait_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                for task in done:
+                    if task is not restart_wait_task and task.exception():
+                        lk_google_realtime.logger.error(f"error in task {task.get_name()}: {task.exception()}")
+                        raise task.exception() or Exception(f"{task.get_name()} failed")
+
+                if restart_wait_task not in done and self._msg_ch.closed:
+                    break
+
+                for task in pending:
+                    await agent_utils.aio.cancel_and_wait(task)
+
+                if self._session_error is not None:
+                    err = self._session_error
+                    self._session_error = None
+                    raise err
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            hint = lk_google_realtime._get_1008_error_hint(str(e))
+            lk_google_realtime.logger.warning(f"Gemini Realtime API event/error: {e}")
+
+            # Se o handle de resumption expirou após tempo em silêncio/mute:
+            # limpa o handle antigo e reconecta instantaneamente criando uma sessão limpa!
+            str_err = str(e).lower()
+            if "1008" in str_err and "session not found" in str_err:
+                lk_google_realtime.logger.info(
+                    "Sessão anterior do Gemini Live expirou por inatividade. "
+                    "Resetando handle de retomada para abrir nova sessão imediatamente..."
+                )
+                self._session_resumption_handle = None
+                self._emit_error(e, recoverable=True)
+                await asyncio.sleep(0.3)
+                continue
+
+            if not self._msg_ch.closed:
+                if getattr(e, "code", None) == 1007 or "1007" in str(e):
+                    lk_google_realtime.logger.error(
+                        "Gemini Live closed the session: context exhausted (1007).",
+                        exc_info=e,
+                    )
+                    self._emit_error(e, recoverable=False)
+                    raise APIConnectionError(
+                        message="Gemini Live session context exhausted (1007)"
+                    ) from e
+
+                if not session or max_retries == 0:
+                    self._emit_error(e, recoverable=False)
+                    error_msg = "Failed to connect to Gemini Live"
+                    if hint:
+                        error_msg += hint
+                    raise APIConnectionError(message=error_msg) from e
+
+                if self._num_retries >= max_retries:
+                    self._emit_error(e, recoverable=False)
+                    error_msg = f"Failed to connect to Gemini Live after {max_retries} attempts"
+                    if hint:
+                        error_msg += hint
+                    raise APIConnectionError(message=error_msg) from e
+
+                self._emit_error(e, recoverable=True)
+                retry_interval = self._opts.conn_options._interval_for_retry(self._num_retries)
+                lk_google_realtime.logger.warning(
+                    f"Gemini Realtime API connection failed, retrying in {retry_interval}s",
+                    exc_info=e,
+                    extra={"attempt": self._num_retries, "max_retries": max_retries},
+                )
+                await asyncio.sleep(retry_interval)
+                self._num_retries += 1
+        finally:
+            await self._close_active_session()
+
+lk_google_realtime.RealtimeSession._main_task = _robust_gemini_main_task
+# --- FIM DO PATCH DE AUTO-RECUPERAÇÃO GEMINI ---
+
 from google_workspace import GoogleWorkspaceError, google_workspace
 from jarvis_automacoes import gerenciador_automacoes
 from jarvis_browser import JarvisBrowserError, jarvis_chrome
@@ -6147,10 +6277,24 @@ async def entrypoint(ctx: agents.JobContext):
             texto = " ".join(str(p) for p in partes if isinstance(p, str))
         _verificar_texto_abrir_rascunho(str(texto), role == "user", assistant)
 
+    def _on_session_close(ev):
+        activity_events.put_nowait(None)
+        # Se a sessão foi fechada por erro, mas o usuário ainda está conectado na sala,
+        # desconecta a sala para acionar a reconexão automática instantânea do frontend.
+        reason = getattr(ev, "reason", None)
+        err = getattr(ev, "error", None)
+        if str(reason).lower() in ("error", "closereason.error") or err is not None:
+            if ctx.room and ctx.room.remote_participants:
+                logger_memoria.warning("evento=recuperar_sessao motivo=erro_fechamento_com_participante_ativo")
+                try:
+                    asyncio.create_task(ctx.room.disconnect())
+                except Exception:
+                    pass
+
     session.on("user_input_transcribed", _on_user_transcribed)
     session.on("conversation_item_added", _on_item_added)
     session.on("tool_execution_updated", activity_events.put_nowait)
-    session.on("close", lambda _: activity_events.put_nowait(None))
+    session.on("close", _on_session_close)
     asyncio.create_task(_publish_tool_activity(ctx.room, activity_events, session))
 
     await session.start( 
@@ -6158,6 +6302,7 @@ async def entrypoint(ctx: agents.JobContext):
         agent=assistant,
         room_input_options=RoomInputOptions(
             video_enabled=False,
+            close_on_disconnect=True,
             noise_cancellation=noise_cancellation.BVC() if '.livekit.cloud' in os.environ.get('LIVEKIT_URL', '') else None,
         ),
     )

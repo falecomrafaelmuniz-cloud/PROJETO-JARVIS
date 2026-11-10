@@ -41,6 +41,9 @@ export function App({ appConfig }: AppProps) {
         echoCancellation: true,
         noiseSuppression: true,
       },
+      publishDefaults: {
+        stopMicTrackOnMute: false,
+      },
     });
   }, []);
 
