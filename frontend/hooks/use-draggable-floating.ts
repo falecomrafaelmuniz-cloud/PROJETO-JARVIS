@@ -213,16 +213,28 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
       }
     };
 
+    const handleResetLayout = () => {
+      const resetState: TransformState = { x: 0, y: 0, scale: 1 };
+      setState(resetState);
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // ignore storage errors
+      }
+    };
+
     window.addEventListener('pointermove', handleWindowPointerMove);
     window.addEventListener('pointerup', handleWindowPointerUp);
     window.addEventListener('pointercancel', handleWindowPointerUp);
+    window.addEventListener('jarvis:hud-reset-layout', handleResetLayout);
 
     return () => {
       window.removeEventListener('pointermove', handleWindowPointerMove);
       window.removeEventListener('pointerup', handleWindowPointerUp);
       window.removeEventListener('pointercancel', handleWindowPointerUp);
+      window.removeEventListener('jarvis:hud-reset-layout', handleResetLayout);
     };
-  }, [persist]);
+  }, [persist, storageKey]);
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
@@ -232,7 +244,11 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
 
       if (edge === 'none') {
         const target = event.target as HTMLElement | null;
-        if (target?.closest('a, input, textarea, select, [data-no-drag="true"]')) {
+        const isHandle = Boolean(target?.closest('[data-drag-handle="true"]'));
+        if (
+          !isHandle &&
+          target?.closest('button, a, input, textarea, select, [data-no-drag="true"], [data-scrollable="true"]')
+        ) {
           return;
         }
       }
@@ -284,6 +300,15 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
     return Boolean(interactionRef.current?.moved);
   }, []);
 
+  const resetTransform = useCallback(() => {
+    setState({ x: 0, y: 0, scale: 1 });
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      // ignore storage errors
+    }
+  }, [storageKey]);
+
   const cursorStyle = getCursorForEdge(edgeHover, isDragging);
 
   return {
@@ -296,6 +321,7 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
     isDragging,
     isResizingEdge: edgeHover !== 'none',
     wasDragged,
+    resetTransform,
     dragHandlers: {
       onPointerDown,
       onPointerMove,

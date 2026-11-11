@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { PanelHeaderControls } from '@/components/app/panel-header-controls';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -75,13 +76,18 @@ function getTimeData(date: Date, is24h: boolean): TimeData {
   };
 }
 
-export function ClockWidget() {
+interface ClockWidgetProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function ClockWidget({ isOpen = true, onClose }: ClockWidgetProps = {}) {
   const {
     style: dragStyle,
     isDragging,
     isResizingEdge,
     dragHandlers,
-  } = useDraggableFloating('jarvis-pos-clock-widget-v1');
+  } = useDraggableFloating('jarvis-pos-clock-widget-v2');
 
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
   const [isCompact, setIsCompact] = useState(false);
@@ -138,7 +144,7 @@ export function ClockWidget() {
     return getTimeData(currentDate, is24h);
   }, [currentDate, is24h]);
 
-  if (!timeData) return null;
+  if (!isOpen || !timeData) return null;
 
   // Cálculo do anel de progresso dos segundos (raio 22, circunferência ~138.2)
   const ringRadius = 22;
@@ -150,9 +156,9 @@ export function ClockWidget() {
       aria-label="Widget de Relógio do Jarvis"
       style={dragStyle}
       {...dragHandlers}
-      title="Arraste pelo centro para mover o Relógio · Arraste pela borda para redimensionar"
+      title="Arraste pela mãozinha para mover o Relógio · Arraste pelas bordas para redimensionar"
       className={cn(
-        'pointer-events-auto absolute top-3 left-1/2 z-30 -translate-x-1/2 touch-none select-none',
+        'pointer-events-auto absolute top-14 left-1/2 z-30 -translate-x-1/2 touch-none select-none',
         'rounded-2xl border border-cyan-400/30 bg-black/80 text-white backdrop-blur-2xl',
         'shadow-[0_8px_32px_rgba(0,0,0,0.6)] shadow-cyan-950/40 transition-all duration-200',
         isDragging || isResizingEdge
@@ -184,25 +190,14 @@ export function ClockWidget() {
           <span className="text-[11px] font-medium text-white/75">
             {timeData.dayNumber} {timeData.monthName.slice(0, 3)}
           </span>
-          <button
-            onClick={toggleCompact}
-            title="Expandir relógio"
-            className="ml-1 p-1 text-white/40 transition-colors hover:text-cyan-300"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <polyline points="15 3 21 3 21 9" />
-              <polyline points="9 21 3 21 3 15" />
-              <line x1="21" y1="3" x2="14" y2="10" />
-              <line x1="3" y1="21" x2="10" y2="14" />
-            </svg>
-          </button>
+          <PanelHeaderControls
+            minimized={isCompact}
+            onToggleMinimize={toggleCompact}
+            onClose={onClose}
+            expandTitle="Expandir relógio"
+            minimizeTitle="Minimizar relógio"
+            closeTitle="Fechar relógio"
+          />
         </div>
       ) : (
         /* MODO COMPLETO (Futuristic Holographic HUD) */
@@ -221,28 +216,22 @@ export function ClockWidget() {
 
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
+                data-no-drag="true"
                 onClick={toggleFormat}
                 title="Alternar entre 24h e 12h"
                 className="rounded-md border border-cyan-400/20 bg-cyan-950/40 px-1.5 py-0.5 font-mono text-[9px] font-medium text-cyan-300/80 transition-colors hover:bg-cyan-900/60"
               >
                 {is24h ? '24H' : '12H'}
               </button>
-              <button
-                onClick={toggleCompact}
-                title="Minimizar relógio"
-                className="rounded-md p-1 text-white/40 transition-colors hover:bg-white/5 hover:text-white/80"
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                >
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
+              <PanelHeaderControls
+                minimized={isCompact}
+                onToggleMinimize={toggleCompact}
+                onClose={onClose}
+                expandTitle="Expandir relógio"
+                minimizeTitle="Minimizar relógio"
+                closeTitle="Fechar relógio"
+              />
             </div>
           </div>
 

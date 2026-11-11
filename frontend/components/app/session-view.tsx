@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ListChecks, TrendingUp, Workflow } from 'lucide-react';
 import {
   useRemoteParticipants,
   useSessionContext,
@@ -19,6 +18,12 @@ import { ActivityPanel } from '@/components/app/activity-panel';
 import { AutomationsPanel } from '@/components/app/automations-panel';
 import { ClockWidget } from '@/components/app/clock-widget';
 import { EmailComposer } from '@/components/app/email-composer';
+import {
+  DEFAULT_HUD_PANELS,
+  HudMenu,
+  type HudPanelId,
+  type HudPanelsState,
+} from '@/components/app/hud-menu';
 import { LocationSharing } from '@/components/app/location-sharing';
 import { RemindersPanel } from '@/components/app/reminders-panel';
 import { SystemDashboard } from '@/components/app/system-dashboard';
@@ -276,99 +281,79 @@ export const SessionView = ({
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
-  const [traderOpen, setTraderOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
+  const [hudPanels, setHudPanels] = useState<HudPanelsState>(DEFAULT_HUD_PANELS);
+  const [neuralConfigSignal, setNeuralConfigSignal] = useState(0);
+
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('jarvis-trader-open');
-      return saved !== null ? saved === 'true' : true;
+      const saved = localStorage.getItem('jarvis-hud-panels-v1');
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<HudPanelsState>;
+        setHudPanels((prev) => ({
+          ...prev,
+          ...(typeof parsed.system === 'boolean' ? { system: parsed.system } : {}),
+          ...(typeof parsed.clock === 'boolean' ? { clock: parsed.clock } : {}),
+          ...(typeof parsed.activity === 'boolean' ? { activity: parsed.activity } : {}),
+          ...(typeof parsed.trader === 'boolean' ? { trader: parsed.trader } : {}),
+          ...(typeof parsed.automations === 'boolean' ? { automations: parsed.automations } : {}),
+          ...(typeof parsed.reminders === 'boolean' ? { reminders: parsed.reminders } : {}),
+          ...(typeof parsed.email === 'boolean' ? { email: parsed.email } : {}),
+          ...(typeof parsed.neural === 'boolean' ? { neural: parsed.neural } : {}),
+        }));
+      }
     } catch {
-      return true;
+      // ignore storage errors
     }
-  });
-
-  const handleToggleTrader = React.useCallback(() => {
-    setTraderOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('jarvis-trader-open', String(next));
-      } catch {}
-      return next;
-    });
   }, []);
 
-  const handleCloseTrader = React.useCallback(() => {
-    setTraderOpen(false);
+  const persistHudPanels = useCallback((next: HudPanelsState) => {
     try {
-      localStorage.setItem('jarvis-trader-open', 'false');
-    } catch {}
-  }, []);
-
-  const [automationsOpen, setAutomationsOpen] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      const saved = localStorage.getItem('jarvis-automations-open');
-      return saved === 'true';
+      localStorage.setItem('jarvis-hud-panels-v1', JSON.stringify(next));
     } catch {
-      return false;
+      // ignore storage errors
     }
-  });
-
-  const handleToggleAutomations = React.useCallback(() => {
-    setAutomationsOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('jarvis-automations-open', String(next));
-      } catch {}
-      return next;
-    });
   }, []);
 
-  const handleCloseAutomations = React.useCallback(() => {
-    setAutomationsOpen(false);
-    try {
-      localStorage.setItem('jarvis-automations-open', 'false');
-    } catch {}
+  const setPanelOpen = useCallback(
+    (id: HudPanelId, open: boolean) => {
+      setHudPanels((prev) => {
+        if (prev[id] === open) return prev;
+        const next = { ...prev, [id]: open };
+        persistHudPanels(next);
+        return next;
+      });
+    },
+    [persistHudPanels]
+  );
+
+  const toggleHudPanel = useCallback(
+    (id: HudPanelId) => {
+      setHudPanels((prev) => {
+        const next = { ...prev, [id]: !prev[id] };
+        persistHudPanels(next);
+        return next;
+      });
+    },
+    [persistHudPanels]
+  );
+
+  const handleCloseSystem = useCallback(() => setPanelOpen('system', false), [setPanelOpen]);
+  const handleCloseClock = useCallback(() => setPanelOpen('clock', false), [setPanelOpen]);
+  const handleCloseActivity = useCallback(() => setPanelOpen('activity', false), [setPanelOpen]);
+  const handleCloseTrader = useCallback(() => setPanelOpen('trader', false), [setPanelOpen]);
+  const handleCloseAutomations = useCallback(() => setPanelOpen('automations', false), [setPanelOpen]);
+  const handleOpenAutomations = useCallback(() => setPanelOpen('automations', true), [setPanelOpen]);
+  const handleCloseReminders = useCallback(() => setPanelOpen('reminders', false), [setPanelOpen]);
+  const handleOpenReminders = useCallback(() => setPanelOpen('reminders', true), [setPanelOpen]);
+  const handleCloseEmail = useCallback(() => setPanelOpen('email', false), [setPanelOpen]);
+  const handleOpenEmail = useCallback(() => setPanelOpen('email', true), [setPanelOpen]);
+
+  const handleOpenNeuralConfig = useCallback(() => {
+    setNeuralConfigSignal((prev) => prev + 1);
   }, []);
 
-  const handleOpenAutomations = React.useCallback(() => {
-    setAutomationsOpen(true);
-    try {
-      localStorage.setItem('jarvis-automations-open', 'true');
-    } catch {}
-  }, []);
-
-  const [remindersOpen, setRemindersOpen] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      const saved = localStorage.getItem('jarvis-reminders-open');
-      return saved === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const handleToggleReminders = React.useCallback(() => {
-    setRemindersOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('jarvis-reminders-open', String(next));
-      } catch {}
-      return next;
-    });
-  }, []);
-
-  const handleCloseReminders = React.useCallback(() => {
-    setRemindersOpen(false);
-    try {
-      localStorage.setItem('jarvis-reminders-open', 'false');
-    } catch {}
-  }, []);
-
-  const handleOpenReminders = React.useCallback(() => {
-    setRemindersOpen(true);
-    try {
-      localStorage.setItem('jarvis-reminders-open', 'true');
-    } catch {}
+  const handleResetHudLayout = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('jarvis:hud-reset-layout'));
   }, []);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -386,27 +371,6 @@ export const SessionView = ({
     isResizingEdge: isOrbResizingEdge,
     dragHandlers: orbDragHandlers,
   } = useDraggableFloating('jarvis-pos-vanta-orb-v1', { circular: true });
-  const {
-    style: traderButtonDragStyle,
-    isDragging: isTraderButtonDragging,
-    isResizingEdge: isTraderButtonResizingEdge,
-    wasDragged: wasTraderButtonDragged,
-    dragHandlers: traderButtonDragHandlers,
-  } = useDraggableFloating('jarvis-pos-trader-button-v1');
-  const {
-    style: automationsButtonDragStyle,
-    isDragging: isAutomationsButtonDragging,
-    isResizingEdge: isAutomationsButtonResizingEdge,
-    wasDragged: wasAutomationsButtonDragged,
-    dragHandlers: automationsButtonDragHandlers,
-  } = useDraggableFloating('jarvis-pos-automations-button-v1');
-  const {
-    style: remindersButtonDragStyle,
-    isDragging: isRemindersButtonDragging,
-    isResizingEdge: isRemindersButtonResizingEdge,
-    wasDragged: wasRemindersButtonDragged,
-    dragHandlers: remindersButtonDragHandlers,
-  } = useDraggableFloating('jarvis-pos-reminders-button-v1');
 
   // Monitora participantes para detectar Persona (Alice/Járvis)
   const participants = useRemoteParticipants();
@@ -470,167 +434,36 @@ export const SessionView = ({
   return (
     <section className="relative flex h-svh w-svw flex-col overflow-hidden bg-black" {...props}>
       <VantaController vantaRef={vantaEffectRef} />
-      <ActivityPanel />
-      <SystemDashboard
-        remindersOpen={remindersOpen}
-        onToggleReminders={handleToggleReminders}
+      <HudMenu
+        panels={hudPanels}
+        onTogglePanel={toggleHudPanel}
+        onOpenNeuralConfig={handleOpenNeuralConfig}
+        onResetLayout={handleResetHudLayout}
       />
-      <ClockWidget />
+      <ActivityPanel isOpen={hudPanels.activity} onClose={handleCloseActivity} />
+      <SystemDashboard isOpen={hudPanels.system} onClose={handleCloseSystem} />
+      <ClockWidget isOpen={hudPanels.clock} onClose={handleCloseClock} />
       <LocationSharing />
-      <NeuralNetworkVisualizer />
-      <EmailComposer />
-      <QuantPanel isOpen={traderOpen} onClose={handleCloseTrader} />
+      <NeuralNetworkVisualizer
+        isOpen={hudPanels.neural}
+        configOpenSignal={neuralConfigSignal}
+      />
+      <EmailComposer
+        isOpen={hudPanels.email}
+        onClose={handleCloseEmail}
+        onOpenRequest={handleOpenEmail}
+      />
+      <QuantPanel isOpen={hudPanels.trader} onClose={handleCloseTrader} />
       <AutomationsPanel
-        isOpen={automationsOpen}
+        isOpen={hudPanels.automations}
         onClose={handleCloseAutomations}
         onOpenRequest={handleOpenAutomations}
       />
       <RemindersPanel
-        isOpen={remindersOpen}
+        isOpen={hudPanels.reminders}
         onClose={handleCloseReminders}
         onOpenRequest={handleOpenReminders}
       />
-
-      {/* Botão flutuante arrastável e redimensionável TRADER B3 no padrão Ciano */}
-      <div
-        style={traderButtonDragStyle}
-        {...traderButtonDragHandlers}
-        className={cn(
-          'pointer-events-auto absolute top-3 left-[calc(min(17rem,50vw-1.125rem)+0.75rem)] z-30 inline-flex touch-none items-center gap-1.5 select-none transition-all duration-200',
-          isTraderButtonResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
-          isTraderButtonDragging ? 'cursor-grabbing' : 'cursor-grab'
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            if (wasTraderButtonDragged()) return;
-            handleToggleTrader();
-          }}
-          title={
-            traderOpen
-              ? 'Painel Trader B3 Ativo · Clique para Ocultar'
-              : 'Painel Trader B3 Oculto · Clique para Abrir'
-          }
-          aria-label={traderOpen ? 'Ocultar Painel Trader B3' : 'Abrir Painel Trader B3'}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wider uppercase transition-all duration-200 backdrop-blur-2xl',
-            traderOpen
-              ? 'border border-cyan-400/50 bg-black/85 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/30'
-              : 'border border-white/10 bg-black/70 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-300'
-          )}
-        >
-          <TrendingUp
-            className={cn(
-              'size-3.5 transition-colors',
-              traderOpen
-                ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse'
-                : 'text-slate-500'
-            )}
-          />
-          <span className="hidden sm:inline">Trader B3</span>
-          <span
-            className={cn(
-              'size-2 rounded-full transition-all',
-              traderOpen ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
-            )}
-          />
-        </button>
-      </div>
-
-      {/* Botão flutuante arrastável e redimensionável AUTOMAÇÕES no padrão Ciano */}
-      <div
-        style={automationsButtonDragStyle}
-        {...automationsButtonDragHandlers}
-        className={cn(
-          'pointer-events-auto absolute top-3 left-[calc(min(17rem,50vw-1.125rem)+9.5rem)] z-30 inline-flex touch-none items-center gap-1.5 select-none transition-all duration-200',
-          isAutomationsButtonResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
-          isAutomationsButtonDragging ? 'cursor-grabbing' : 'cursor-grab'
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            if (wasAutomationsButtonDragged()) return;
-            handleToggleAutomations();
-          }}
-          title={
-            automationsOpen
-              ? 'Painel de Automações Ativo · Clique para Ocultar'
-              : 'Painel de Automações Oculto · Clique para Abrir'
-          }
-          aria-label={automationsOpen ? 'Ocultar Painel de Automações' : 'Abrir Painel de Automações'}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wider uppercase transition-all duration-200 backdrop-blur-2xl',
-            automationsOpen
-              ? 'border border-cyan-400/50 bg-black/85 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/30'
-              : 'border border-white/10 bg-black/70 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-300'
-          )}
-        >
-          <Workflow
-            className={cn(
-              'size-3.5 transition-colors',
-              automationsOpen
-                ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse'
-                : 'text-slate-500'
-            )}
-          />
-          <span className="hidden sm:inline">Automações</span>
-          <span
-            className={cn(
-              'size-2 rounded-full transition-all',
-              automationsOpen ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
-            )}
-          />
-        </button>
-      </div>
-
-      {/* Botão flutuante arrastável e redimensionável LEMBRETES no padrão Ciano */}
-      <div
-        style={remindersButtonDragStyle}
-        {...remindersButtonDragHandlers}
-        className={cn(
-          'pointer-events-auto absolute top-3 left-[calc(min(17rem,50vw-1.125rem)+18.75rem)] z-30 inline-flex touch-none items-center gap-1.5 select-none transition-all duration-200',
-          isRemindersButtonResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
-          isRemindersButtonDragging ? 'cursor-grabbing' : 'cursor-grab'
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            if (wasRemindersButtonDragged()) return;
-            handleToggleReminders();
-          }}
-          title={
-            remindersOpen
-              ? 'Painel de Lembretes Ativo · Clique para Ocultar'
-              : 'Painel de Lembretes Oculto · Clique para Abrir'
-          }
-          aria-label={remindersOpen ? 'Ocultar Painel de Lembretes' : 'Abrir Painel de Lembretes'}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-wider uppercase transition-all duration-200 backdrop-blur-2xl',
-            remindersOpen
-              ? 'border border-cyan-400/50 bg-black/85 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/30'
-              : 'border border-white/10 bg-black/70 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-300'
-          )}
-        >
-          <ListChecks
-            className={cn(
-              'size-3.5 transition-colors',
-              remindersOpen
-                ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse'
-                : 'text-slate-500'
-            )}
-          />
-          <span className="hidden sm:inline">Lembretes</span>
-          <span
-            className={cn(
-              'size-2 rounded-full transition-all',
-              remindersOpen ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
-            )}
-          />
-        </button>
-      </div>
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">

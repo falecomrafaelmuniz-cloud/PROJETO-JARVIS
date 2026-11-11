@@ -416,6 +416,14 @@ async function moveJarvisTabToMonitor(target, left, top, width, height) {
   };
 
   let searchTerms = [rawTarget];
+  try {
+    if (rawTarget.startsWith("http://") || rawTarget.startsWith("https://")) {
+      const host = new URL(rawTarget).hostname.replace(/^www\./, "");
+      if (host) searchTerms.push(host);
+    }
+  } catch {
+    // ignore URL parse error
+  }
   if (rawTarget.includes("drive")) {
     searchTerms.push("drive.google.com", "google drive", "meu drive");
   }
@@ -428,23 +436,36 @@ async function moveJarvisTabToMonitor(target, left, top, width, height) {
   if (rawTarget.includes("whatsapp")) {
     searchTerms.push("web.whatsapp.com", "whatsapp");
   }
+  if (rawTarget.includes("fast")) {
+    searchTerms.push("fast.com", "fast");
+  }
   if (rawTarget.includes("jarvis")) {
     searchTerms.push("localhost:3000", "127.0.0.1:3000", "jarvis - assistente");
   }
 
   let targetTab = null;
-  if (["atual", "ativa", "ativo", "este", "esta", "esse", "essa", "aba", "guia", "site", "janela", ""].includes(rawTarget)) {
+  if ([
+    "atual", "ativa", "ativo", "este", "esta", "esse", "essa",
+    "aba", "aba atual", "essa aba", "esta aba", "a aba",
+    "guia", "site", "janela", "essa janela", "esta janela",
+    "navegador", "chrome", ""
+  ].includes(rawTarget)) {
     const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     const candidate = activeTabs[0] || allTabs.find((t) => t.active);
-    if (candidate && !isJarvisTab(candidate)) {
+    const stored = await chrome.storage.local.get([JARVIS_TAB_KEY]);
+    const lastJarvisTabId = stored[JARVIS_TAB_KEY];
+    if (candidate && !isJarvisTab(candidate) && candidate.id === lastJarvisTabId) {
       targetTab = candidate;
-    } else {
-      const stored = await chrome.storage.local.get([JARVIS_TAB_KEY]);
-      const lastJarvisTabId = stored[JARVIS_TAB_KEY];
+    } else if (lastJarvisTabId) {
       targetTab =
         allTabs.find((t) => t.id === lastJarvisTabId && !isJarvisTab(t)) ||
+        (candidate && !isJarvisTab(candidate) ? candidate : null) ||
         allTabs.filter((t) => !isJarvisTab(t)).pop() ||
         candidate;
+    } else if (candidate && !isJarvisTab(candidate)) {
+      targetTab = candidate;
+    } else {
+      targetTab = allTabs.filter((t) => !isJarvisTab(t)).pop() || candidate;
     }
   } else {
     targetTab = allTabs.find((tab) => {
@@ -478,6 +499,10 @@ async function moveJarvisTabToMonitor(target, left, top, width, height) {
   }
 
   if (targetWinId) {
+    await chrome.storage.local.set({
+      [JARVIS_TAB_KEY]: targetTab.id,
+      [JARVIS_WINDOW_KEY]: targetWinId,
+    });
     try {
       await chrome.windows.update(targetWinId, {
         state: "normal",
@@ -500,10 +525,17 @@ async function moveJarvisTabToMonitor(target, left, top, width, height) {
     }
   }
   await chrome.tabs.update(targetTab.id, { active: true });
+  let freshTitle = targetTab.title || targetTab.url || rawTarget;
+  try {
+    const freshTab = await chrome.tabs.get(targetTab.id);
+    if (freshTab && freshTab.title) freshTitle = freshTab.title;
+  } catch {
+    // ignore
+  }
 
   return {
     mode: tabsInSameWindow.length > 1 ? "detached_and_moved" : "window_moved",
-    title: targetTab.title || targetTab.url || rawTarget,
+    title: freshTitle,
   };
 }
 
@@ -525,6 +557,12 @@ async function openInJarvisTab(url, novaAba = false) {
         options.index = activeTab.index + 1;
       }
       const newTab = await chrome.tabs.create(options);
+      if (newTab && newTab.id) {
+        await chrome.storage.local.set({
+          [JARVIS_TAB_KEY]: newTab.id,
+          [JARVIS_WINDOW_KEY]: newTab.windowId,
+        });
+      }
       if (newTab && newTab.windowId) {
         await chrome.windows.update(newTab.windowId, { focused: true });
       }

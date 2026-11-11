@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
 import { useRoomContext } from '@livekit/components-react';
+import { PanelHeaderControls, usePanelMinimized } from '@/components/app/panel-header-controls';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -38,11 +39,18 @@ const INITIAL_DRAFT: EmailDraftState = {
   erro: '',
 };
 
-export function EmailComposer() {
+interface EmailComposerProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+  onOpenRequest?: () => void;
+}
+
+export function EmailComposer({ isOpen, onClose, onOpenRequest }: EmailComposerProps = {}) {
   const room = useRoomContext();
   const [draft, setDraft] = useState<EmailDraftState>(INITIAL_DRAFT);
   const [showCc, setShowCc] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [minimized, toggleMinimized] = usePanelMinimized('jarvis-panel-min-email-v1', false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const {
@@ -50,7 +58,7 @@ export function EmailComposer() {
     isDragging,
     isResizingEdge,
     dragHandlers,
-  } = useDraggableFloating('jarvis-pos-email-composer-v1');
+  } = useDraggableFloating('jarvis-pos-email-composer-v2');
 
   const publishUserUpdate = useCallback(
     async (payload: Record<string, unknown>) => {
@@ -83,8 +91,9 @@ export function EmailComposer() {
       try {
         const packet = JSON.parse(new TextDecoder().decode(payload));
         if (packet?.type === 'jarvis_email_draft') {
+          const nextAberto = Boolean(packet.aberto);
           setDraft({
-            aberto: Boolean(packet.aberto),
+            aberto: nextAberto,
             para: String(packet.para ?? ''),
             cc: String(packet.cc ?? ''),
             assunto: String(packet.assunto ?? ''),
@@ -93,6 +102,11 @@ export function EmailComposer() {
             status: packet.status ?? 'rascunho',
             erro: String(packet.erro ?? ''),
           });
+          if (nextAberto && onOpenRequest) {
+            onOpenRequest();
+          } else if (!nextAberto && onClose) {
+            onClose();
+          }
           if (packet.cc) {
             setShowCc(true);
           }
@@ -121,6 +135,7 @@ export function EmailComposer() {
         /\bqual\s+([eé]\s+)?o\s+(destinat[aá]rio|endere[cç]o\s+de\s+e-?mail)\b/i.test(texto);
 
       if (pediuEmail) {
+        onOpenRequest?.();
         setDraft((prev) => {
           if (prev.aberto && prev.status !== 'enviado') return prev;
           return {
@@ -139,7 +154,7 @@ export function EmailComposer() {
       room.off(RoomEvent.DataReceived, handleData);
       room.off(RoomEvent.TranscriptionReceived, handleTranscription);
     };
-  }, [room]);
+  }, [room, onOpenRequest, onClose]);
 
   const hasPara = draft.para.trim().length > 0;
   const hasAssunto = draft.assunto.trim().length > 0;
@@ -204,7 +219,10 @@ export function EmailComposer() {
   const handleClose = () => {
     setDraft((prev) => ({ ...prev, aberto: false }));
     void publishUserUpdate({ aberto: false });
+    onClose?.();
   };
+
+  const visible = isOpen !== undefined ? isOpen : draft.aberto;
 
   const handleSendNow = () => {
     if (!hasPara || !hasAssunto || !hasMensagem || draft.status === 'enviando') return;
@@ -221,14 +239,14 @@ export function EmailComposer() {
   return (
     <>
       {/* Painel do Redator de E-mail */}
-      {draft.aberto && (
+      {visible && (
         <aside
           aria-label="Compositor de E-mail do Jarvis"
           style={dragStyle}
           {...dragHandlers}
-          title="Arraste pelo centro para mover · Arraste pela borda para redimensionar"
+          title="Arraste pela mãozinha para mover · Arraste pelas bordas para redimensionar"
           className={cn(
-            'pointer-events-auto absolute top-16 left-3 z-30 flex w-[min(26rem,calc(100vw-1.5rem))] touch-none flex-col overflow-hidden select-none',
+            'pointer-events-auto absolute top-14 left-[calc(min(17rem,50vw-1.125rem)+1.25rem)] z-40 flex w-[min(26rem,calc(100vw-1.5rem))] touch-none flex-col overflow-hidden select-none',
             'rounded-2xl border border-cyan-400/30 bg-black/85 text-white backdrop-blur-2xl',
             'shadow-[0_0_20px_rgba(6,182,212,0.2)] shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 shadow-cyan-950/40 ring-cyan-500/20 transition-all duration-200',
             isDragging || isResizingEdge
@@ -275,7 +293,7 @@ export function EmailComposer() {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {!showCc && (
+              {!showCc && !minimized && (
                 <button
                   type="button"
                   data-no-drag="true"
@@ -285,18 +303,17 @@ export function EmailComposer() {
                   + CC
                 </button>
               )}
-              <button
-                type="button"
-                data-no-drag="true"
-                onClick={handleClose}
-                title="Fechar rascunho"
-                className="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] text-white/70 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-200"
-              >
-                ✕
-              </button>
+              <PanelHeaderControls
+                minimized={minimized}
+                onToggleMinimize={toggleMinimized}
+                onClose={handleClose}
+                closeTitle="Fechar rascunho"
+              />
             </div>
           </div>
 
+          {!minimized && (
+          <>
           {/* Indicador de etapas em tempo real */}
           <div className="grid grid-cols-4 gap-1 border-b border-white/10 bg-white/[0.02] px-3 py-1.5 text-[9px]">
             <div
@@ -538,6 +555,8 @@ export function EmailComposer() {
               {draft.status === 'enviando' ? 'Enviando...' : 'Enviar agora'}
             </button>
           </div>
+          </>
+          )}
         </aside>
       )}
     </>

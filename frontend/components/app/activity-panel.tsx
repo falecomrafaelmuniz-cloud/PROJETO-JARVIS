@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
 import { useRoomContext, useVoiceAssistant } from '@livekit/components-react';
+import { PanelHeaderControls, usePanelMinimized } from '@/components/app/panel-header-controls';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { notifyDashboard } from '@/lib/jarvis-dashboard';
 import { cn } from '@/lib/shadcn/utils';
@@ -123,15 +124,21 @@ function getToolLabel(tool: string) {
   return TOOL_LABELS[tool] ?? tool.split('_').join(' ');
 }
 
-export function ActivityPanel() {
+interface ActivityPanelProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function ActivityPanel({ isOpen = true, onClose }: ActivityPanelProps = {}) {
   const room = useRoomContext();
   const { state: agentState } = useVoiceAssistant();
+  const [minimized, toggleMinimized] = usePanelMinimized('jarvis-panel-min-activity-v1', false);
   const {
     style: dragStyle,
     isDragging,
     isResizingEdge,
     dragHandlers,
-  } = useDraggableFloating('jarvis-pos-activity-panel-v1');
+  } = useDraggableFloating('jarvis-pos-activity-panel-v2');
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [totalActions, setTotalActions] = useState(0);
   const [clockTick, setClockTick] = useState(() => Date.now());
@@ -203,12 +210,14 @@ export function ActivityPanel() {
     return () => window.clearInterval(timer);
   }, [activities]);
 
+  if (!isOpen) return null;
+
   return (
     <aside
       aria-label="Atividades do Jarvis"
       style={dragStyle}
       {...dragHandlers}
-      title="Arraste pelo centro para mover · Arraste pela borda para aumentar ou diminuir"
+      title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(
         'pointer-events-auto absolute top-3 right-3 z-30 w-[min(17rem,calc(50vw-1.125rem))] touch-none overflow-hidden select-none',
         'rounded-2xl border border-cyan-400/30 bg-black/80 text-white backdrop-blur-2xl',
@@ -227,11 +236,19 @@ export function ActivityPanel() {
           <h2 className="text-xs font-semibold tracking-wide">Tarefas em andamento</h2>
           <p className="mt-0.5 text-[9px] text-white/50">Em execução primeiro; recentes abaixo</p>
         </div>
-        <span className="rounded-full border border-cyan-300/20 px-1.5 py-0.5 text-[8px] tracking-wider text-cyan-200/80 uppercase">
-          {totalActions} {totalActions === 1 ? 'ação' : 'ações'}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="rounded-full border border-cyan-300/20 px-1.5 py-0.5 text-[8px] tracking-wider text-cyan-200/80 uppercase">
+            {totalActions} {totalActions === 1 ? 'ação' : 'ações'}
+          </span>
+          <PanelHeaderControls
+            minimized={minimized}
+            onToggleMinimize={toggleMinimized}
+            onClose={onClose}
+          />
+        </div>
       </div>
 
+      {!minimized && (
       <ol
         aria-live="polite"
         data-scrollable="true"
@@ -327,6 +344,7 @@ export function ActivityPanel() {
             );
           })}
       </ol>
+      )}
     </aside>
   );
 }

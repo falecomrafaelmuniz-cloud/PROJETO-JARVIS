@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
 import { Check, RefreshCw } from 'lucide-react';
 import { useRoomContext, useSessionContext } from '@livekit/components-react';
+import { PanelHeaderControls, usePanelMinimized } from '@/components/app/panel-header-controls';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import {
   type DashboardCoordinates,
@@ -82,19 +83,20 @@ const LOCATION_LABELS: Record<DashboardLocationStatus, string> = {
 };
 
 interface SystemDashboardProps {
-  remindersOpen?: boolean;
-  onToggleReminders?: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDashboardProps = {}) {
+export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps = {}) {
   const room = useRoomContext();
   const { isConnected } = useSessionContext();
+  const [minimized, toggleMinimized] = usePanelMinimized('jarvis-panel-min-system-v1', false);
   const {
     style: dragStyle,
     isDragging,
     isResizingEdge,
     dragHandlers,
-  } = useDraggableFloating('jarvis-pos-system-dashboard-v1');
+  } = useDraggableFloating('jarvis-pos-system-dashboard-v2');
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [locationStatus, setLocationStatus] = useState<DashboardLocationStatus>('requesting');
   const [locationCoordinates, setLocationCoordinates] = useState<DashboardCoordinates | null>(null);
@@ -191,12 +193,14 @@ export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDash
     };
   }, [room]);
 
+  if (!isOpen) return null;
+
   return (
     <aside
       aria-label="Painéis do sistema"
       style={dragStyle}
       {...dragHandlers}
-      title="Arraste pelo centro para mover · Arraste pela borda para aumentar ou diminuir"
+      title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(
         'pointer-events-auto absolute top-3 left-3 z-30 w-[min(17rem,calc(50vw-1.125rem))] touch-none overflow-hidden select-none',
         'rounded-2xl border border-cyan-400/30 bg-black/80 text-white backdrop-blur-2xl',
@@ -215,12 +219,10 @@ export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDash
           <h2 className="text-xs font-semibold tracking-wide">Painéis do Jarvis</h2>
           <p className="mt-0.5 text-[9px] text-white/50">Monitoramento desta sessão</p>
         </div>
-        <div
-          className="flex items-center gap-1.5"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
+            data-no-drag="true"
             onClick={handleUpdateClick}
             disabled={updateState === 'updating'}
             title="Buscar atualizações do Jarvis no GitHub"
@@ -242,33 +244,24 @@ export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDash
             )}
             <span>{updateState === 'updating' ? 'Atualizando...' : 'Atualizar'}</span>
           </button>
-          {onToggleReminders && (
-            <button
-              type="button"
-              onClick={onToggleReminders}
-              title="Abrir/Ocultar Painel de Lembretes"
-              className={cn(
-                'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-medium transition',
-                remindersOpen
-                  ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200 shadow-[0_0_10px_rgba(34,211,238,0.3)]'
-                  : 'border-white/15 bg-white/5 text-white/75 hover:border-cyan-400/40 hover:text-cyan-200'
-              )}
-            >
-              <span>Lembretes</span>
-            </button>
-          )}
-          <span className="flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-medium text-cyan-300">
+          <span className="hidden items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-medium text-cyan-300 sm:flex">
             <span className="size-1.5 animate-pulse rounded-full bg-cyan-400" />
             Ativo
           </span>
+          <PanelHeaderControls
+            minimized={minimized}
+            onToggleMinimize={toggleMinimized}
+            onClose={onClose}
+          />
         </div>
       </div>
-      {updateMsg && (
+      {!minimized && updateMsg && (
         <div className="border-b border-white/10 bg-cyan-950/40 px-3 py-1 text-[9px] text-cyan-200">
           {updateMsg}
         </div>
       )}
 
+      {!minimized && (
       <div className="space-y-2 p-2 text-[9px]">
         <section aria-label="Uso do sistema" className="space-y-1.5">
           <h3 className="font-semibold tracking-wide text-white/60 uppercase">Sistema</h3>
@@ -321,6 +314,7 @@ export function SystemDashboard({ remindersOpen, onToggleReminders }: SystemDash
           )}
         </section>
       </div>
+      )}
     </aside>
   );
 }

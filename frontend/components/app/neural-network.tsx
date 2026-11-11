@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Activity, Brain, Eye, EyeOff, Settings, Sparkles, X } from 'lucide-react';
+import { Brain, X } from 'lucide-react';
 import { useVoiceAssistant } from '@livekit/components-react';
-import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 
 interface Node {
@@ -62,29 +61,37 @@ const THEMES = {
 
 type ThemeKey = keyof typeof THEMES;
 
-export function NeuralNetworkVisualizer() {
+interface NeuralNetworkVisualizerProps {
+  isOpen?: boolean;
+  configOpenSignal?: number;
+}
+
+export function NeuralNetworkVisualizer({
+  isOpen,
+  configOpenSignal = 0,
+}: NeuralNetworkVisualizerProps = {}) {
   const { state: agentState } = useVoiceAssistant();
-  const [isEnabled, setIsEnabled] = useState(false);
+  const [internalEnabled, setInternalEnabled] = useState(false);
   const [theme, setTheme] = useState<ThemeKey>('cyan');
   const [density, setDensity] = useState<'low' | 'medium' | 'high'>('medium');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
 
-  const {
-    style: buttonDragStyle,
-    isDragging: isButtonDragging,
-    isResizingEdge: isButtonResizingEdge,
-    wasDragged: wasButtonDragged,
-    dragHandlers: buttonDragHandlers,
-  } = useDraggableFloating('jarvis-pos-neural-net-button-v1');
+  const isEnabled = isOpen !== undefined ? isOpen : internalEnabled;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseRef = useRef<{ x: number; y: number; active: boolean }>({ x: -1000, y: -1000, active: false });
+
+  useEffect(() => {
+    if (configOpenSignal > 0) {
+      setIsConfigOpen(true);
+    }
+  }, [configOpenSignal]);
 
   // Carrega preferências salvas
   useEffect(() => {
     try {
       const savedEnabled = localStorage.getItem('jarvis-neural-net-enabled');
-      if (savedEnabled !== null) setIsEnabled(savedEnabled === 'true');
+      if (savedEnabled !== null) setInternalEnabled(savedEnabled === 'true');
       const savedTheme = localStorage.getItem('jarvis-neural-net-theme') as ThemeKey;
       if (savedTheme && THEMES[savedTheme]) setTheme(savedTheme);
       const savedDensity = localStorage.getItem('jarvis-neural-net-density') as 'low' | 'medium' | 'high';
@@ -93,16 +100,6 @@ export function NeuralNetworkVisualizer() {
       // Ignora erro de storage
     }
   }, []);
-
-  const toggleEnabled = () => {
-    setIsEnabled((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('jarvis-neural-net-enabled', String(next));
-      } catch {}
-      return next;
-    });
-  };
 
   const changeTheme = (newTheme: ThemeKey) => {
     setTheme(newTheme);
@@ -158,7 +155,7 @@ export function NeuralNetworkVisualizer() {
     const nodeCount = density === 'low' ? 32 : density === 'high' ? 75 : 50;
     const maxDistance = density === 'low' ? 140 : density === 'high' ? 115 : 125;
     let nodes: Node[] = [];
-    let pulses: Pulse[] = [];
+    const pulses: Pulse[] = [];
 
     const initNodes = () => {
       nodes = [];
@@ -353,62 +350,6 @@ export function NeuralNetworkVisualizer() {
           className="pointer-events-none fixed inset-0 z-0 h-full w-full opacity-80 transition-opacity duration-700"
         />
       )}
-
-      {/* Botão flutuante arrastável no topo do HUD */}
-      <div
-        style={buttonDragStyle}
-        {...buttonDragHandlers}
-        className={cn(
-          'pointer-events-auto absolute top-3 left-[calc(min(17rem,50vw-1.125rem)+8.25rem)] z-30 inline-flex touch-none items-center gap-1.5 select-none transition-all duration-200',
-          isButtonDragging ? 'cursor-grabbing' : 'cursor-grab'
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            if (wasButtonDragged()) return;
-            toggleEnabled();
-          }}
-          title={isEnabled ? 'Rede Neural Ativa · Clique para Desligar' : 'Rede Neural Desligada · Clique para Ativar'}
-          aria-label={isEnabled ? 'Desativar visualização de rede neural' : 'Ativar visualização de rede neural'}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold tracking-wider uppercase transition-all duration-200 backdrop-blur-2xl',
-            isEnabled
-              ? 'border border-cyan-400/50 bg-black/85 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/30'
-              : 'border border-white/10 bg-black/70 text-slate-400 hover:border-white/20 hover:text-slate-200'
-          )}
-        >
-          <Brain
-            className={cn(
-              'size-3.5 transition-colors',
-              isEnabled ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse' : 'text-slate-500'
-            )}
-          />
-          <span className="hidden sm:inline">Rede Neural</span>
-          <span
-            className={cn(
-              'size-2 rounded-full transition-all',
-              isEnabled ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,1)]' : 'bg-slate-600'
-            )}
-          />
-        </button>
-
-        {/* Botãozinho de Configuração rápida */}
-        {isEnabled && (
-          <button
-            type="button"
-            onClick={() => {
-              if (wasButtonDragged()) return;
-              setIsConfigOpen(true);
-            }}
-            title="Configurar estilo da Rede Neural"
-            aria-label="Abrir configurações da rede neural"
-            className="rounded-xl border border-cyan-400/30 bg-black/80 p-2 text-cyan-300 backdrop-blur-2xl transition hover:border-cyan-300/60 hover:bg-slate-900/90 active:scale-95"
-          >
-            <Settings className="size-3.5" />
-          </button>
-        )}
-      </div>
 
       {/* Modal de Personalização da Rede Neural */}
       {isConfigOpen && (

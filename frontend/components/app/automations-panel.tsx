@@ -15,10 +15,10 @@ import {
   RefreshCw,
   Trash2,
   Workflow,
-  X,
   Zap,
 } from 'lucide-react';
 import { useRoomContext } from '@livekit/components-react';
+import { PanelHeaderControls, usePanelMinimized } from '@/components/app/panel-header-controls';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -67,12 +67,13 @@ export function AutomationsPanel({ isOpen, onClose, onOpenRequest }: Automations
   const [horario, setHorario] = useState('08:00');
   const [senhaAnexo, setSenhaAnexo] = useState('');
 
+  const [minimized, toggleMinimized] = usePanelMinimized('jarvis-panel-min-automations-v1', false);
   const {
     style: dragStyle,
     isDragging,
     isResizingEdge,
     dragHandlers,
-  } = useDraggableFloating('jarvis-pos-automations-panel-v1');
+  } = useDraggableFloating('jarvis-pos-automations-panel-v2');
 
   const fetchAutomations = useCallback(async () => {
     try {
@@ -271,8 +272,9 @@ export function AutomationsPanel({ isOpen, onClose, onOpenRequest }: Automations
     <aside
       style={dragStyle}
       {...dragHandlers}
+      title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(
-        'pointer-events-auto fixed top-16 left-4 z-40 flex max-h-[82vh] w-[min(28rem,calc(100vw-2rem))] touch-none flex-col overflow-hidden rounded-2xl border border-cyan-500/35 bg-black/90 text-slate-100 shadow-[0_0_35px_rgba(6,182,212,0.22)] backdrop-blur-2xl select-none',
+        'pointer-events-auto fixed bottom-24 right-3 z-40 flex max-h-[75vh] w-[min(28rem,calc(100vw-1.5rem))] touch-none flex-col overflow-hidden rounded-2xl border border-cyan-500/35 bg-black/90 text-slate-100 shadow-[0_0_35px_rgba(6,182,212,0.22)] backdrop-blur-2xl select-none',
         isResizingEdge ? 'ring-2 ring-cyan-300/70' : '',
         isDragging ? 'cursor-grabbing' : 'cursor-grab'
       )}
@@ -298,43 +300,40 @@ export function AutomationsPanel({ isOpen, onClose, onOpenRequest }: Automations
           </div>
         </div>
 
-        <div
-          className="flex items-center gap-1.5"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {!showForm && (
+        <div className="flex items-center gap-1.5">
+          {!showForm && !minimized && (
             <button
               type="button"
+              data-no-drag="true"
               onClick={handleOpenCreate}
-              className="inline-flex items-center gap-1 rounded-lg border border-cyan-400/50 bg-cyan-500/20 px-2.5 py-1.5 font-mono text-[11px] font-bold text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition hover:bg-cyan-500/35 hover:text-white"
+              className="inline-flex items-center gap-1 rounded-lg border border-cyan-400/50 bg-cyan-500/20 px-2 py-1 font-mono text-[10px] font-bold text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition hover:bg-cyan-500/35 hover:text-white"
             >
-              <Plus className="size-3.5" />
+              <Plus className="size-3" />
               <span>Criar</span>
             </button>
           )}
           <button
             type="button"
+            data-no-drag="true"
             onClick={fetchAutomations}
             title="Atualizar lista"
-            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-400 transition hover:border-cyan-400/40 hover:text-cyan-200"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-400/10 text-cyan-200/80 transition hover:border-cyan-300/45 hover:bg-cyan-400/20 hover:text-cyan-100"
           >
-            <RefreshCw className={cn('size-3.5', loading ? 'animate-spin text-cyan-300' : '')} />
+            <RefreshCw className={cn('size-3', loading ? 'animate-spin text-cyan-300' : '')} />
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Fechar painel"
-            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-400 transition hover:border-rose-400/40 hover:bg-rose-500/15 hover:text-rose-200"
-          >
-            <X className="size-3.5" />
-          </button>
+          <PanelHeaderControls
+            minimized={minimized}
+            onToggleMinimize={toggleMinimized}
+            onClose={onClose}
+          />
         </div>
       </div>
 
       {/* Corpo do Painel */}
+      {!minimized && (
       <div
+        data-scrollable="true"
         className="flex-1 space-y-3 overflow-y-auto p-4"
-        onPointerDown={(e) => e.stopPropagation()}
       >
         {showForm ? (
           <form onSubmit={handleSaveForm} className="space-y-3 rounded-xl border border-cyan-500/25 bg-slate-950/80 p-3.5">
@@ -648,6 +647,7 @@ export function AutomationsPanel({ isOpen, onClose, onOpenRequest }: Automations
           })
         )}
       </div>
+      )}
     </aside>
   );
 }

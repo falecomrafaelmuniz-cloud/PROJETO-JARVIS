@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
 import { ExternalLink, FileText, Image as ImageIcon, Paperclip, Plus, Trash2, X } from 'lucide-react';
 import { useRoomContext } from '@livekit/components-react';
+import { PanelHeaderControls, usePanelMinimized } from '@/components/app/panel-header-controls';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -59,12 +60,13 @@ export function RemindersPanel({ isOpen, onClose, onOpenRequest }: RemindersPane
   const newFileInputRef = useRef<HTMLInputElement>(null);
   const itemFileInputRef = useRef<HTMLInputElement>(null);
 
+  const [minimized, toggleMinimized] = usePanelMinimized('jarvis-panel-min-reminders-v1', false);
   const {
     style: dragStyle,
     isDragging,
     isResizingEdge,
     dragHandlers,
-  } = useDraggableFloating('jarvis-pos-reminders-panel-v1');
+  } = useDraggableFloating('jarvis-pos-reminders-panel-v2');
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -323,9 +325,9 @@ export function RemindersPanel({ isOpen, onClose, onOpenRequest }: RemindersPane
       aria-label="Lembretes do Jarvis"
       style={dragStyle}
       {...dragHandlers}
-      title="Arraste pelo centro para mover · Arraste pela borda para aumentar ou diminuir"
+      title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(
-        'pointer-events-auto absolute top-16 right-[calc(min(17rem,50vw-1.125rem)+1.25rem)] z-30 w-[min(20rem,calc(100vw-1.5rem))] touch-none overflow-hidden select-none',
+        'pointer-events-auto absolute top-14 right-[calc(min(17rem,50vw-1.125rem)+1.25rem)] z-30 w-[min(20rem,calc(100vw-1.5rem))] touch-none overflow-hidden select-none',
         'rounded-2xl border border-cyan-400/30 bg-black/80 text-white backdrop-blur-2xl',
         'shadow-[0_0_20px_rgba(6,182,212,0.18)] shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 shadow-cyan-950/40 ring-cyan-500/20 transition-all duration-200',
         isDragging || isResizingEdge
@@ -361,28 +363,25 @@ export function RemindersPanel({ isOpen, onClose, onOpenRequest }: RemindersPane
             Vermelho pendente · Amarelo andamento · Verde concluído
           </p>
         </div>
-        <div
-          className="flex items-center gap-1.5"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
+        <div className="flex items-center gap-1.5">
           <span className="rounded-full border border-cyan-300/20 px-1.5 py-0.5 text-[8px] tracking-wider text-cyan-200/80 uppercase">
             {reminders.length} {reminders.length === 1 ? 'item' : 'itens'}
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Fechar painel de lembretes"
-            className="rounded-md border border-white/10 bg-white/5 p-1 text-white/60 transition hover:border-rose-400/40 hover:bg-rose-500/15 hover:text-rose-200"
-          >
-            <X className="size-3" />
-          </button>
+          <PanelHeaderControls
+            minimized={minimized}
+            onToggleMinimize={toggleMinimized}
+            onClose={onClose}
+            closeTitle="Fechar painel de lembretes"
+          />
         </div>
       </div>
 
+      {!minimized && (
+      <>
       {/* Barra rápida para adicionar novo lembrete + Clipe de anexo */}
       <form
         onSubmit={handleAddReminder}
-        onPointerDown={(e) => e.stopPropagation()}
+        data-no-drag="true"
         className="border-b border-white/10 px-2.5 py-2"
       >
         <div className="flex items-center gap-1.5">
@@ -446,7 +445,6 @@ export function RemindersPanel({ isOpen, onClose, onOpenRequest }: RemindersPane
       <ol
         aria-live="polite"
         data-scrollable="true"
-        onPointerDown={(e) => e.stopPropagation()}
         className="flex max-h-[min(45vh,22rem)] flex-col gap-1.5 overflow-y-auto p-2"
       >
         {reminders.length === 0 ? (
@@ -624,6 +622,8 @@ export function RemindersPanel({ isOpen, onClose, onOpenRequest }: RemindersPane
           })
         )}
       </ol>
+      </>
+      )}
     </aside>
   );
 }

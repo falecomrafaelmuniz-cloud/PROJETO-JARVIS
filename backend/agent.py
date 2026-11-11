@@ -834,6 +834,102 @@ class Assistant(Agent):
                 for file in files:
                     if file.lower().endswith('.lnk') and nome_lower in file.lower():
                         return os.path.join(root, file)
+    def _listar_monitores_windows(self) -> list[dict]:
+        """Retorna lista ordenada dos monitores conectados no Windows (DISPLAY1 = Tela 1, etc.)."""
+        user32 = ctypes.windll.user32
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        class MONITORINFOEXW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("rcMonitor", RECT),
+                ("rcWork", RECT),
+                ("dwFlags", wintypes.DWORD),
+                ("szDevice", wintypes.WCHAR * 32),
+            ]
+
+        brutos: list[tuple[int, int, int, int, int, bool, str]] = []
+
+        def _monitor_enum_proc(hMonitor, hdcMonitor, lprcMonitor, dwData):
+            mi = MONITORINFOEXW()
+            mi.cbSize = ctypes.sizeof(MONITORINFOEXW)
+            if user32.GetMonitorInfoW(hMonitor, ctypes.byref(mi)):
+                r = mi.rcMonitor
+                m_num = 99
+                dev = mi.szDevice or ""
+                match_d = re.search(r"(\d+)$", dev)
+                if match_d:
+                    m_num = int(match_d.group(1))
+                elif mi.dwFlags & 1:
+                    m_num = 1
+                brutos.append((m_num, int(r.left), int(r.top), int(r.right), int(r.bottom), bool(mi.dwFlags & 1), dev))
+            elif lprcMonitor:
+                r = lprcMonitor.contents
+                brutos.append((99, int(r.left), int(r.top), int(r.right), int(r.bottom), False, ""))
+            return True
+
+        MONITORENUMPROC = ctypes.WINFUNCTYPE(
+            ctypes.c_int,
+            wintypes.HMONITOR,
+            wintypes.HDC,
+            ctypes.POINTER(RECT),
+            wintypes.LPARAM,
+        )
+        try:
+            user32.EnumDisplayMonitors(0, 0, MONITORENUMPROC(_monitor_enum_proc), 0)
+        except Exception:
+            pass
+
+        ordenados = sorted(brutos, key=lambda m: (m[0], m[1], m[2]))
+        monitores: list[dict] = []
+        for idx, (_num, l, t, r, b, eh_principal, dev) in enumerate(ordenados, start=1):
+            w = r - l
+            h = b - t
+            pos_partes = []
+            if eh_principal or (l == 0 and t == 0):
+                pos_partes.append("Principal")
+            if t < -100:
+                pos_partes.append("Acima")
+            elif t > 100:
+                pos_partes.append("Abaixo")
+            if l >= 1000:
+                pos_partes.append("Direita")
+            elif l <= -1000:
+                pos_partes.append("Esquerda")
+            monitores.append({
+                "numero": idx,
+                "device": dev,
+                "principal": eh_principal or (l == 0 and t == 0),
+                "left": l,
+                "top": t,
+                "right": r,
+                "bottom": b,
+                "width": w,
+                "height": h,
+                "posicao": ", ".join(pos_partes) if pos_partes else f"Tela {idx}",
+            })
+        return monitores
+
+    @function_tool(
+        description="Lista quantas telas/monitores estão conectados ao computador, suas numerações (Tela 1, 2, 3...) e posições."
+    )
+    async def listar_telas_ou_monitores(self) -> str:
+        monitores = await asyncio.to_thread(self._listar_monitores_windows)
+        if not monitores:
+            return "Detectei apenas 1 tela principal."
+        partes = [
+            f"Tela {m['numero']} ({m['posicao']}, {m['width']}x{m['height']})"
+            for m in monitores
+        ]
+        return f"Você tem {len(monitores)} telas conectadas: " + "; ".join(partes) + "."
+
     def _obter_retangulo_monitor_alvo(self, alvo_tela: str = "atual") -> tuple[int, int, int, int, str]:
         """Retorna (x, y, largura, altura, descricao) do monitor desejado suportando múltiplos monitores."""
         user32 = ctypes.windll.user32
@@ -849,49 +945,8 @@ class Assistant(Agent):
         class POINT(ctypes.Structure):
             _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
-        class MONITORINFOEXW(ctypes.Structure):
-            _fields_ = [
-                ("cbSize", wintypes.DWORD),
-                ("rcMonitor", RECT),
-                ("rcWork", RECT),
-                ("dwFlags", wintypes.DWORD),
-                ("szDevice", wintypes.WCHAR * 32),
-            ]
-
-        monitores_info: list[tuple[int, int, int, int, int]] = []
-
-        def _monitor_enum_proc(hMonitor, hdcMonitor, lprcMonitor, dwData):
-            mi = MONITORINFOEXW()
-            mi.cbSize = ctypes.sizeof(MONITORINFOEXW)
-            if user32.GetMonitorInfoW(hMonitor, ctypes.byref(mi)):
-                r = mi.rcMonitor
-                m_num = 99
-                match_d = re.search(r"(\d+)$", mi.szDevice or "")
-                if match_d:
-                    m_num = int(match_d.group(1))
-                elif mi.dwFlags & 1:
-                    m_num = 1
-                monitores_info.append((m_num, int(r.left), int(r.top), int(r.right), int(r.bottom)))
-            elif lprcMonitor:
-                r = lprcMonitor.contents
-                monitores_info.append((99, int(r.left), int(r.top), int(r.right), int(r.bottom)))
-            return True
-
-        MONITORENUMPROC = ctypes.WINFUNCTYPE(
-            ctypes.c_int,
-            wintypes.HMONITOR,
-            wintypes.HDC,
-            ctypes.POINTER(RECT),
-            wintypes.LPARAM,
-        )
-        try:
-            user32.EnumDisplayMonitors(0, 0, MONITORENUMPROC(_monitor_enum_proc), 0)
-        except Exception:
-            pass
-
-        # Ordena monitores pelo número oficial do Windows (DISPLAY1 = Tela 1, DISPLAY2 = Tela 2, DISPLAY3 = Tela 3)
-        monitores_ordenados = sorted(monitores_info, key=lambda m: (m[0], m[1], m[2]))
-        monitores = [(m[1], m[2], m[3], m[4]) for m in monitores_ordenados]
+        monitores_dict = self._listar_monitores_windows()
+        monitores = [(m["left"], m["top"], m["right"], m["bottom"]) for m in monitores_dict]
         if not monitores:
             w_pad = user32.GetSystemMetrics(0) or 1920
             h_pad = user32.GetSystemMetrics(1) or 1080
@@ -1985,8 +2040,9 @@ class Assistant(Agent):
             return f"Aviso: Não foi possível abrir {nome_exibicao} no navegador da Jarvis: {erro}"
 
         if tela_destino.strip():
-            await asyncio.sleep(0.4)
-            await self.mover_aba_ou_janela_para_tela(nome_exibicao, tela_destino.strip())
+            await asyncio.sleep(0.5)
+            alvo_mov = nome_site.strip() or url_final
+            await self.mover_aba_ou_janela_para_tela(alvo_mov, tela_destino.strip())
 
         if resultado == "jarvis_tab":
             return f"Ação executada com sucesso na aba do Chrome ({'nova aba' if nova_aba else 'aba ativa'})."
@@ -2967,6 +3023,8 @@ class Assistant(Agent):
                     # Protege a janela do Jarvis para não ser movida por engano
                     if "jarvis" not in alvo_limpo and ("jarvis - assistente" in titulo_low or "localhost:3000" in titulo_low):
                         return True
+                    if forcar_maximizar and not any(b in titulo_low for b in ("google chrome", "chrome", "edge", "brave", "firefox")):
+                        return True
                     if any(t in titulo_low for t in termos_busca if t):
                         janelas_encontradas.append((hwnd, titulo))
             return True
@@ -3002,12 +3060,33 @@ class Assistant(Agent):
             self._obter_retangulo_monitor_alvo, tela_destino
         )
 
-        eh_site_ou_aba = any(
-            k in alvo_norm
-            for k in ("aba", "guia", "site", "youtube", "drive", "gmail", "whatsapp", "google")
+        eh_site_ou_aba = (
+            any(
+                k in alvo_norm
+                for k in (
+                    "aba",
+                    "guia",
+                    "site",
+                    "navegador",
+                    "chrome",
+                    "youtube",
+                    "drive",
+                    "gmail",
+                    "whatsapp",
+                    "google",
+                    "fast",
+                    "speedtest",
+                    "http",
+                    ".com",
+                    ".br",
+                    ".net",
+                    ".org",
+                )
+            )
+            or alvo_norm in {"atual", "ativa", "ativo", "essa", "esta", "isso"}
         )
 
-        # 1. Se for aba/site do Chrome, destaca a aba via extensão e posiciona no monitor alvo
+        # 1. Se for aba/site do Chrome (ou comando genérico "essa aba"/"atual"), destaca a aba via extensão e posiciona no monitor alvo
         if eh_site_ou_aba:
             try:
                 res_ext = await asyncio.to_thread(
@@ -3019,10 +3098,12 @@ class Assistant(Agent):
                     mon_h,
                 )
                 if res_ext and res_ext.get("ok"):
-                    await asyncio.sleep(0.15)
+                    await asyncio.sleep(0.18)
+                    titulo_real = str(res_ext.get("title") or "").strip()
+                    alvo_win32 = titulo_real if titulo_real else "chrome"
                     await asyncio.to_thread(
                         self._mover_janela_windows_para_monitor,
-                        alvo_norm if alvo_norm not in {"aba", "guia", "site"} else "atual",
+                        alvo_win32,
                         mon_x,
                         mon_y,
                         mon_w,
@@ -3030,7 +3111,7 @@ class Assistant(Agent):
                         desc_monitor,
                         True,
                     )
-                    titulo_aba = res_ext.get("title") or item_ou_aba
+                    titulo_aba = titulo_real or item_ou_aba
                     return f"Aba '{titulo_aba}' destacada e enviada para a {desc_monitor} com sucesso."
             except Exception as erro:
                 logger_memoria.warning("evento=mover_aba_ext status=erro motivo=%s", erro)

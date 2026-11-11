@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
@@ -6,10 +6,8 @@ import {
   TrendingDown,
   RefreshCw,
   Gauge,
-  X,
-  Minimize2,
-  Maximize2,
 } from 'lucide-react';
+import { PanelHeaderControls, usePanelMinimized } from '@/components/app/panel-header-controls';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import { cn } from '@/lib/shadcn/utils';
 
@@ -38,16 +36,16 @@ interface QuantPanelProps {
 }
 
 export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
+  const [minimized, toggleMinimized] = usePanelMinimized('jarvis-panel-min-quant-v1', false);
   const {
     style: dragStyle,
     isDragging,
     isResizingEdge,
     dragHandlers,
-  } = useDraggableFloating('jarvis-pos-quant-panel-v2');
+  } = useDraggableFloating('jarvis-pos-quant-panel-v3');
 
   const [quantData, setQuantData] = useState<QuantResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [minimized, setMinimized] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string>('');
 
   const fetchQuantData = useCallback(async () => {
@@ -106,11 +104,14 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
     <aside
       aria-label="Painel Quant B3"
       style={dragStyle}
+      {...dragHandlers}
+      title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(
-        'pointer-events-auto absolute top-16 left-4 z-40 w-[min(26rem,calc(100vw-2rem))] overflow-hidden select-none',
+        'pointer-events-auto absolute bottom-24 left-3 z-40 w-[min(26rem,calc(100vw-1.5rem))] touch-none overflow-hidden select-none',
         'rounded-2xl border border-cyan-400/30 bg-black/90 text-white backdrop-blur-2xl',
         'shadow-[0_0_30px_rgba(6,182,212,0.22)] shadow-[0_12px_40px_rgba(0,0,0,0.7)] ring-1 shadow-cyan-950/50 ring-cyan-500/25 transition-all duration-200',
-        isDragging || isResizingEdge ? 'shadow-[0_0_35px_rgba(6,182,212,0.45)] ring-1 ring-cyan-300/80' : ''
+        isDragging || isResizingEdge ? 'shadow-[0_0_35px_rgba(6,182,212,0.45)] ring-1 ring-cyan-300/80' : '',
+        isDragging ? 'cursor-grabbing' : 'cursor-grab'
       )}
     >
       {/* Visual de linhas hologrÃ¡ficas nos cantos superiores */}
@@ -119,12 +120,7 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
 
       {/* HEADER DO PAINEL (ÃREA DE ARRASTO) */}
       <div
-        {...dragHandlers}
-        title="Arraste por aqui para mover o painel"
-        className={cn(
-          'flex items-center justify-between border-b border-cyan-500/20 bg-cyan-950/30 px-3.5 py-2.5 touch-none',
-          isDragging ? 'cursor-grabbing' : 'cursor-grab'
-        )}
+        className="flex items-center justify-between border-b border-cyan-500/20 bg-cyan-950/30 px-3.5 py-2.5"
       >
         <div className="flex items-center gap-2">
           <div className="flex size-7 items-center justify-center rounded-lg border border-cyan-400/40 bg-cyan-500/15 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)]">
@@ -143,31 +139,22 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1" data-no-drag="true">
+        <div className="flex items-center gap-1">
           <button
             type="button"
+            data-no-drag="true"
             onClick={fetchQuantData}
-            title="Atualizar cotaÃ§Ãµes agora"
-            className="flex size-7 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-cyan-300 transition-colors cursor-pointer"
+            title="Atualizar cotações agora"
+            className="flex size-6 items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-400/10 text-cyan-200/80 transition hover:border-cyan-300/45 hover:bg-cyan-400/20 hover:text-cyan-100"
           >
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin text-cyan-400')} />
+            <RefreshCw className={cn('size-3', loading && 'animate-spin text-cyan-300')} />
           </button>
-          <button
-            type="button"
-            onClick={() => setMinimized(!minimized)}
-            title={minimized ? 'Expandir' : 'Minimizar'}
-            className="flex size-7 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-          >
-            {minimized ? <Maximize2 className="size-3.5" /> : <Minimize2 className="size-3.5" />}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Fechar Painel"
-            className="flex size-7 items-center justify-center rounded-lg text-white/60 hover:bg-rose-500/20 hover:text-rose-300 transition-colors cursor-pointer"
-          >
-            <X className="size-4" />
-          </button>
+          <PanelHeaderControls
+            minimized={minimized}
+            onToggleMinimize={toggleMinimized}
+            onClose={onClose}
+            closeTitle="Fechar Painel"
+          />
         </div>
       </div>
 

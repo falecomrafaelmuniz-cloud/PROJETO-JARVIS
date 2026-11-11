@@ -241,175 +241,177 @@ def executar_rotina_automacao(tarefa: dict) -> dict:
         }
 
     try:
-        gmail_service = google_workspace._service(
-            "gmail", "v1", required_scopes=[GMAIL_SCOPE]
-        )
-        drive_service = google_workspace._service("drive", "v3")
-
-        # 1. Estrutura de pastas no Google Drive
-        id_pasta_raiz = buscar_ou_criar_pasta_drive(drive_service, pasta_drive_raiz)
-        if organizar_por_ano_mes:
-            pasta_mes_nome = f"{agora.year} / {MESES_PT[agora.month]}"
-            id_pasta_destino = buscar_ou_criar_pasta_drive(
-                drive_service, pasta_mes_nome, parent_id=id_pasta_raiz
+        with google_workspace._api_call_lock:
+            gmail_service = google_workspace._service(
+                "gmail", "v1", required_scopes=[GMAIL_SCOPE]
             )
-            caminho_exibicao = f"{pasta_drive_raiz} / {pasta_mes_nome}"
-        else:
-            id_pasta_destino = id_pasta_raiz
-            caminho_exibicao = pasta_drive_raiz
+            drive_service = google_workspace._service("drive", "v3")
 
-        # 2. Monta a query do Gmail (suporta múltiplos remetentes separados por ';' ou ',')
-        partes_q = ["-in:sent -in:drafts -in:trash -in:spam"]
-        itens_busca = [
-            item.strip()
-            for item in re.split(r"[;,]+", remetente_ou_busca)
-            if item.strip()
-        ]
-        termos_or: list[str] = []
-        for item in itens_busca:
-            if ":" in item:
-                termos_or.append(item)
-            elif " " in item and "@" not in item:
-                termos_or.append(f'from:"{item}"')
+            # 1. Estrutura de pastas no Google Drive
+            id_pasta_raiz = buscar_ou_criar_pasta_drive(drive_service, pasta_drive_raiz)
+            if organizar_por_ano_mes:
+                pasta_mes_nome = f"{agora.year} / {MESES_PT[agora.month]}"
+                id_pasta_destino = buscar_ou_criar_pasta_drive(
+                    drive_service, pasta_mes_nome, parent_id=id_pasta_raiz
+                )
+                caminho_exibicao = f"{pasta_drive_raiz} / {pasta_mes_nome}"
             else:
-                termos_or.append(f"from:{item}")
+                id_pasta_destino = id_pasta_raiz
+                caminho_exibicao = pasta_drive_raiz
 
-        if len(termos_or) == 1:
-            partes_q.append(termos_or[0])
-        elif len(termos_or) > 1:
-            partes_q.append("{" + " ".join(termos_or) + "}")
+            # 2. Monta a query do Gmail (suporta múltiplos remetentes separados por ';', ',' ou ' OR ', e e-mails enviados para si mesmo)
+            partes_q = ["(in:inbox OR -in:sent) -in:drafts -in:trash -in:spam"]
+            itens_busca = [
+                item.strip()
+                for bloco in re.split(r"[;,]+", remetente_ou_busca)
+                for item in re.split(r"\s+\bOR\b\s+", bloco.strip())
+                if item.strip()
+            ]
+            termos_or: list[str] = []
+            for item in itens_busca:
+                if ":" in item:
+                    termos_or.append(item)
+                elif " " in item and "@" not in item:
+                    termos_or.append(f'from:"{item}"')
+                else:
+                    termos_or.append(f"from:{item}")
 
-        partes_q.append("has:attachment")
-        if tipo_arquivo in {"pdf", "xml", "xlsx", "csv"}:
-            partes_q.append(f"filename:{tipo_arquivo}")
-        if apenas_nao_lidos:
-            partes_q.append("is:unread")
-        if "newer_than:" not in remetente_ou_busca.lower() and "after:" not in remetente_ou_busca.lower():
-            partes_q.append("newer_than:1d")
+            if len(termos_or) == 1:
+                partes_q.append(termos_or[0])
+            elif len(termos_or) > 1:
+                partes_q.append("{" + " ".join(termos_or) + "}")
 
-        query = " ".join(partes_q)
-        resultado = (
-            gmail_service.users()
-            .messages()
-            .list(userId="me", q=query, maxResults=5)
-            .execute()
-        )
-        mensagens = resultado.get("messages", [])
+            partes_q.append("has:attachment")
+            if tipo_arquivo in {"pdf", "xml", "xlsx", "csv"}:
+                partes_q.append(f"filename:{tipo_arquivo}")
+            if apenas_nao_lidos:
+                partes_q.append("is:unread")
+            if "newer_than:" not in remetente_ou_busca.lower() and "after:" not in remetente_ou_busca.lower():
+                partes_q.append("newer_than:1d")
 
-        if not mensagens:
-            msg_retorno = (
-                f"Nenhum novo e-mail recente encontrado para '{remetente_ou_busca}' "
-                f"(destino: '{caminho_exibicao}')."
-            )
-            print(f"[JARVIS AUTOMAÇÃO] {msg_retorno}")
-            return {
-                "ok": True,
-                "arquivos_salvos": [],
-                "pasta_destino": caminho_exibicao,
-                "emails_processados": 0,
-                "mensagem": msg_retorno,
-            }
-
-        arquivos_salvos: list[str] = []
-        emails_processados = 0
-        ids_ja_processados = set(tarefa.get("ids_processados") or [])
-        novos_ids_processados: list[str] = list(ids_ja_processados)
-
-        # Limite de tempo: só aceita e-mails recebidos a partir de 15 min antes da criação da automação (ou últimas 24h)
-        ts_agora = time.time()
-        criado_em_ts = float(tarefa.get("criado_em_ts") or 0.0)
-        if criado_em_ts > 0:
-            limite_minimo_ts = max(criado_em_ts - 900.0, ts_agora - 86400.0)
-        else:
-            limite_minimo_ts = ts_agora - 86400.0
-
-        for resumo in mensagens:
-            msg_id = resumo["id"]
-            if msg_id in ids_ja_processados:
-                continue
-
-            msg = (
+            query = " ".join(partes_q)
+            resultado = (
                 gmail_service.users()
                 .messages()
-                .get(userId="me", id=msg_id, format="full")
+                .list(userId="me", q=query, maxResults=5)
                 .execute()
             )
+            mensagens = resultado.get("messages", [])
 
-            # Verifica a data real de chegada do e-mail (internalDate em ms) para nunca puxar e-mails antigos
-            internal_date_ms = float(msg.get("internalDate") or 0.0)
-            if internal_date_ms > 0:
-                email_ts = internal_date_ms / 1000.0
-                if email_ts < limite_minimo_ts:
-                    print(
-                        f"[JARVIS AUTOMAÇÃO] Ignorando e-mail antigo (id={msg_id}) anterior à criação da automação."
-                    )
-                    continue
-
-            payload = msg.get("payload") or {}
-            anexos = _extrair_anexos_recursivo(payload, tipo_arquivo=tipo_arquivo)
-
-            salvou_neste_email = False
-            for nome_arquivo, mime_type, anexo_id, inline_b64 in anexos:
-                if anexo_id:
-                    anexo = (
-                        gmail_service.users()
-                        .messages()
-                        .attachments()
-                        .get(userId="me", messageId=msg_id, id=anexo_id)
-                        .execute()
-                    )
-                    dados_b64 = anexo.get("data", "")
-                else:
-                    dados_b64 = inline_b64 or ""
-
-                if not dados_b64:
-                    continue
-
-                if _arquivo_ja_existe_na_pasta(
-                    drive_service, nome_arquivo, id_pasta_destino
-                ):
-                    base_n, ext_n = os.path.splitext(nome_arquivo)
-                    nome_arquivo = f"{base_n}_{msg_id[:6]}{ext_n}"
-
-                dados_bytes = base64.urlsafe_b64decode(dados_b64.encode("utf-8"))
-                foi_desbloqueado = False
-                if nome_arquivo.lower().endswith(".pdf") or mime_type == "application/pdf":
-                    dados_bytes, foi_desbloqueado = _desbloquear_pdf_se_protegido(
-                        dados_bytes, senha_configurada=senha_anexo
-                    )
-
-                stream = io.BytesIO(dados_bytes)
-
-                metadados = {
-                    "name": nome_arquivo,
-                    "parents": [id_pasta_destino],
+            if not mensagens:
+                msg_retorno = (
+                    f"Nenhum novo e-mail recente encontrado para '{remetente_ou_busca}' "
+                    f"(destino: '{caminho_exibicao}')."
+                )
+                print(f"[JARVIS AUTOMAÇÃO] {msg_retorno}")
+                return {
+                    "ok": True,
+                    "arquivos_salvos": [],
+                    "pasta_destino": caminho_exibicao,
+                    "emails_processados": 0,
+                    "mensagem": msg_retorno,
                 }
-                midia = MediaIoBaseUpload(
-                    stream,
-                    mimetype=mime_type or "application/pdf",
-                    resumable=True,
-                )
-                drive_service.files().create(
-                    body=metadados, media_body=midia, fields="id, name"
-                ).execute()
 
-                sufixo_senha = " (senha removida)" if foi_desbloqueado else ""
-                arquivos_salvos.append(f"{nome_arquivo}{sufixo_senha}")
-                salvou_neste_email = True
-                print(
-                    f"[JARVIS AUTOMAÇÃO] Sucesso: '{nome_arquivo}'{sufixo_senha} salvo em '{caminho_exibicao}'."
+            arquivos_salvos: list[str] = []
+            emails_processados = 0
+            ids_ja_processados = set(tarefa.get("ids_processados") or [])
+            novos_ids_processados: list[str] = list(ids_ja_processados)
+
+            # Limite de tempo: só aceita e-mails recebidos a partir de 15 min antes da criação da automação (ou últimas 24h)
+            ts_agora = time.time()
+            criado_em_ts = float(tarefa.get("criado_em_ts") or 0.0)
+            if criado_em_ts > 0:
+                limite_minimo_ts = max(criado_em_ts - 900.0, ts_agora - 86400.0)
+            else:
+                limite_minimo_ts = ts_agora - 86400.0
+
+            for resumo in mensagens:
+                msg_id = resumo["id"]
+                if msg_id in ids_ja_processados:
+                    continue
+
+                msg = (
+                    gmail_service.users()
+                    .messages()
+                    .get(userId="me", id=msg_id, format="full")
+                    .execute()
                 )
 
-            if salvou_neste_email:
-                emails_processados += 1
-                if msg_id not in novos_ids_processados:
-                    novos_ids_processados.append(msg_id)
-                if marcar_como_lido:
-                    gmail_service.users().messages().modify(
-                        userId="me",
-                        id=msg_id,
-                        body={"removeLabelIds": ["UNREAD"]},
+                # Verifica a data real de chegada do e-mail (internalDate em ms) para nunca puxar e-mails antigos
+                internal_date_ms = float(msg.get("internalDate") or 0.0)
+                if internal_date_ms > 0:
+                    email_ts = internal_date_ms / 1000.0
+                    if email_ts < limite_minimo_ts:
+                        print(
+                            f"[JARVIS AUTOMAÇÃO] Ignorando e-mail antigo (id={msg_id}) anterior à criação da automação."
+                        )
+                        continue
+
+                payload = msg.get("payload") or {}
+                anexos = _extrair_anexos_recursivo(payload, tipo_arquivo=tipo_arquivo)
+
+                salvou_neste_email = False
+                for nome_arquivo, mime_type, anexo_id, inline_b64 in anexos:
+                    if anexo_id:
+                        anexo = (
+                            gmail_service.users()
+                            .messages()
+                            .attachments()
+                            .get(userId="me", messageId=msg_id, id=anexo_id)
+                            .execute()
+                        )
+                        dados_b64 = anexo.get("data", "")
+                    else:
+                        dados_b64 = inline_b64 or ""
+
+                    if not dados_b64:
+                        continue
+
+                    if _arquivo_ja_existe_na_pasta(
+                        drive_service, nome_arquivo, id_pasta_destino
+                    ):
+                        base_n, ext_n = os.path.splitext(nome_arquivo)
+                        nome_arquivo = f"{base_n}_{msg_id[:6]}{ext_n}"
+
+                    dados_bytes = base64.urlsafe_b64decode(dados_b64.encode("utf-8"))
+                    foi_desbloqueado = False
+                    if nome_arquivo.lower().endswith(".pdf") or mime_type == "application/pdf":
+                        dados_bytes, foi_desbloqueado = _desbloquear_pdf_se_protegido(
+                            dados_bytes, senha_configurada=senha_anexo
+                        )
+
+                    stream = io.BytesIO(dados_bytes)
+
+                    metadados = {
+                        "name": nome_arquivo,
+                        "parents": [id_pasta_destino],
+                    }
+                    midia = MediaIoBaseUpload(
+                        stream,
+                        mimetype=mime_type or "application/pdf",
+                        resumable=True,
+                    )
+                    drive_service.files().create(
+                        body=metadados, media_body=midia, fields="id, name"
                     ).execute()
+
+                    sufixo_senha = " (senha removida)" if foi_desbloqueado else ""
+                    arquivos_salvos.append(f"{nome_arquivo}{sufixo_senha}")
+                    salvou_neste_email = True
+                    print(
+                        f"[JARVIS AUTOMAÇÃO] Sucesso: '{nome_arquivo}'{sufixo_senha} salvo em '{caminho_exibicao}'."
+                    )
+
+                if salvou_neste_email:
+                    emails_processados += 1
+                    if msg_id not in novos_ids_processados:
+                        novos_ids_processados.append(msg_id)
+                    if marcar_como_lido:
+                        gmail_service.users().messages().modify(
+                            userId="me",
+                            id=msg_id,
+                            body={"removeLabelIds": ["UNREAD"]},
+                        ).execute()
 
         if arquivos_salvos:
             lista_str = ", ".join(arquivos_salvos)
