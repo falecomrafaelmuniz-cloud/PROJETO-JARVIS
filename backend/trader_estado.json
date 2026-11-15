@@ -1,0 +1,20 @@
+{
+  "data": "2026-11-07",
+  "trades": 3,
+  "resultado_reais": 0.0,
+  "stops_seguidos": 0,
+  "pausa_ate": 0.0,
+  "travado": false,
+  "motivo_trava": "",
+  "ordem_pendente": {
+    "lado": "venda",
+    "quantidade": 6,
+    "stop_pontos": 100,
+    "alvo_pontos": 200,
+    "tipo": "mercado",
+    "preco_limite": 0,
+    "motivo": "Setup padrão",
+    "ativo": "WINZ26",
+    "criada_em": 1794064060.860924
+  }
+}
