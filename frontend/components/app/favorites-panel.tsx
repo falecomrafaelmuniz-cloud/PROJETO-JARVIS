@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RoomEvent } from 'livekit-client';
 import {
+  AppWindow,
   Bookmark,
   Check,
   Edit2,
@@ -26,6 +27,7 @@ export interface FavoriteItem {
   id: string;
   nome: string;
   url: string;
+  tipo?: 'site' | 'app';
   categoria?: string;
   criado_em?: string;
   atualizado_em?: string;
@@ -239,7 +241,25 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
   };
 
   const handleAbrirUrl = (fav: FavoriteItem) => {
-    // Abre diretamente na máquina pelo backend se houver sessão LiveKit ativa
+    const isApp = fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://'));
+    if (isApp) {
+      if (room && room.localParticipant) {
+        try {
+          const payload = { action: 'open_url', url: fav.url, nome: fav.nome };
+          room.localParticipant.publishData(
+            new TextEncoder().encode(JSON.stringify(payload)),
+            { reliable: true, topic: FAVORITES_TOPIC }
+          );
+        } catch {}
+      }
+      fetch('/api/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'open', url: fav.url }),
+      }).catch(() => {});
+      return;
+    }
+
     if (room && room.localParticipant) {
       try {
         const payload = { action: 'open_url', url: fav.url, nome: fav.nome };
@@ -251,7 +271,6 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
         // fallback
       }
     }
-    // Também abre no navegador local imediatamente
     window.open(fav.url, '_blank', 'noopener,noreferrer');
   };
 
@@ -535,21 +554,27 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     >
                       {/* Ícone ou Favicon */}
                       <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/60 overflow-hidden shadow-xs">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={faviconUrl}
-                          alt=""
-                          className="size-4.5 object-contain"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            const parent = e.currentTarget.parentElement;
-                            if (parent) {
-                              const fallback = parent.querySelector('.fav-fallback');
-                              if (fallback) fallback.classList.remove('hidden');
-                            }
-                          }}
-                        />
-                        <Globe className="fav-fallback hidden size-4 text-cyan-300/70" />
+                        {fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://')) ? (
+                          <AppWindow className="size-4 text-cyan-300" />
+                        ) : (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={faviconUrl}
+                              alt=""
+                              className="size-4.5 object-contain"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const parent = e.currentTarget.parentElement;
+                                if (parent) {
+                                  const fallback = parent.querySelector('.fav-fallback');
+                                  if (fallback) fallback.classList.remove('hidden');
+                                }
+                              }}
+                            />
+                            <Globe className="fav-fallback hidden size-4 text-cyan-300/70" />
+                          </>
+                        )}
                       </div>
 
                       {/* Textos */}

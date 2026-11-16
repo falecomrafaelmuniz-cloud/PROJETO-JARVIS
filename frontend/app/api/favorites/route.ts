@@ -9,6 +9,7 @@ export interface FavoriteItem {
   id: string;
   nome: string;
   url: string;
+  tipo?: 'site' | 'app';
   categoria?: string;
   criado_em?: string;
   atualizado_em?: string;
@@ -69,34 +70,50 @@ export async function POST(req: Request) {
     let favorites = readFavorites();
 
     if (action === 'add') {
-      const url = normalizeUrl(body.url);
-      if (!url) {
+      const rawTarget = String(body.url || body.item || '').trim();
+      if (!rawTarget) {
         return NextResponse.json(
-          { status: 'error', message: 'URL inválida ou vazia.' },
+          { status: 'error', message: 'Destino ou nome inválido/vazio.' },
           { status: 400 }
         );
       }
 
+      const ehSite =
+        rawTarget.startsWith('http://') ||
+        rawTarget.startsWith('https://') ||
+        (rawTarget.includes('.') && !rawTarget.includes(' ') && !rawTarget.toLowerCase().endsWith('.exe'));
+
+      const url = ehSite ? normalizeUrl(rawTarget) : rawTarget;
+      const tipo: 'site' | 'app' = ehSite ? 'site' : 'app';
+
       let nome = String(body.nome || '').trim();
       if (!nome) {
-        try {
-          const parsed = new URL(url);
-          const domain = parsed.hostname.replace(/^www\./, '');
-          nome = domain.charAt(0).toUpperCase() + domain.slice(1);
-        } catch {
-          nome = url;
+        if (ehSite) {
+          try {
+            const parsed = new URL(url);
+            const domain = parsed.hostname.replace(/^www\./, '');
+            nome = domain.charAt(0).toUpperCase() + domain.slice(1);
+          } catch {
+            nome = url;
+          }
+        } else {
+          nome = rawTarget.charAt(0).toUpperCase() + rawTarget.slice(1);
         }
       }
 
-      const categoria = String(body.categoria || 'Geral').trim() || 'Geral';
+      const defaultCat = ehSite ? 'Geral' : 'Aplicativos';
+      const categoria = String(body.categoria || defaultCat).trim() || defaultCat;
       const existing = favorites.find(
-        (f) => f.url.replace(/\/$/, '').toLowerCase() === url.replace(/\/$/, '').toLowerCase()
+        (f) =>
+          f.url.replace(/\/$/, '').toLowerCase() === url.replace(/\/$/, '').toLowerCase() ||
+          (!ehSite && f.nome.toLowerCase() === nome.toLowerCase())
       );
 
       const nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
       if (existing) {
         existing.nome = nome;
+        existing.tipo = tipo;
         existing.categoria = categoria;
         existing.atualizado_em = nowStr;
       } else {
@@ -104,6 +121,7 @@ export async function POST(req: Request) {
           id: `fav-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           nome,
           url,
+          tipo,
           categoria,
           criado_em: nowStr,
           ordem: favorites.length,
@@ -171,12 +189,15 @@ export async function POST(req: Request) {
     }
 
     if (action === 'open') {
-      const url = normalizeUrl(body.url);
-      if (url) {
-        // Abre no navegador padrão do Windows em segundo plano
-        exec(`start "" "${url}"`, { windowsHide: true }, () => {});
+      const target = String(body.url || body.item || '').trim();
+      if (target) {
+        if (target.startsWith('http://') || target.startsWith('https://')) {
+          exec(`start "" "${target}"`, { windowsHide: true }, () => {});
+        } else {
+          exec(`start "" "${target}"`, { windowsHide: true }, () => {});
+        }
       }
-      return NextResponse.json({ status: 'ok', action: 'open', url });
+      return NextResponse.json({ status: 'ok', action: 'open', target });
     }
 
     return NextResponse.json(

@@ -8002,64 +8002,90 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Adiciona ou salva um site/link na Barra de Favoritos do Jarvis. "
-            "Se o usuário pedir para 'salvar este site' ou não informar a URL, captura automaticamente a aba ativa do navegador. "
-            "Pode informar opcionalmente 'nome' (título do site) e 'categoria' (ex: 'Geral', 'Trabalho', 'Estudos', 'Finanças', 'Mídia')."
+            "Adiciona ou salva um SITE, LINK WEB ou APLICATIVO/PROGRAMA na Barra de Favoritos do Jarvis. "
+            "Exemplos: 'adicione o YouTube aos favoritos', 'salve este site nos favoritos', 'coloque a Calculadora nos favoritos', 'adicione o aplicativo Cortecloud aos favoritos'. "
+            "Aceita tanto sites/links quanto aplicativos ou programas instalados no computador. "
+            "Se o usuário pedir para 'salvar este site' ou estiver vendo uma página no navegador, captura automaticamente a aba ativa. "
+            "NUNCA diga que não possui barra de favoritos; use esta ferramenta imediatamente."
         )
     )
-    async def adicionar_favorito(self, url: str = "", nome: str = "", categoria: str = "Geral") -> str:
-        url_alvo = str(url or "").strip()
+    async def adicionar_favorito(self, item_ou_url: str = "", nome: str = "", categoria: str = "") -> str:
+        alvo = str(item_ou_url or nome or "").strip()
         nome_alvo = str(nome or "").strip()
-        cat_alvo = str(categoria or "Geral").strip() or "Geral"
+        cat_alvo = str(categoria or "").strip()
 
-        if not url_alvo or any(termo in url_alvo.lower() for termo in ["este", "atual", "essa", "esta"]):
+        # Se pediu o site atual ou não passou nada, tenta capturar aba do navegador
+        if not alvo or any(termo in alvo.lower() for termo in ["este", "atual", "essa", "esta", "aba"]):
             aba = await asyncio.to_thread(self._obter_aba_ativa_navegador)
             if aba.get("url"):
-                url_alvo = aba["url"]
+                alvo = aba["url"]
                 if not nome_alvo:
                     nome_alvo = aba.get("title") or ""
 
-        if not url_alvo:
-            return "Não consegui identificar a URL do site. Por favor, informe o link ou abra o site no navegador."
+        if not alvo:
+            return "Não consegui identificar o site ou aplicativo para adicionar. Por favor, diga o nome ou link."
 
-        if not url_alvo.startswith(("http://", "https://")):
-            url_alvo = f"https://{url_alvo}"
+        # Identifica se é site ou aplicativo
+        eh_site = (
+            alvo.startswith(("http://", "https://"))
+            or ("." in alvo and " " not in alvo and not alvo.lower().endswith(".exe"))
+            or "www." in alvo.lower()
+        )
 
-        if not nome_alvo:
-            try:
-                from urllib.parse import urlparse
-                parsed = urlparse(url_alvo)
-                dominio = parsed.netloc.replace("www.", "")
-                nome_alvo = dominio.split(".")[0].capitalize() if dominio else url_alvo
-            except Exception:
-                nome_alvo = url_alvo
+        tipo_item = "site" if eh_site else "app"
+
+        if eh_site:
+            if not alvo.startswith(("http://", "https://")):
+                alvo = f"https://{alvo}"
+            if not nome_alvo:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(alvo)
+                    dominio = parsed.netloc.replace("www.", "")
+                    nome_alvo = dominio.split(".")[0].capitalize() if dominio else alvo
+                except Exception:
+                    nome_alvo = alvo
+            if not cat_alvo:
+                cat_alvo = "Geral"
+        else:
+            if not nome_alvo:
+                nome_alvo = alvo.capitalize()
+            if not cat_alvo:
+                cat_alvo = "Aplicativos"
 
         lista = await asyncio.to_thread(self._carregar_favoritos)
 
+        # Evita duplicatas da mesma URL ou mesmo nome de app
         encontrado = None
         for item in lista:
-            if item.get("url", "").rstrip("/").lower() == url_alvo.rstrip("/").lower():
+            url_existente = str(item.get("url") or "").rstrip("/").lower()
+            nome_existente = str(item.get("nome") or "").strip().lower()
+            if (eh_site and url_existente == alvo.rstrip("/").lower()) or (not eh_site and nome_existente == nome_alvo.lower()):
                 encontrado = item
                 break
 
         hoje_str = datetime.now().strftime("%d/%m/%Y %H:%M")
         if encontrado:
             encontrado["nome"] = nome_alvo
+            encontrado["url"] = alvo
+            encontrado["tipo"] = tipo_item
             encontrado["categoria"] = cat_alvo
             encontrado["atualizado_em"] = hoje_str
-            msg = f"Favorito '{nome_alvo}' atualizado na categoria '{cat_alvo}'."
+            msg = f"Favorito '{nome_alvo}' atualizado na categoria '{cat_alvo}'!"
         else:
             novo_id = f"fav-{uuid.uuid4().hex[:8]}"
             novo_fav = {
                 "id": novo_id,
                 "nome": nome_alvo,
-                "url": url_alvo,
+                "url": alvo,
+                "tipo": tipo_item,
                 "categoria": cat_alvo,
                 "criado_em": hoje_str,
                 "ordem": len(lista),
             }
             lista.append(novo_fav)
-            msg = f"Site '{nome_alvo}' adicionado com sucesso aos Favoritos (categoria: {cat_alvo})!"
+            item_desc = "Site" if eh_site else "Aplicativo"
+            msg = f"{item_desc} '{nome_alvo}' adicionado com sucesso aos Favoritos (categoria: {cat_alvo})!"
 
         await asyncio.to_thread(self._salvar_favoritos, lista)
         await self._publicar_favoritos_sync(lista, abrir_painel=True)
@@ -8090,7 +8116,7 @@ class Assistant(Agent):
         return "Barra de Favoritos:\n" + "\n".join(linhas)
 
     @function_tool(
-        description="Abre um site da Barra de Favoritos no navegador pelo nome (ex: 'YouTube', 'Notícias', 'Banco') ou número/URL."
+        description="Abre um site ou aplicativo da Barra de Favoritos pelo nome (ex: 'YouTube', 'Calculadora', 'Excel', 'Cortecloud') ou número da lista."
     )
     async def abrir_favorito(self, nome_ou_url: str) -> str:
         lista = await asyncio.to_thread(self._carregar_favoritos)
@@ -8115,12 +8141,18 @@ class Assistant(Agent):
                     break
 
         if not encontrado:
-            return f"Não encontrei nenhum site correspondente a '{nome_ou_url}' nos favoritos."
+            return f"Não encontrei nenhum site ou aplicativo correspondente a '{nome_ou_url}' nos favoritos."
 
         url_final = encontrado.get("url")
         nome_final = encontrado.get("nome")
-        await self.abrir_site(url=url_final, nome_site=nome_final)
-        return f"Abrindo '{nome_final}' ({url_final}) no navegador."
+        tipo_final = encontrado.get("tipo", "site")
+
+        if tipo_final == "app" or not str(url_final).startswith(("http://", "https://")):
+            await self.abrir_programa(nome_programa=url_final or nome_final)
+            return f"Abrindo aplicativo '{nome_final}' no computador."
+        else:
+            await self.abrir_site(url=url_final, nome_site=nome_final)
+            return f"Abrindo '{nome_final}' ({url_final}) no navegador."
 
     @function_tool(
         description="Renomeia ou edita um favorito existente. Permite alterar o nome, a URL ou a categoria pelo identificador (nome atual, número da lista ou id)."
