@@ -333,6 +333,59 @@ class JarvisChrome:
                 return result
             return {"ok": False}
 
+    def _send_extension_command(self, payload: dict) -> dict:
+        """Envia um comando genérico à extensão e devolve o resultado ({'ok': False} em falha)."""
+        with self._open_lock:
+            try:
+                self._ensure_bridge()
+            except JarvisBrowserError:
+                return {"ok": False}
+            if not self._wait_for_extension():
+                return {"ok": False}
+
+            request_id = uuid.uuid4().hex
+            pending = {
+                "event": threading.Event(),
+                "dispatched": threading.Event(),
+                "result": None,
+            }
+            with self._pending_lock:
+                self._pending[request_id] = pending
+
+            self._commands.put(
+                {
+                    "request_id": request_id,
+                    "expires_at": time.monotonic() + self._REQUEST_TIMEOUT,
+                    **payload,
+                }
+            )
+
+            if not pending["event"].wait(self._REQUEST_TIMEOUT):
+                with self._pending_lock:
+                    self._pending.pop(request_id, None)
+                return {"ok": False}
+
+            result = pending["result"]
+            return result if isinstance(result, dict) else {"ok": False}
+
+    def zoom_tab(self, acao: str, target: str = "atual", valor: float = 0.0, passos: int = 1) -> dict:
+        """acao: 'in' | 'out' | 'reset' | 'set'. Retorna {'ok': bool, 'zoom': float}."""
+        return self._send_extension_command(
+            {
+                "action": "zoom_tab",
+                "target": target,
+                "zoom_action": acao,
+                "zoom_value": float(valor or 0.0),
+                "steps": int(passos or 1),
+            }
+        )
+
+    def tab_control(self, acao: str, target: str = "atual") -> dict:
+        """acao: voltar, avancar, recarregar, proxima_aba, aba_anterior, tela_cheia, topo, fim."""
+        return self._send_extension_command(
+            {"action": "tab_control", "target": target, "zoom_action": acao}
+        )
+
     @staticmethod
     def _focus_chrome_window():
         try:
@@ -623,7 +676,7 @@ class JarvisChrome:
                             if pending is not None:
                                 pending["dispatched"].set()
                         payload_cmd = {"request_id": command["request_id"]}
-                        for key in ("url", "nova_aba", "action", "target", "left", "top", "width", "height"):
+                        for key in ("url", "nova_aba", "action", "target", "left", "top", "width", "height", "zoom_action", "zoom_value", "steps"):
                             if key in command and command[key] is not None:
                                 payload_cmd[key] = command[key]
                         self._send_json(200, payload_cmd)

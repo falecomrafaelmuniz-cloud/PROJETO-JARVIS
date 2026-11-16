@@ -242,11 +242,11 @@ export function EmailComposer({ isOpen, onClose, onOpenRequest }: EmailComposerP
       {visible && (
         <aside
           aria-label="Compositor de E-mail do Jarvis"
-          style={dragStyle}
+          style={dragStyle} data-hud-panel="email"
           {...dragHandlers}
           title="Arraste pela mãozinha para mover · Arraste pelas bordas para redimensionar"
           className={cn(
-            'pointer-events-auto absolute top-14 left-[calc(min(17rem,50vw-1.125rem)+1.25rem)] z-40 flex w-[min(26rem,calc(100vw-1.5rem))] touch-none flex-col overflow-hidden select-none',
+            'pointer-events-auto absolute top-14 left-[calc(min(22rem,50vw-1.125rem)+1.25rem)] z-40 flex w-[min(26rem,calc(100vw-1.5rem))] touch-none flex-col overflow-hidden select-none',
             'rounded-2xl border border-cyan-400/30 bg-black/85 text-white backdrop-blur-2xl',
             'shadow-[0_0_20px_rgba(6,182,212,0.2)] shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 shadow-cyan-950/40 ring-cyan-500/20 transition-all duration-200',
             isDragging || isResizingEdge

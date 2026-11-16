@@ -199,6 +199,23 @@ async function handleCommand(command) {
         mode: moveRes ? moveRes.mode : "",
         title: moveRes ? moveRes.title : "",
       };
+    } else if (command.action === "zoom_tab") {
+      const zoomRes = await zoomJarvisTab(
+        command.target,
+        command.zoom_action,
+        command.zoom_value,
+        command.steps
+      );
+      result = {
+        request_id: command.request_id,
+        ok: Boolean(zoomRes),
+        error: zoomRes ? "" : "sem_aba",
+        zoom: zoomRes ? zoomRes.zoom : 0,
+        title: zoomRes ? zoomRes.title : "",
+      };
+    } else if (command.action === "tab_control") {
+      const mode = await tabControl(command.target, command.zoom_action);
+      result = { request_id: command.request_id, ok: Boolean(mode), mode };
     } else if (command.url) {
       await openInJarvisTab(command.url, Boolean(command.nova_aba));
       result = { request_id: command.request_id, ok: true };
@@ -537,6 +554,142 @@ async function moveJarvisTabToMonitor(target, left, top, width, height) {
     mode: tabsInSameWindow.length > 1 ? "detached_and_moved" : "window_moved",
     title: freshTitle,
   };
+}
+
+const ZOOM_LEVELS = [
+  0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,
+];
+
+function isJarvisUiTab(tab) {
+  const url = (tab.url || "").toLowerCase();
+  const title = (tab.title || "").toLowerCase();
+  return (
+    url.includes("localhost:3000") ||
+    url.includes("127.0.0.1:3000") ||
+    title.includes("jarvis - assistente")
+  );
+}
+
+// Escolhe a aba alvo: nunca a interface do Jarvis (a menos que pedida explicitamente).
+async function resolveTargetTab(target) {
+  const allTabs = await chrome.tabs.query({});
+  const rawTarget = String(target || "atual").trim().toLowerCase();
+  const generic = [
+    "atual", "ativa", "ativo", "este", "esta", "esse", "essa", "aba",
+    "aba atual", "essa aba", "esta aba", "guia", "site", "pagina", "página",
+    "janela", "navegador", "chrome", "tela", "",
+  ];
+  if (generic.includes(rawTarget)) {
+    const stored = await chrome.storage.local.get([JARVIS_TAB_KEY]);
+    const lastId = stored[JARVIS_TAB_KEY];
+    const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const candidate = activeTabs[0] || null;
+    if (candidate && !isJarvisUiTab(candidate)) return candidate;
+    return (
+      allTabs.find((t) => t.id === lastId && !isJarvisUiTab(t)) ||
+      allTabs.filter((t) => t.active && !isJarvisUiTab(t)).pop() ||
+      allTabs.filter((t) => !isJarvisUiTab(t)).pop() ||
+      null
+    );
+  }
+  const terms = [rawTarget];
+  if (rawTarget.includes("youtube")) terms.push("youtube.com");
+  if (rawTarget.includes("gmail") || rawTarget.includes("email")) terms.push("mail.google.com");
+  if (rawTarget.includes("drive")) terms.push("drive.google.com");
+  if (rawTarget.includes("whatsapp")) terms.push("web.whatsapp.com");
+  if (rawTarget.includes("jarvis")) terms.push("localhost:3000", "127.0.0.1:3000");
+  return (
+    allTabs.find((tab) => {
+      if (!rawTarget.includes("jarvis") && isJarvisUiTab(tab)) return false;
+      const url = (tab.url || "").toLowerCase();
+      const title = (tab.title || "").toLowerCase();
+      return terms.some((t) => url.includes(t) || title.includes(t));
+    }) || null
+  );
+}
+
+async function zoomJarvisTab(target, zoomAction, zoomValue, steps) {
+  const tab = await resolveTargetTab(target);
+  if (!tab || !tab.id) return null;
+
+  const current = await chrome.tabs.getZoom(tab.id);
+  const count = Math.max(1, Math.min(10, Math.round(Number(steps) || 1)));
+  let next = current;
+
+  if (zoomAction === "reset") {
+    next = 1;
+  } else if (zoomAction === "set") {
+    next = Math.min(5, Math.max(0.25, Number(zoomValue) || 1));
+  } else if (zoomAction === "in" || zoomAction === "out") {
+    let idx = 0;
+    let best = Infinity;
+    ZOOM_LEVELS.forEach((lvl, i) => {
+      const d = Math.abs(lvl - current);
+      if (d < best) {
+        best = d;
+        idx = i;
+      }
+    });
+    idx += zoomAction === "in" ? count : -count;
+    idx = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, idx));
+    next = ZOOM_LEVELS[idx];
+  } else {
+    return null;
+  }
+
+  await chrome.tabs.setZoom(tab.id, next);
+  return { zoom: next, title: tab.title || tab.url || "" };
+}
+
+// Controles gerais da aba: voltar, avançar, recarregar, próxima/anterior, tela cheia, topo, fim.
+async function tabControl(target, action) {
+  const tab = await resolveTargetTab(target);
+  if (!tab || !tab.id) return "";
+  switch (action) {
+    case "voltar":
+      await chrome.tabs.goBack(tab.id);
+      return "back";
+    case "avancar":
+      await chrome.tabs.goForward(tab.id);
+      return "forward";
+    case "recarregar":
+      await chrome.tabs.reload(tab.id);
+      return "reload";
+    case "proxima_aba":
+    case "aba_anterior": {
+      const tabs = (await chrome.tabs.query({ windowId: tab.windowId })).filter(
+        (t) => !isJarvisUiTab(t)
+      );
+      if (tabs.length === 0) return "";
+      const idx = Math.max(0, tabs.findIndex((t) => t.id === tab.id));
+      const delta = action === "proxima_aba" ? 1 : -1;
+      const nextTab = tabs[(idx + delta + tabs.length) % tabs.length];
+      await chrome.tabs.update(nextTab.id, { active: true });
+      return "tab_switched";
+    }
+    case "tela_cheia": {
+      const win = await chrome.windows.get(tab.windowId);
+      const entering = win.state !== "fullscreen";
+      await chrome.windows.update(tab.windowId, {
+        state: entering ? "fullscreen" : "maximized",
+        focused: true,
+      });
+      return entering ? "fullscreen_on" : "fullscreen_off";
+    }
+    case "topo":
+    case "fim":
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (toTop) => {
+          const y = toTop ? 0 : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+          window.scrollTo({ top: y, behavior: "smooth" });
+        },
+        args: [action === "topo"],
+      });
+      return action === "topo" ? "scrolled_top" : "scrolled_bottom";
+    default:
+      return "";
+  }
 }
 
 async function openInJarvisTab(url, novaAba = false) {

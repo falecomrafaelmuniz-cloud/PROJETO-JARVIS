@@ -525,26 +525,15 @@ export function AgentControlBar({
 
           {/* Disconnect & Full System Shutdown */}
           {visibleControls.leave && (
-            <div className="flex items-center gap-1.5">
-              <AgentDisconnectButton
-                onClick={onDisconnect}
-                disabled={!isConnected}
-                className={cn(
-                  variant === 'livekit' &&
-                    'bg-destructive/10 dark:bg-destructive/10 text-destructive hover:bg-destructive/20 dark:hover:bg-destructive/20 focus:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/4 rounded-full font-mono text-xs font-bold tracking-wider'
-                )}
-              >
-                <span className="hidden md:inline">ENCERRAR CHAMADA</span>
-                <span className="inline md:hidden">SAIR</span>
-              </AgentDisconnectButton>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                title="Desligar tudo (fechar processos do Jarvis em segundo plano)"
-                aria-label="Desligar tudo"
-                onClick={async () => {
+            <AgentDisconnectButton
+              variant="outline"
+              size="icon"
+              title="Encerrar chamada (Shift+Clique para desligar servidores)"
+              aria-label="Encerrar chamada"
+              icon={<Power className="size-4" />}
+              disabled={!isConnected}
+              onClick={async (e) => {
+                if (e?.shiftKey) {
                   (window as unknown as { __jarvisShutDown?: boolean }).__jarvisShutDown = true;
                   try {
                     await fetch('/api/shutdown', { method: 'POST' });
@@ -555,12 +544,14 @@ export function AgentControlBar({
                   setTimeout(() => {
                     window.close();
                   }, 600);
-                }}
-                className="size-9 rounded-full border-red-500/30 bg-red-500/15 text-red-400 hover:border-red-500/60 hover:bg-red-500/30 hover:text-red-200"
-              >
-                <Power className="size-4" />
-              </Button>
-            </div>
+                  return;
+                }
+                onDisconnect?.();
+              }}
+              className="size-9 rounded-full border-red-500/30 bg-red-500/15 text-red-400 hover:border-red-500/60 hover:bg-red-500/30 hover:text-red-200 focus:bg-red-500/30 shadow-none"
+            >
+              {null}
+            </AgentDisconnectButton>
           )}
         </div>
       </div>

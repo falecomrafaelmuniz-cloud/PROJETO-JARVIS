@@ -7,6 +7,7 @@ import {
   Bot,
   ChevronDown,
   Clock,
+  FolderOpen,
   Hand,
   LayoutGrid,
   Mail,
@@ -27,6 +28,7 @@ export type HudPanelId =
   | 'automations'
   | 'reminders'
   | 'email'
+  | 'files'
   | 'neural';
 
 export type HudPanelsState = Record<HudPanelId, boolean>;
@@ -39,6 +41,7 @@ export const DEFAULT_HUD_PANELS: HudPanelsState = {
   automations: false,
   reminders: false,
   email: false,
+  files: false,
   neural: false,
 };
 
@@ -47,6 +50,7 @@ interface HudMenuProps {
   onTogglePanel: (id: HudPanelId) => void;
   onOpenNeuralConfig: () => void;
   onResetLayout: () => void;
+  onOrganizeLayout?: () => void;
 }
 
 interface MenuItemDef {
@@ -59,6 +63,7 @@ const MENU_ITEMS: MenuItemDef[] = [
   { id: 'system', label: 'Sistema', icon: Activity },
   { id: 'clock', label: 'Relógio', icon: Clock },
   { id: 'activity', label: 'Atividades', icon: Zap },
+  { id: 'files', label: 'Central de Arquivos', icon: FolderOpen },
   { id: 'trader', label: 'Trader B3', icon: TrendingUp },
   { id: 'automations', label: 'Automações', icon: Bot },
   { id: 'reminders', label: 'Lembretes', icon: Bell },
@@ -71,6 +76,7 @@ export function HudMenu({
   onTogglePanel,
   onOpenNeuralConfig,
   onResetLayout,
+  onOrganizeLayout,
 }: HudMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,8 +104,8 @@ export function HudMenu({
       style={style}
       {...dragHandlers}
       className={cn(
-        'fixed top-3 left-1/2 z-50 -translate-x-1/2 select-none',
-        isDragging ? 'z-[60]' : ''
+        'fixed top-3 left-1/2 z-[1000] -translate-x-1/2 select-none',
+        open || isDragging ? 'z-[1100]' : ''
       )}
     >
       <div className="flex items-center gap-1 rounded-full border border-cyan-300/35 bg-slate-950/75 p-1 text-xs text-cyan-100 shadow-[0_0_25px_rgba(34,211,238,0.22)] backdrop-blur-md">
@@ -149,17 +155,32 @@ export function HudMenu({
                 Ligue, arraste pela mãozinha ou ajuste pelas bordas
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                onResetLayout();
-              }}
-              title="Reorganizar todos os painéis nas posições padrão"
-              className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-2 py-1 text-[10px] font-medium text-cyan-200 transition hover:border-cyan-300/50 hover:bg-cyan-400/20"
-            >
-              <RotateCcw className="h-3 w-3" />
-              Organizar
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  onResetLayout();
+                }}
+                title="Restaurar as 3 janelas iniciais (Sistema, Relógio, Atividades) e fechar o restante"
+                className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-2 py-1 text-[10px] font-medium text-cyan-200 transition hover:border-cyan-300/50 hover:bg-cyan-400/20"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Padrão (3)
+              </button>
+              {onOrganizeLayout && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOrganizeLayout();
+                  }}
+                  title="Distribuir painéis abertos lado a lado sem sobreposição"
+                  className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-2 py-1 text-[10px] font-medium text-cyan-200 transition hover:border-cyan-300/50 hover:bg-cyan-400/20"
+                >
+                  <LayoutGrid className="h-3 w-3" />
+                  Organizar
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-1.5">

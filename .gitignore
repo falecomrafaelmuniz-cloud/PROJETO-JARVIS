@@ -26,3 +26,7 @@ backend/.limpeza_teste_rafael_ok
 *.log
 
 *.jsonl
+
+backend/jarvis_tokens.json
+backend/workspace_arquivos/*
+!backend/workspace_arquivos/.gitkeep

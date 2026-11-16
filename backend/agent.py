@@ -17,6 +17,7 @@ import re
 import tempfile
 import time
 from datetime import datetime
+import unicodedata
 from logging.handlers import RotatingFileHandler
 from zoneinfo import ZoneInfo
 import ctypes
@@ -340,6 +341,9 @@ class Assistant(Agent):
         self._ultimo_destino_gmail: str = ""
         self._ultimo_tempo_gmail: float = 0.0
         self._gmail_ja_aberto_na_sessao: bool = False
+        self._active_notebook_id: str = "geral"
+        self._workspace_panel_open: bool = False
+        self._ultimo_texto_notebook_transcrito: str = ""
         live_model = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.8-live")
         realtime_kwargs: dict = dict(
             model=live_model,
@@ -433,6 +437,102 @@ class Assistant(Agent):
                 "evento=rascunho_email status=erro tipo=%s",
                 type(erro).__name__,
             )
+
+    async def _adicionar_mensagem_chat_notebook(
+        self,
+        role: str,
+        content: str,
+        sources: list[str] | None = None,
+        buscou_web: bool = False,
+        notebook_id: str | None = None,
+        expert: str | None = None,
+        expert_name: str | None = None,
+    ):
+        nb_id = (notebook_id or self._active_notebook_id or "geral").strip()
+        texto_limpo = (content or "").strip()
+        if not texto_limpo:
+            return
+
+        pasta_nb = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id)
+        if not os.path.isdir(pasta_nb):
+            try:
+                os.makedirs(pasta_nb, exist_ok=True)
+                meta_path = os.path.join(pasta_nb, "notebook.json")
+                if not os.path.isfile(meta_path):
+                    with open(meta_path, "w", encoding="utf-8") as fm:
+                        json.dump({
+                            "id": nb_id,
+                            "name": nb_id.capitalize(),
+                            "createdAt": datetime.now().isoformat(),
+                            "updatedAt": datetime.now().isoformat(),
+                        }, fm, indent=2)
+            except Exception:
+                pass
+
+        # Determina o especialista se for resposta do assistente
+        id_exp = expert
+        nome_exp = expert_name
+        if role == "assistant" and not id_exp:
+            try:
+                meta_p = os.path.join(pasta_nb, "notebook.json")
+                if os.path.isfile(meta_p):
+                    with open(meta_p, "r", encoding="utf-8") as f_meta:
+                        meta_json = json.load(f_meta)
+                        id_exp = meta_json.get("expert")
+            except Exception:
+                pass
+
+        chat_path = os.path.join(pasta_nb, "chat_history.json")
+        msgs = []
+        if os.path.isfile(chat_path):
+            try:
+                with open(chat_path, "r", encoding="utf-8") as f:
+                    dados = json.load(f)
+                    if isinstance(dados, list):
+                        msgs = dados
+            except Exception:
+                msgs = []
+
+        # Evita duplicar se for a mesma mensagem recente
+        if msgs and msgs[-1].get("role") == role and msgs[-1].get("content") == texto_limpo:
+            return
+
+        nova_msg = {
+            "id": f"msg-v-{int(time.time() * 1000)}-{role[0]}",
+            "role": role,
+            "content": texto_limpo,
+            "timestamp": datetime.now().isoformat(),
+        }
+        if sources:
+            nova_msg["sources"] = sources
+        if buscou_web:
+            nova_msg["buscouWeb"] = True
+        if id_exp:
+            nova_msg["expert"] = id_exp
+        if nome_exp:
+            nova_msg["expertName"] = nome_exp
+
+        msgs.append(nova_msg)
+        try:
+            with open(chat_path, "w", encoding="utf-8") as f:
+                json.dump(msgs, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger_memoria.warning("evento=salvar_chat_notebook erro=%s", e)
+
+        # Atualiza a interface do frontend via LiveKit data topic
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebook_chat_update",
+                        "notebookId": nb_id,
+                        "messages": msgs,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception as e_pub:
+            logger_memoria.warning("evento=publicar_chat_notebook erro=%s", e_pub)
 
     def buscar_arquivo_local(self, nome_ou_caminho: str) -> str | None:
         termo = nome_ou_caminho.strip().strip('"').strip("'")
@@ -1771,6 +1871,162 @@ class Assistant(Agent):
             msg += f"\n=== VISÃO DA NOVA TELA ABERTA ===\n{visao}\n================================="
         msg += "\nContinue conduzindo a aula em voz alta, integrando essa nova visão à sua explicação!"
         return msg
+
+    @staticmethod
+    def _buscar_noticias_web(tema: str, regiao: str = "brasil", max_resultados: int = 4) -> dict:
+        import html
+        import xml.etree.ElementTree as ET
+        from urllib.parse import quote_plus
+
+        tema_limpo = (tema or "").strip()
+        if not tema_limpo:
+            return {"erro": "Tema de pesquisa vazio.", "noticias": []}
+
+        regiao_n = regiao.lower().strip()
+        if regiao_n in ("global", "mundo", "en", "internacional", "eua"):
+            params = "hl=en-US&gl=US&ceid=US:en"
+        else:
+            params = "hl=pt-BR&gl=BR&ceid=BR:pt-419"
+
+        url_rss = f"https://news.google.com/rss/search?q={quote_plus(tema_limpo)}&{params}"
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            )
+        }
+
+        noticias = []
+        try:
+            with httpx.Client(timeout=6.0, follow_redirects=True) as client_http:
+                resp = client_http.get(url_rss, headers=headers)
+                if resp.status_code == 200:
+                    root = ET.fromstring(resp.text)
+                    items = root.findall(".//item")[:max_resultados]
+                    for it in items:
+                        t_raw = it.find("title").text if it.find("title") is not None else ""
+                        t_clean = html.unescape(t_raw).strip()
+                        link = it.find("link").text if it.find("link") is not None else ""
+                        pub = it.find("pubDate").text if it.find("pubDate") is not None else ""
+                        fonte = "Imprensa"
+                        if " - " in t_clean:
+                            partes = t_clean.rsplit(" - ", 1)
+                            t_clean = partes[0].strip()
+                            fonte = partes[1].strip()
+                        noticias.append({
+                            "titulo": t_clean,
+                            "fonte": fonte,
+                            "data": pub,
+                            "link": link,
+                        })
+        except Exception as e_news:
+            logger_memoria.warning("evento=buscar_noticias_rss status=erro motivo=%s", e_news)
+
+        if not noticias:
+            try:
+                url_ddg = f"https://api.duckduckgo.com/?q={quote_plus(tema_limpo)}&format=json&no_html=1&skip_disambig=1"
+                with httpx.Client(timeout=4.0) as client_http:
+                    r_ddg = client_http.get(url_ddg)
+                    if r_ddg.status_code == 200:
+                        data = r_ddg.json()
+                        abstract = data.get("AbstractText") or ""
+                        source = data.get("AbstractSource") or "Enciclopédia Web"
+                        if abstract:
+                            noticias.append({
+                                "titulo": abstract[:280],
+                                "fonte": source,
+                                "data": "Atual",
+                                "link": data.get("AbstractURL") or "",
+                            })
+            except Exception:
+                pass
+
+        return {
+            "tema": tema_limpo,
+            "total": len(noticias),
+            "noticias": noticias,
+        }
+
+    @function_tool(
+        description=(
+            "Pesquisa notícias e acontecimentos em tempo real na web (Google News e imprensa) "
+            "sobre qualquer assunto, mercado financeiro, tecnologia, inteligência artificial, política, esportes ou notícias de hoje. "
+            "Use sempre que o usuário pedir: 'quais as notícias de hoje?', 'o que está acontecendo sobre X?', "
+            "'me dá um resumo das notícias de IA', 'últimas novidades de mercado/tecnologia/futebol'. "
+            "Ao receber as notícias, elabore um resumo falado executivo (estilo mini-podcast) de 30 a 45 segundos, "
+            "com tom dinâmico, natural e seguro, citando as manchetes e fontes principais, sem ler links/URLs. "
+            "`tema`: assunto ou termo para pesquisar (ex.: 'inteligência artificial', 'mercado financeiro', 'tecnologia'). "
+            "`regiao`: 'brasil' para portais nacionais (padrão) ou 'global' para portais internacionais em inglês. "
+            "`abrir_no_navegador`: se True, abre a matéria principal no navegador Chrome."
+        )
+    )
+    async def pesquisar_noticias_tempo_real(
+        self,
+        tema: str,
+        regiao: str = "brasil",
+        abrir_no_navegador: bool = False,
+    ) -> str:
+        dados = await asyncio.to_thread(self._buscar_noticias_web, tema, regiao)
+        noticias = dados.get("noticias") or []
+        if not noticias:
+            return f"Não encontrei matérias recentes publicadas sobre '{tema}' no momento."
+
+        linhas = [f"Notícias em tempo real encontradas sobre '{tema}':"]
+        primeiro_link = None
+        for i, n in enumerate(noticias, 1):
+            linhas.append(f"{i}. [{n['fonte']}] {n['titulo']}")
+            if not primeiro_link and n.get("link"):
+                primeiro_link = n["link"]
+
+        if abrir_no_navegador and primeiro_link:
+            try:
+                await self.abrir_site(primeiro_link, nome_site=f"Notícia: {tema}")
+                linhas.append("(A matéria principal foi aberta em uma nova aba no seu navegador Chrome.)")
+            except Exception as e_open:
+                logger_memoria.warning("evento=abrir_noticia_navegador erro=%s", e_open)
+
+        linhas.append(
+            "\nDIRETRIZ DE VOZ (MINI-PODCAST): Resuma estas notícias de forma fluida e direta em 30 a 45 segundos, "
+            "com tom executivo e confiante. Destaque os 2 ou 3 pontos mais impactantes e mencione as fontes (ex: 'Segundo o G1...', 'De acordo com o Estadão...'). "
+            "Nunca soletre links ou URLs."
+        )
+        return "\n".join(linhas)
+
+    @function_tool(
+        description=(
+            "Pesquisa qualquer informação em tempo real na web/internet (Google/DuckDuckGo) sobre qualquer assunto: "
+            "índices econômicos (IGP-M, IPCA, CDI, Selic, inflação, cotação do dólar, euro, criptomoedas), "
+            "preços de mercado, dados de empresas, leis, regras jurídicas, fatos históricos, biografias, eventos ou dúvidas gerais. "
+            "Use sempre que o usuário perguntar: 'pesquise no Google', 'pesquise na internet', 'qual o valor de X', 'o que é Y', "
+            "ou quando a resposta depender de dados e fatos reais atualizados. "
+            "`termo`: termo ou pergunta de busca (ex.: 'IGP-M acumulado 12 meses 2026', 'cotação do dólar hoje', 'capital da Islândia')."
+        )
+    )
+    async def pesquisar_na_web(self, termo: str) -> str:
+        consulta = (termo or "").strip()
+        if not consulta:
+            return "Por favor, informe o termo ou pergunta para pesquisar na web."
+
+        snippets = await asyncio.to_thread(self._buscar_web_snippets, consulta, 4)
+        if not snippets:
+            # Fallback para notícias
+            dados_noticias = await asyncio.to_thread(self._buscar_noticias_web, consulta, "brasil")
+            noticias = dados_noticias.get("noticias") or []
+            if noticias:
+                snippets = [f"[{n['fonte']}] {n['titulo']}" for n in noticias[:3]]
+
+        if not snippets:
+            return f"Pesquisei na web por '{consulta}', mas não foram encontrados dados conclusivos no momento."
+
+        resultado = [f"Informações em tempo real encontradas na web para '{consulta}':"]
+        for i, s in enumerate(snippets, 1):
+            resultado.append(f"{i}. {s}")
+
+        resultado.append(
+            "\nDIRETRIZ DE VOZ: Responda ao usuário com base nesses dados com confiança, clareza e de forma direta, sem inventar informações e sem ler links/URLs."
+        )
+        return "\n".join(resultado)
 
     async def _buscar_video_youtube(self, consulta: str) -> tuple[str | None, str | None]:
         termo = consulta.strip()
@@ -3606,6 +3862,1480 @@ class Assistant(Agent):
         await asyncio.to_thread(self._executar_scroll_mouse, quantidade_linhas, direcao)
         dir_txt = "baixo" if str(direcao).lower() in ("baixo", "down", "descer", "descendo") else "cima"
         return f"Rolei a página para {dir_txt} com sucesso."
+
+    @staticmethod
+    def _copiar_para_clipboard(texto: str) -> bool:
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GlobalAlloc.restype = ctypes.c_void_p
+        kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+        user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+        user32.SetClipboardData.restype = ctypes.c_void_p
+        user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+
+        CF_UNICODETEXT = 13
+        GMEM_MOVEABLE = 0x0002
+
+        dados = str(texto).encode("utf-16le") + b"\x00\x00"
+        h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(dados))
+        if not h_mem:
+            return False
+
+        ptr = kernel32.GlobalLock(h_mem)
+        if not ptr:
+            kernel32.GlobalFree(h_mem)
+            return False
+
+        ctypes.memmove(ptr, dados, len(dados))
+        kernel32.GlobalUnlock(h_mem)
+
+        aberto = False
+        for _ in range(6):
+            if user32.OpenClipboard(None):
+                aberto = True
+                break
+            time.sleep(0.02)
+
+        if not aberto:
+            kernel32.GlobalFree(h_mem)
+            return False
+
+        try:
+            user32.EmptyClipboard()
+            user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+        finally:
+            user32.CloseClipboard()
+        return True
+
+    @staticmethod
+    def _executar_colar_no_cursor(pressionar_enter: bool = False) -> None:
+        user32 = ctypes.windll.user32
+        VK_CONTROL = 0x11
+        VK_V = 0x56
+        VK_RETURN = 0x0D
+        KEYEVENTF_KEYUP = 0x0002
+
+        time.sleep(0.06)
+        user32.keybd_event(VK_CONTROL, 0, 0, 0)
+        user32.keybd_event(VK_V, 0, 0, 0)
+        time.sleep(0.03)
+        user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
+        user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+
+        if pressionar_enter:
+            time.sleep(0.08)
+            user32.keybd_event(VK_RETURN, 0, 0, 0)
+            time.sleep(0.03)
+            user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+
+    @function_tool(
+        description=(
+            "Digita, redige ou cola um texto diretamente onde o cursor do usuário estiver ativo/piscando na tela "
+            "(WhatsApp Web ou Desktop, Bloco de Notas, Word, e-mail, terminal, navegador, Notion, Slack, Teams, Discord, etc.). "
+            "Use sempre que o usuário pedir: 'digita aqui', 'escreva aqui', 'redija uma mensagem aqui', "
+            "'escreve para mim no cursor', 'preenche com tal texto', 'cola esse texto onde estou digitando', "
+            "'responda a essa mensagem no chat', 'escreva uma resposta educada dizendo que...'. "
+            "Você mesmo pode redigir a mensagem completa, profissional, natural e adequada com base no que o usuário instruiu "
+            "e passar o texto pronto no parâmetro `texto`. "
+            "`texto`: o conteúdo completo que deve ser escrito no cursor ativo. "
+            "`pressionar_enter`: coloque True se o usuário pediu para enviar ou apertar Enter logo em seguida (ex.: em apps de chat). "
+            "`apenas_copiar`: coloque True se o usuário pediu apenas para copiar o texto para a área de transferência sem colar."
+        )
+    )
+    async def digitar_ou_redigir_no_cursor(
+        self,
+        texto: str,
+        pressionar_enter: bool = False,
+        apenas_copiar: bool = False,
+    ) -> str:
+        if not texto:
+            return "Erro: nenhum texto fornecido para digitar ou colar."
+
+        copiado = await asyncio.to_thread(self._copiar_para_clipboard, texto)
+        if not copiado:
+            return "Não foi possível acessar a área de transferência do Windows para colar o texto."
+
+        if apenas_copiar:
+            return "Texto copiado com sucesso para a área de transferência."
+
+        await asyncio.to_thread(self._executar_colar_no_cursor, pressionar_enter)
+        preview = texto.strip().replace("\n", " ")
+        if len(preview) > 50:
+            preview = preview[:47] + "..."
+        if pressionar_enter:
+            return f"Texto inserido e enviado com Enter: '{preview}'."
+        return f"Texto inserido no cursor: '{preview}'."
+
+    def _resolver_caderno_por_nome(self, termo: str) -> tuple[str, str] | None:
+        """Resolve o ID e o Nome amigável de um caderno a partir de um termo buscado (ex.: 'porto panorama' -> ('porto-panorama-mwi8nju3', 'PORTO PANORAMA'))"""
+        pasta_nb = os.path.join(_backend_dir, "workspace_arquivos", "notebooks")
+        if not os.path.isdir(pasta_nb):
+            return None
+
+        termo_limpo = termo.lower().strip()
+        termo_busca = re.sub(r"\b(caderno|notebook|do|da|de|dos|das|o|a|os|as|painel|abra|abre|mostrar|mostre|entra|seleciona)\b", "", termo_limpo).strip()
+        if not termo_busca:
+            termo_busca = termo_limpo
+
+        candidatos = []
+        for nb_id in os.listdir(pasta_nb):
+            nb_dir = os.path.join(pasta_nb, nb_id)
+            if os.path.isdir(nb_dir):
+                nome = nb_id
+                meta_path = os.path.join(nb_dir, "notebook.json")
+                if os.path.isfile(meta_path):
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as fm:
+                            meta = json.load(fm)
+                            nome = meta.get("name", nome)
+                    except Exception:
+                        pass
+                candidatos.append((nb_id, nome))
+
+        for nb_id, nome in candidatos:
+            if termo_busca == nome.lower() or termo_busca == nb_id.lower():
+                return nb_id, nome
+
+        for nb_id, nome in candidatos:
+            if termo_busca in nome.lower() or termo_busca in nb_id.lower() or nome.lower() in termo_busca:
+                return nb_id, nome
+
+        return None
+
+    @function_tool(
+        description=(
+            "Abre a Central de Arquivos na tela e seleciona/abre diretamente um caderno ou notebook específico pelo nome "
+            "(ex.: 'Porto Panorama', 'Imóvel', 'Geral', 'Contrato'). "
+            "Use OBRIGATORIAMENTE sempre que o usuário pedir: 'abra o caderno X', 'mostra o notebook Y', "
+            "'entra no caderno Z', 'seleciona o caderno Porto Panorama', 'abre o caderno do Porto Panorama'."
+            "`nome_caderno`: o nome ou termo de busca do caderno (ex.: 'Porto Panorama', 'Geral')."
+        )
+    )
+    async def abrir_ou_selecionar_caderno(self, nome_caderno: str) -> str:
+        resolvido = self._resolver_caderno_por_nome(nome_caderno)
+        if not resolvido:
+            pasta_nb = os.path.join(_backend_dir, "workspace_arquivos", "notebooks")
+            existentes = []
+            if os.path.isdir(pasta_nb):
+                for f in os.listdir(pasta_nb):
+                    meta_p = os.path.join(pasta_nb, f, "notebook.json")
+                    if os.path.isfile(meta_p):
+                        try:
+                            with open(meta_p, "r", encoding="utf-8") as fm:
+                                existentes.append(json.load(fm).get("name", f))
+                        except Exception:
+                            pass
+            return f"Não encontrei um caderno com o nome '{nome_caderno}'. Cadernos existentes: {', '.join(existentes) if existentes else 'Geral'}."
+
+        nb_id, nb_nome = resolvido
+        self._active_notebook_id = nb_id
+        self._workspace_panel_open = True
+
+        payload_hud = {
+            "type": "jarvis_hud_control",
+            "panel": "files",
+            "action": "open",
+            "notebookId": nb_id,
+            "notebookName": nb_nome,
+        }
+        payload_ws = {
+            "type": "jarvis_switch_notebook",
+            "notebookId": nb_id,
+            "notebookName": nb_nome,
+        }
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload_hud, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload_ws, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception as e:
+            logger_memoria.error("evento=abrir_caderno erro=%s", e)
+
+        return f"Caderno '{nb_nome}' aberto na tela com sucesso."
+
+    @function_tool(
+        description=(
+            "Cria um novo Caderno / Notebook na Central de Arquivos com o nome desejado "
+            "e abre-o imediatamente na tela. "
+            "Use sempre que o usuário pedir: 'crie um caderno chamado X', 'crie um notebook com o nome Y', "
+            "'cria um caderno novo para tal projeto', 'adiciona um novo caderno'."
+            "`nome_caderno`: o título do novo caderno (ex.: 'Porto Panorama', 'Imposto de Renda 2026', 'Processo X')."
+        )
+    )
+    async def criar_novo_caderno(self, nome_caderno: str) -> str:
+        nome_limpo = (nome_caderno or "").strip()
+        if not nome_limpo:
+            return "Por favor, informe o nome para o novo caderno."
+
+        pasta_root = os.path.join(_backend_dir, "workspace_arquivos", "notebooks")
+        os.makedirs(pasta_root, exist_ok=True)
+
+        slug = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize('NFKD', nome_limpo.lower())).strip("-") or "caderno"
+        nb_id = f"{slug}-{uuid.uuid4().hex[:8]}"
+        nb_dir = os.path.join(pasta_root, nb_id)
+        os.makedirs(nb_dir, exist_ok=True)
+
+        meta = {
+            "id": nb_id,
+            "name": nome_limpo,
+            "createdAt": datetime.now().isoformat(),
+            "updatedAt": datetime.now().isoformat(),
+        }
+        with open(os.path.join(nb_dir, "notebook.json"), "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
+        with open(os.path.join(nb_dir, "chat_history.json"), "w", encoding="utf-8") as f:
+            json.dump([], f)
+
+        self._active_notebook_id = nb_id
+        self._workspace_panel_open = True
+
+        # Notifica o HUD para abrir o painel de arquivos e focar no novo caderno
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_hud_control",
+                        "panel": "files",
+                        "action": "open",
+                        "notebookId": nb_id,
+                        "notebookName": nome_limpo,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebooks_updated",
+                        "activeNotebookId": nb_id,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception as e:
+            logger_memoria.error("evento=criar_caderno erro_broadcast=%s", e)
+
+        return f"Caderno '{nome_limpo}' criado e aberto na tela com sucesso."
+
+    @function_tool(
+        description=(
+            "Exclui permanentemente um Caderno / Notebook e todos os seus arquivos da Central de Arquivos. "
+            "ATENÇÃO: O caderno padrão 'Geral' nunca pode ser excluído. "
+            "Use sempre que o usuário pedir: 'apague o caderno X', 'exclua o notebook Y', 'deleta o caderno tal'."
+            "`nome_caderno`: o nome do caderno que deve ser apagado (ex.: 'Porto Panorama', 'Imóvel')."
+        )
+    )
+    async def excluir_caderno(self, nome_caderno: str) -> str:
+        resolvido = self._resolver_caderno_por_nome(nome_caderno)
+        if not resolvido:
+            return f"Não encontrei nenhum caderno com o nome '{nome_caderno}' para excluir."
+
+        nb_id, nb_nome = resolvido
+        if nb_id == "geral":
+            return "O caderno padrão 'Geral' não pode ser excluído."
+
+        pasta_dir = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id)
+        if os.path.isdir(pasta_dir):
+            try:
+                shutil.rmtree(pasta_dir, ignore_errors=True)
+            except Exception as e:
+                return f"Não foi possível excluir o caderno '{nb_nome}' ({e})."
+
+        if self._active_notebook_id == nb_id:
+            self._active_notebook_id = "geral"
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebooks_updated",
+                        "activeNotebookId": self._active_notebook_id,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception:
+            pass
+
+        return f"Caderno '{nb_nome}' foi excluído com sucesso."
+
+    @function_tool(
+        description=(
+            "Renomeia um Caderno / Notebook existente na Central de Arquivos. "
+            "Use sempre que o usuário pedir: 'renomeie o caderno X para Y', 'muda o nome do notebook tal para Z'."
+            "`nome_atual`: o nome atual do caderno que será renomeado. "
+            "`novo_nome`: o novo nome desejado para o caderno."
+        )
+    )
+    async def renomear_caderno(self, nome_atual: str, novo_nome: str) -> str:
+        novo_limpo = (novo_nome or "").strip()
+        if not novo_limpo:
+            return "Por favor, informe o novo nome para o caderno."
+
+        resolvido = self._resolver_caderno_por_nome(nome_atual)
+        if not resolvido:
+            return f"Não encontrei o caderno '{nome_atual}' para renomear."
+
+        nb_id, nb_antigo = resolvido
+        meta_path = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id, "notebook.json")
+        meta = {"id": nb_id, "name": novo_limpo, "updatedAt": datetime.now().isoformat()}
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as fm:
+                    meta = json.load(fm)
+            except Exception:
+                pass
+        meta["name"] = novo_limpo
+        meta["updatedAt"] = datetime.now().isoformat()
+        with open(meta_path, "w", encoding="utf-8") as fm:
+            json.dump(meta, fm, indent=2, ensure_ascii=False)
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebooks_updated",
+                        "activeNotebookId": self._active_notebook_id,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception:
+            pass
+
+        return f"Caderno renomeado de '{nb_antigo}' para '{novo_limpo}' com sucesso."
+
+    @function_tool(
+        description=(
+            "Define ou altera o Especialista Consultor de um Caderno / Notebook na Central de Arquivos. "
+            "Especialistas disponíveis: "
+            "1) 'parecer_duplo' (Parecer Duplo: Advogado + Síndico - Ideal para condomínios como Porto Panorama); "
+            "2) 'advogado_condominial' (Advogado Especialista em Direito Imobiliário e Notarial); "
+            "3) 'sindico_profissional' (Síndico Profissional e Gestor Predial); "
+            "4) 'cfo_financeiro' (CFO & Auditor Contábil / Financeiro); "
+            "5) 'medico' (Médico Perito e Medicina Baseada em Evidências); "
+            "6) 'dev_senior' (Engenheiro de Software Sênior e Arquiteto); "
+            "7) 'jarvis' (JARVIS Executivo Padrão). "
+            "Use sempre que o usuário pedir: 'coloque o advogado e síndico no caderno Porto Panorama', "
+            "'defina o especialista do caderno como advogado', 'mude o especialista para médico', etc. "
+            "`especialista`: nome ou termo do especialista desejado. "
+            "`nome_caderno`: nome do caderno (se vazio, usa o caderno atualmente ativo)."
+        )
+    )
+    async def definir_especialista_caderno(self, especialista: str, nome_caderno: str = "") -> str:
+        esp_termo = (especialista or "").lower().strip()
+        termo_nb = (nome_caderno or "").strip()
+
+        id_especialista = "jarvis"
+        nome_exib = "JARVIS Executivo"
+
+        if any(w in esp_termo for w in ["duplo", "ambos", "dois", "advogado e sindico", "advogado e síndico", "sindico e advogado", "síndico e advogado"]):
+            id_especialista = "parecer_duplo"
+            nome_exib = "Parecer Duplo (Advogado + Síndico)"
+        elif any(w in esp_termo for w in ["advogado", "juridico", "jurídico", "direito", "lei", "imobiliario", "imobiliário", "notarial"]):
+            id_especialista = "advogado_condominial"
+            nome_exib = "Advogado Condominial"
+        elif any(w in esp_termo for w in ["sindico", "síndico", "predial", "gestor"]):
+            id_especialista = "sindico_profissional"
+            nome_exib = "Síndico Profissional"
+        elif any(w in esp_termo for w in ["cfo", "financeiro", "contabil", "contábil", "auditor", "financas", "finanças"]):
+            id_especialista = "cfo_financeiro"
+            nome_exib = "CFO & Auditor Contábil"
+        elif any(w in esp_termo for w in ["medico", "médico", "saude", "saúde", "clinico", "clínico", "doutor"]):
+            id_especialista = "medico"
+            nome_exib = "Médico Perito"
+        elif any(w in esp_termo for w in ["dev", "programador", "desenvolvedor", "software", "engenheiro", "arquiteto", "codigo", "código"]):
+            id_especialista = "dev_senior"
+            nome_exib = "Engenheiro de Software Sênior"
+        elif any(w in esp_termo for w in ["jarvis", "padrao", "padrão", "executivo"]):
+            id_especialista = "jarvis"
+            nome_exib = "JARVIS Executivo"
+
+        if not termo_nb or termo_nb.lower() in ("atual", "este", "aberto", "painel"):
+            nb_id = self._active_notebook_id or "geral"
+            nb_nome = nb_id.capitalize()
+            meta_p = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id, "notebook.json")
+            if os.path.isfile(meta_p):
+                try:
+                    with open(meta_p, "r", encoding="utf-8") as fm:
+                        nb_nome = json.load(fm).get("name", nb_nome)
+                except Exception:
+                    pass
+        else:
+            resolvido = self._resolver_caderno_por_nome(termo_nb)
+            if not resolvido:
+                return f"Não encontrei o caderno '{termo_nb}' para definir o especialista."
+            nb_id, nb_nome = resolvido
+
+        pasta_nb = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id)
+        os.makedirs(pasta_nb, exist_ok=True)
+        meta_path = os.path.join(pasta_nb, "notebook.json")
+
+        meta = {"id": nb_id, "name": nb_nome, "expert": id_especialista, "updatedAt": datetime.now().isoformat()}
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as fm:
+                    meta = json.load(fm)
+            except Exception:
+                pass
+
+        meta["expert"] = id_especialista
+        meta["updatedAt"] = datetime.now().isoformat()
+        with open(meta_path, "w", encoding="utf-8") as fm:
+            json.dump(meta, fm, indent=2, ensure_ascii=False)
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebook_expert_updated",
+                        "notebookId": nb_id,
+                        "expert": id_especialista,
+                        "expertName": nome_exib,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebooks_updated",
+                        "activeNotebookId": self._active_notebook_id,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception:
+            pass
+
+        return f"Especialista do caderno '{nb_nome}' configurado para: **{nome_exib}**."
+
+    @function_tool(
+        description=(
+            "Lista todos os Cadernos / Notebooks existentes na Central de Arquivos, informando nome, "
+            "quantidade de arquivos e qual está aberto atualmente. "
+            "Use sempre que o usuário perguntar: 'quais cadernos eu tenho?', 'quais notebooks existem?', "
+            "'lista meus cadernos'."
+        )
+    )
+    async def listar_cadernos(self) -> str:
+        pasta_root = os.path.join(_backend_dir, "workspace_arquivos", "notebooks")
+        if not os.path.isdir(pasta_root):
+            return "Nenhum caderno encontrado. O caderno padrão é o 'Geral'."
+
+        linhas = []
+        for nb_id in os.listdir(pasta_root):
+            nb_dir = os.path.join(pasta_root, nb_id)
+            if not os.path.isdir(nb_dir):
+                continue
+            nome = nb_id.capitalize()
+            meta_path = os.path.join(nb_dir, "notebook.json")
+            if os.path.isfile(meta_path):
+                try:
+                    with open(meta_path, "r", encoding="utf-8") as fm:
+                        nome = json.load(fm).get("name", nome)
+                except Exception:
+                    pass
+            arquivos = [f for f in os.listdir(nb_dir) if f not in ("notebook.json", "chat_history.json") and os.path.isfile(os.path.join(nb_dir, f))]
+            ativo_txt = " (Ativo na tela)" if nb_id == self._active_notebook_id else ""
+            linhas.append(f"- 📁 **{nome}** ({len(arquivos)} arquivo(s)){ativo_txt}")
+
+        if not linhas:
+            return "Você tem apenas o caderno padrão 'Geral' no momento."
+
+        return f"Cadernos existentes ({len(linhas)}):\n" + "\n".join(linhas)
+
+    @function_tool(
+        description=(
+            "Consulta e lê o histórico completo de conversas, perguntas, análises e pareceres de um Caderno / Notebook específico na Central de Arquivos. "
+            "Use OBRIGATORIAMENTE sempre que o usuário perguntar: 'o que a gente conversou da última vez?', "
+            "'o que nós conversamos neste caderno?', 'o que discutimos sobre o Porto Panorama?', "
+            "'qual foi a última coisa que falamos sobre motos/regras/vagas?', 'o que tem registrado no chat desse caderno?'. "
+            "`nome_caderno`: nome do caderno que deseja consultar (se vazio ou 'atual', consulta o caderno ativo no momento, como 'Porto Panorama')."
+        )
+    )
+    async def consultar_historico_conversa_caderno(self, nome_caderno: str = "") -> str:
+        termo = (nome_caderno or "").strip()
+        if not termo or termo in ("atual", "este", "aberto", "painel"):
+            nb_id = self._active_notebook_id or "geral"
+            nb_nome = nb_id.capitalize()
+            meta_p = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id, "notebook.json")
+            if os.path.isfile(meta_p):
+                try:
+                    with open(meta_p, "r", encoding="utf-8") as fm:
+                        nb_nome = json.load(fm).get("name", nb_nome)
+                except Exception:
+                    pass
+        else:
+            resolvido = self._resolver_caderno_por_nome(termo)
+            if not resolvido:
+                return f"Não encontrei o caderno '{termo}' para consultar o histórico."
+            nb_id, nb_nome = resolvido
+
+        pasta_nb = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id)
+        chat_path = os.path.join(pasta_nb, "chat_history.json")
+
+        if not os.path.isfile(chat_path):
+            return f"O caderno '{nb_nome}' ainda não possui histórico de conversas."
+
+        try:
+            with open(chat_path, "r", encoding="utf-8") as fch:
+                msgs = json.load(fch)
+        except Exception as e:
+            return f"Não foi possível ler as conversas do caderno '{nb_nome}' ({e})."
+
+        if not isinstance(msgs, list) or not msgs:
+            return f"O caderno '{nb_nome}' está vazio no momento (nenhuma conversa registrada)."
+
+        # Filtra mensagens válidas e relevantes (removendo ruídos pontuais)
+        mensagens_relevantes = []
+        for m in msgs:
+            c = (m.get("content") or "").strip()
+            if len(c) < 3 or c.lower() in ("mhm.", "mhm", "¿qué?", "fine", "central de arquivos", "caderno", "что"):
+                continue
+            r = m.get("role", "user")
+            exp_nome = m.get("expertName") or m.get("expert") or "JARVIS"
+            mensagens_relevantes.append({
+                "papel": "Usuário" if r == "user" else f"JARVIS ({exp_nome})",
+                "texto": c,
+                "data": m.get("timestamp", ""),
+            })
+
+        if not mensagens_relevantes:
+            return f"O caderno '{nb_nome}' não tem conversas substantivas registradas ainda."
+
+        # Pega as últimas 10 mensagens mais relevantes
+        ultimas = mensagens_relevantes[-10:]
+        bloco_formatado = []
+        for item in ultimas:
+            txt = item["texto"]
+            if len(txt) > 800:
+                txt = txt[:800] + "... [continua com detalhes técnicos no caderno]"
+            bloco_formatado.append(f"• **{item['papel']}**: {txt}")
+
+        resultado = (
+            f"Histórico de conversas do caderno '{nb_nome}' (total de {len(mensagens_relevantes)} interações):\n\n"
+            + "\n\n".join(bloco_formatado)
+        )
+        return resultado
+
+    @function_tool(
+        description=(
+            "Limpa apenas o histórico de conversas e mensagens de um Caderno / Notebook, "
+            "MANTENDO TODOS OS ARQUIVOS E DOCUMENTOS INTACTOS. "
+            "Use sempre que o usuário pedir: 'limpe o histórico do caderno X', 'apague as mensagens do caderno tal', "
+            "'limpar a conversa do caderno Porto Panorama', 'zere o chat do caderno'. "
+            "`nome_caderno`: nome do caderno (se vazio ou 'atual', limpa o caderno ativo no momento)."
+        )
+    )
+    async def limpar_historico_caderno(self, nome_caderno: str = "") -> str:
+        termo = (nome_caderno or "").strip()
+        if not termo or termo in ("atual", "este", "aberto", "painel"):
+            nb_id = self._active_notebook_id or "geral"
+            nb_nome = nb_id.capitalize()
+            meta_p = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id, "notebook.json")
+            if os.path.isfile(meta_p):
+                try:
+                    with open(meta_p, "r", encoding="utf-8") as fm:
+                        nb_nome = json.load(fm).get("name", nb_nome)
+                except Exception:
+                    pass
+        else:
+            resolvido = self._resolver_caderno_por_nome(termo)
+            if not resolvido:
+                return f"Não encontrei o caderno '{termo}' para limpar o histórico."
+            nb_id, nb_nome = resolvido
+
+        chat_path = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_id, "chat_history.json")
+        try:
+            with open(chat_path, "w", encoding="utf-8") as fch:
+                json.dump([], fch)
+        except Exception as e:
+            return f"Erro ao limpar histórico ({e})."
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebook_chat_cleared",
+                        "notebookId": nb_id,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception:
+            pass
+
+        return f"Histórico de mensagens do caderno '{nb_nome}' limpo com sucesso. Todos os arquivos e documentos continuam salvos."
+
+    @function_tool(
+        description=(
+            "Move ou transfere um arquivo/documento de um Caderno para outro Caderno na Central de Arquivos. "
+            "Use sempre que o usuário pedir: 'mova o boleto para o caderno Porto Panorama', "
+            "'transfira o contrato para o caderno tal', 'passa o arquivo X para o caderno Y'. "
+            "`nome_arquivo`: nome ou parte do nome do arquivo a ser movido (ex.: 'Boleto_39060.pdf'). "
+            "`caderno_destino`: nome do caderno que receberá o arquivo (ex.: 'Porto Panorama'). "
+            "`caderno_origem`: nome do caderno onde o arquivo está atualmente (se vazio, busca no caderno ativo ou em qualquer caderno)."
+        )
+    )
+    async def mover_arquivo_entre_cadernos(
+        self,
+        nome_arquivo: str,
+        caderno_destino: str,
+        caderno_origem: str = "",
+    ) -> str:
+        res_dest = self._resolver_caderno_por_nome(caderno_destino)
+        if not res_dest:
+            return f"Caderno de destino '{caderno_destino}' não foi encontrado."
+        id_dest, nome_dest = res_dest
+
+        pasta_root = os.path.join(_backend_dir, "workspace_arquivos", "notebooks")
+        termo_arq = (nome_arquivo or "").lower().strip()
+
+        caminho_origem = None
+        nome_salvo_origem = None
+        id_orig = None
+
+        if caderno_origem:
+            res_orig = self._resolver_caderno_por_nome(caderno_origem)
+            if res_orig:
+                id_orig = res_orig[0]
+
+        cadernos_para_buscar = [id_orig] if id_orig else [self._active_notebook_id, "geral"] + os.listdir(pasta_root)
+
+        for cid in cadernos_para_buscar:
+            cdir = os.path.join(pasta_root, cid)
+            if not os.path.isdir(cdir):
+                continue
+            for f in os.listdir(cdir):
+                if f in ("notebook.json", "chat_history.json"):
+                    continue
+                if termo_arq in f.lower():
+                    caminho_origem = os.path.join(cdir, f)
+                    nome_salvo_origem = f
+                    id_orig = cid
+                    break
+            if caminho_origem:
+                break
+
+        if not caminho_origem or not nome_salvo_origem:
+            return f"Não encontrei o arquivo '{nome_arquivo}' para mover."
+
+        if id_orig == id_dest:
+            return f"O arquivo '{nome_arquivo}' já está dentro do caderno '{nome_dest}'."
+
+        caminho_destino_final = os.path.join(pasta_root, id_dest, nome_salvo_origem)
+        try:
+            shutil.move(caminho_origem, caminho_destino_final)
+        except Exception as e:
+            return f"Erro ao mover arquivo ({e})."
+
+        nome_limpo = re.sub(r"^[a-zA-Z0-9]{8}-", "", nome_salvo_origem)
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "jarvis_notebook_files_updated",
+                        "notebookId": id_dest,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.workspace",
+                )
+        except Exception:
+            pass
+
+        return f"Arquivo '{nome_limpo}' movido com sucesso para o caderno '{nome_dest}'."
+
+    @function_tool(
+        description=(
+            "Abre, fecha ou alterna qualquer painel visual do HUD do Jarvis na tela. "
+            "Use OBRIGATORIAMENTE sempre que o usuário pedir: 'abra o painel X', 'mostra os lembretes', "
+            "'fecha o painel de arquivos', 'abra a central de arquivos', 'abre o painel de sistema', "
+            "'mostre o relógio', 'abre o trader', 'fecha todos os painéis', 'mostra as automações', "
+            "'abre as atividades', 'abre o compositor de e-mail'. "
+            "`painel`: nome do painel a controlar: 'arquivos' (Central de Arquivos / Notebooks), 'lembretes' (Painel de Lembretes), "
+            "'automacoes' (Painel de Automações Gmail/Drive), 'email' (Compositor de E-mails), 'sistema' (Dashboard de CPU/RAM/Rede), "
+            "'atividades' (Painel de Ações e Tarefas em Andamento), 'trader' (Painel Quant / Cripto / Mercado), "
+            "'relogio' (Relógio HUD), 'neural' (Visualizador da Rede Neural) ou 'todos' (para abrir ou fechar todos de uma vez). "
+            "`acao`: 'abrir' (padrão, para exibir o painel na tela), 'fechar' (para ocultar da tela) ou 'alternar'."
+        )
+    )
+    async def controlar_painel_hud(self, painel: str, acao: str = "abrir") -> str:
+        p_raw = (painel or "").lower().strip()
+        a_raw = (acao or "abrir").lower().strip()
+
+        # Verifica primeiro se o comando é para abrir um caderno específico pelo nome (ex.: 'caderno do porto panorama', 'porto panorama')
+        resolvido_nb = self._resolver_caderno_por_nome(p_raw)
+        if resolvido_nb:
+            nb_id, nb_nome = resolvido_nb
+            self._active_notebook_id = nb_id
+            self._workspace_panel_open = True
+            payload_hud = {
+                "type": "jarvis_hud_control",
+                "panel": "files",
+                "action": "open",
+                "notebookId": nb_id,
+                "notebookName": nb_nome,
+            }
+            payload_ws = {
+                "type": "jarvis_switch_notebook",
+                "notebookId": nb_id,
+                "notebookName": nb_nome,
+            }
+            try:
+                if self.board_room and self.board_room.local_participant:
+                    await self.board_room.local_participant.publish_data(
+                        json.dumps(payload_hud, ensure_ascii=False).encode("utf-8"),
+                        reliable=True,
+                        topic="jarvis.hud",
+                    )
+                    await self.board_room.local_participant.publish_data(
+                        json.dumps(payload_ws, ensure_ascii=False).encode("utf-8"),
+                        reliable=True,
+                        topic="jarvis.workspace",
+                    )
+            except Exception as e:
+                logger_memoria.error("evento=abrir_caderno_hud erro=%s", e)
+            return f"Caderno '{nb_nome}' aberto na tela com sucesso."
+
+        mapa = {
+            "arquivos": ("files", "Central de Arquivos"),
+            "arquivo": ("files", "Central de Arquivos"),
+            "central": ("files", "Central de Arquivos"),
+            "central de arquivos": ("files", "Central de Arquivos"),
+            "files": ("files", "Central de Arquivos"),
+            "notebook": ("files", "Central de Arquivos"),
+            "notebooks": ("files", "Central de Arquivos"),
+            "caderno": ("files", "Central de Arquivos"),
+            "cadernos": ("files", "Central de Arquivos"),
+            "lembretes": ("reminders", "Painel de Lembretes"),
+            "lembrete": ("reminders", "Painel de Lembretes"),
+            "reminders": ("reminders", "Painel de Lembretes"),
+            "automacoes": ("automations", "Painel de Automações"),
+            "automações": ("automations", "Painel de Automações"),
+            "automacao": ("automations", "Painel de Automações"),
+            "automação": ("automations", "Painel de Automações"),
+            "automations": ("automations", "Painel de Automações"),
+            "email": ("email", "Compositor de E-mails"),
+            "emails": ("email", "Compositor de E-mails"),
+            "e-mail": ("email", "Compositor de E-mails"),
+            "e-mails": ("email", "Compositor de E-mails"),
+            "sistema": ("system", "Painel do Sistema"),
+            "system": ("system", "Painel do Sistema"),
+            "dashboard": ("system", "Painel do Sistema"),
+            "atividades": ("activity", "Painel de Atividades"),
+            "atividade": ("activity", "Painel de Atividades"),
+            "activity": ("activity", "Painel de Atividades"),
+            "tarefas": ("activity", "Painel de Atividades"),
+            "trader": ("trader", "Painel Trader"),
+            "quant": ("trader", "Painel Trader"),
+            "relogio": ("clock", "Relógio HUD"),
+            "relógio": ("clock", "Relógio HUD"),
+            "clock": ("clock", "Relógio HUD"),
+            "neural": ("neural", "Rede Neural"),
+            "todos": ("all", "Todos os painéis"),
+            "tudo": ("all", "Todos os painéis"),
+        }
+
+        target_id = "files"
+        nome_amigavel = "Central de Arquivos"
+        encontrou = False
+        for chave, (pid, nome) in mapa.items():
+            if chave in p_raw:
+                target_id = pid
+                nome_amigavel = nome
+                encontrou = True
+                break
+
+        if not encontrou:
+            for chave, (pid, nome) in mapa.items():
+                if chave == p_raw:
+                    target_id = pid
+                    nome_amigavel = nome
+                    encontrou = True
+                    break
+
+        acao_cmd = "close" if any(w in a_raw for w in ["fechar", "ocultar", "esconder", "close"]) else "open"
+        if "alternar" in a_raw or "toggle" in a_raw:
+            acao_cmd = "toggle"
+
+        # Se for abrir ou fechar o painel de arquivos, atualiza o estado interno
+        if target_id == "files" and acao_cmd == "open":
+            self._workspace_panel_open = True
+        elif (target_id in ("files", "all") and acao_cmd == "close"):
+            self._workspace_panel_open = False
+            self._ultimo_texto_notebook_transcrito = ""
+        elif target_id == "files" and acao_cmd == "toggle":
+            self._workspace_panel_open = not self._workspace_panel_open
+            if not self._workspace_panel_open:
+                self._ultimo_texto_notebook_transcrito = ""
+
+        payload = {
+            "type": "jarvis_hud_control",
+            "panel": target_id,
+            "action": acao_cmd,
+        }
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+        except Exception as e:
+            logger_memoria.error("evento=controlar_painel_hud status=erro motivo=%s", e)
+            return f"Não consegui exibir o painel na tela ({e})."
+
+        status_str = "aberto na tela" if acao_cmd == "open" else "fechado" if acao_cmd == "close" else "alternado"
+        return f"{nome_amigavel} {status_str} com sucesso."
+
+    @function_tool(
+        description=(
+            "Organiza e reorganiza automaticamente o layout de todos os painéis visuais abertos no HUD para que NUNCA fiquem sobrepostos (um em cima do outro). "
+            "Use sempre que o usuário pedir: 'organize os painéis', 'não deixa um em cima do outro', 'coloque os painéis lado a lado', "
+            "'arrume a tela', 'distribua os painéis', 'organize em grade', 'desobstrua os painéis', 'afaste os painéis abertos'. "
+            "`modo`: 'lado_a_lado' (distribui os painéis em colunas paralelas sem colisão), 'grade' (mosaico em 4 quadrantes), "
+            "'desobstruir' (afasta painéis que colidem) ou 'padrao' (restaura posições limpas)."
+        )
+    )
+    async def organizar_layout_paineis(self, modo: str = "lado_a_lado") -> str:
+        m_raw = (modo or "lado_a_lado").lower().strip()
+        modo_final = "side_by_side"
+        if any(w in m_raw for w in ["grade", "grid", "mosaico", "quadrante", "quadro"]):
+            modo_final = "grid"
+        elif any(w in m_raw for w in ["desobstru", "afast", "separ", "unstack"]):
+            modo_final = "unstack"
+        elif any(w in m_raw for w in ["padrao", "padrão", "reset", "limp"]):
+            modo_final = "reset"
+
+        payload = {
+            "type": "jarvis_hud_organize",
+            "mode": modo_final,
+        }
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+        except Exception as e:
+            logger_memoria.error("evento=organizar_layout_paineis status=erro motivo=%s", e)
+            return f"Não foi possível organizar o layout dos painéis no momento ({e})."
+
+        desc_modo = {
+            "side_by_side": "lado a lado em colunas paralelas sem sobreposição",
+            "grid": "em grade e mosaico pelos quadrantes da tela",
+            "unstack": "desobstruídos e afastados para evitar qualquer sobreposição",
+            "reset": "restaurados para o layout padrão",
+        }.get(modo_final, "organizados")
+        return f"Pronto! Os painéis foram organizados {desc_modo}."
+
+    @function_tool(
+        description=(
+            "Move, redimensiona e posiciona um painel visual específico em qualquer área da tela do HUD. "
+            "Use sempre que o usuário pedir: 'coloque a central de arquivos na direita', 'joga o sistema pra esquerda', "
+            "'centraliza a central', 'bota os lembretes no canto', 'deixa o painel menor/compacto', 'aumenta o painel do trader'. "
+            "`painel`: nome do painel ('arquivos', 'lembretes', 'sistema', 'trader', 'automacoes', 'email', 'relogio'). "
+            "`posicao`: onde posicionar ('esquerda', 'direita', 'centro', 'topo_esquerda', 'topo_direita', 'baixo_esquerda', 'baixo_direita'). "
+            "`tamanho`: escala visual ('normal', 'compacto'/'pequeno', 'grande'/'ampliado')."
+        )
+    )
+    async def posicionar_painel(self, painel: str, posicao: str = "esquerda", tamanho: str = "normal") -> str:
+        p_raw = (painel or "").lower().strip()
+        pos_raw = (posicao or "esquerda").lower().strip()
+        tam_raw = (tamanho or "normal").lower().strip()
+
+        mapa_paineis = {
+            "arquivos": "files", "central": "files", "central de arquivos": "files", "files": "files",
+            "lembretes": "reminders", "lembrete": "reminders", "reminders": "reminders",
+            "sistema": "system", "system": "system", "dashboard": "system",
+            "trader": "trader", "quant": "trader", "mercado": "trader",
+            "automacoes": "automations", "automações": "automations", "automations": "automations",
+            "email": "email", "emails": "email",
+            "relogio": "clock", "relógio": "clock", "clock": "clock",
+        }
+
+        target_id = "files"
+        nome_amigavel = "Central de Arquivos"
+        for k, v in mapa_paineis.items():
+            if k in p_raw:
+                target_id = v
+                nome_amigavel = k.capitalize()
+                break
+
+        payload = {
+            "type": "jarvis_hud_organize",
+            "panel": target_id,
+            "position": pos_raw,
+            "size": tam_raw,
+        }
+
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+        except Exception as e:
+            logger_memoria.error("evento=posicionar_painel status=erro motivo=%s", e)
+            return f"Não foi possível mover o painel no momento ({e})."
+
+        return f"{nome_amigavel} posicionado na {pos_raw} com tamanho {tam_raw}."
+
+    @function_tool(
+        description=(
+            "Restaura e abre imediatamente as 3 janelas iniciais clássicas do Jarvis (Painel do Sistema, Relógio e Atividades), "
+            "fechando todos os outros painéis extras e resetando as posições e escalas para o padrão de fábrica sem sobreposição. "
+            "Use sempre que o usuário pedir: 'abra as 3 janelas iniciais', 'volte para as 3 janelas iniciais', "
+            "'resete o layout', 'restaure as posições dos painéis', 'volte os painéis para o padrão', 'limpe a tela e deixe só o padrão'."
+        )
+    )
+    async def resetar_layout_paineis(self) -> str:
+        self._workspace_panel_open = False
+        payload = {
+            "type": "jarvis_hud_reset_layout",
+            "action": "reset",
+        }
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+        except Exception as e:
+            logger_memoria.error("evento=resetar_layout_paineis status=erro motivo=%s", e)
+            return f"Não foi possível resetar o layout no momento ({e})."
+
+        return "As 3 janelas iniciais (Painel do Sistema, Relógio e Atividades) foram restauradas na tela e o layout foi redefinido para o padrão."
+
+    @function_tool(
+        description=(
+            "Lista todos os arquivos e cadernos presentes na Central de Arquivos / Notebooks do Jarvis na tela. "
+            "Use quando o usuário perguntar: 'quais arquivos estão no painel?', 'o que tem na central de arquivos?', "
+            "'quais documentos eu enviei?', 'quais cadernos tenho?'."
+        )
+    )
+    async def listar_arquivos_workspace(self) -> str:
+        pasta_ws = os.path.join(_backend_dir, "workspace_arquivos")
+        if not os.path.isdir(pasta_ws):
+            return "A Central de Arquivos está vazia no momento."
+
+        itens = []
+        pasta_nb = os.path.join(pasta_ws, "notebooks")
+        if os.path.isdir(pasta_nb):
+            for nb in os.listdir(pasta_nb):
+                nb_dir = os.path.join(pasta_nb, nb)
+                if os.path.isdir(nb_dir):
+                    # Tenta ler nome amigável do notebook.json
+                    nome_nb = nb.capitalize()
+                    meta_path = os.path.join(nb_dir, "notebook.json")
+                    if os.path.isfile(meta_path):
+                        try:
+                            with open(meta_path, "r", encoding="utf-8") as fm:
+                                meta = json.load(fm)
+                                nome_nb = meta.get("name") or nome_nb
+                        except Exception:
+                            pass
+                    for f in os.listdir(nb_dir):
+                        if f in ("notebook.json", "chat_history.json"):
+                            continue
+                        caminho = os.path.join(nb_dir, f)
+                        if os.path.isfile(caminho):
+                            nome_limpo = re.sub(r"^[a-zA-Z0-9]{8}-", "", f)
+                            tamanho_kb = round(os.path.getsize(caminho) / 1024, 1)
+                            itens.append(f"- {nome_limpo} ({tamanho_kb} KB) [Caderno: {nome_nb}]")
+
+        # Verifica também arquivos na raiz (legados)
+        for f in os.listdir(pasta_ws):
+            caminho = os.path.join(pasta_ws, f)
+            if os.path.isfile(caminho):
+                nome_limpo = re.sub(r"^[a-zA-Z0-9]{8}-", "", f)
+                tamanho_kb = round(os.path.getsize(caminho) / 1024, 1)
+                itens.append(f"- {nome_limpo} ({tamanho_kb} KB)")
+
+        if not itens:
+            return "Nenhum arquivo na Central de Arquivos. Você pode arrastar ou colar (Ctrl+V) qualquer documento no painel."
+
+        return f"Arquivos na Central ({len(itens)}):\n" + "\n".join(itens)
+
+    @staticmethod
+    def _buscar_web_snippets(query: str, max_resultados: int = 3) -> list[str]:
+        url = "https://html.duckduckgo.com/html/"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        try:
+            r = httpx.post(url, data={"q": query}, headers=headers, timeout=4.5)
+            if r.status_code == 200:
+                matches = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', r.text, re.DOTALL)
+                snippets = []
+                for m in matches[:max_resultados]:
+                    clean = re.sub(r'<[^>]+>', '', m).replace('&nbsp;', ' ').replace('&quot;', '"').replace('&#39;', "'").replace('&amp;', '&').strip()
+                    if clean and len(clean) > 20:
+                        snippets.append(clean)
+                return snippets
+        except Exception:
+            pass
+        return []
+
+    @function_tool(
+        description=(
+            "Lê, analisa, resume, transcreve ou responde perguntas sobre arquivos "
+            "(PDFs, imagens, contratos, boletos, planilhas Excel/CSV, fotos, códigos, áudios ou textos) "
+            "que o usuário colocou no Painel / Central de Arquivos do Jarvis. "
+            "IMPORTANTE: Se o usuário pedir para analisar 'os arquivos', 'o conjunto', 'com base neles' ou se não especificar um arquivo único, "
+            "esta ferramenta analisa TODOS os arquivos do painel juntos, cruzando as informações entre eles. "
+            "Se a pergunta do usuário depender de dados externos (índices econômicos como IGP-M/IPCA, cotações, leis, etc.), "
+            "ela pesquisa automaticamente na web em tempo real e calcula os valores com precisão. "
+            "Se o usuário pedir para 'copiar' ou 'extrair texto', o conteúdo também é copiado para a área de transferência do Windows. "
+            "`nome_arquivo`: nome específico do arquivo (se vazio, ou se for 'todos'/'conjunto'/'arquivos', analisa todos os arquivos do painel juntos). "
+            "`comando`: a instrução ou pergunta do usuário (ex.: 'qual o valor e índice do reajuste?', 'resumir conjunto', 'extrair dados')."
+        )
+    )
+    async def analisar_ou_processar_arquivo_workspace(
+        self,
+        nome_arquivo: str = "",
+        comando: str = "analisar",
+    ) -> str:
+        pasta_ws = os.path.join(_backend_dir, "workspace_arquivos")
+        if not os.path.isdir(pasta_ws):
+            return "A Central de Arquivos está vazia. Arraste ou cole (Ctrl+V) arquivos no painel primeiro."
+
+        arquivos_candidatos = []
+        pasta_nb = os.path.join(pasta_ws, "notebooks")
+        if os.path.isdir(pasta_nb):
+            for nb in os.listdir(pasta_nb):
+                nb_dir = os.path.join(pasta_nb, nb)
+                if os.path.isdir(nb_dir):
+                    for f in os.listdir(nb_dir):
+                        if f in ("notebook.json", "chat_history.json"):
+                            continue
+                        caminho = os.path.join(nb_dir, f)
+                        if os.path.isfile(caminho):
+                            arquivos_candidatos.append((os.path.getmtime(caminho), f, caminho))
+
+        for f in os.listdir(pasta_ws):
+            caminho = os.path.join(pasta_ws, f)
+            if os.path.isfile(caminho):
+                arquivos_candidatos.append((os.path.getmtime(caminho), f, caminho))
+
+        if not arquivos_candidatos:
+            return "Nenhum arquivo encontrado na Central de Arquivos. Arraste ou cole arquivos no painel."
+
+        # Ordena pelo mais recente
+        arquivos_candidatos.sort(key=lambda x: x[0], reverse=True)
+
+        termo = (nome_arquivo or "").strip().lower()
+        analisar_todos = termo in ("", "todos", "tudo", "conjunto", "arquivos", "documentos", "painel", "todos os arquivos")
+
+        alvos = []
+        if not analisar_todos:
+            # Tenta encontrar o arquivo específico mencionado
+            for _, nome_salvo, cam in arquivos_candidatos:
+                if termo in nome_salvo.lower():
+                    alvos.append((nome_salvo, cam))
+                    break
+
+        if not alvos:
+            # Analisa todos os arquivos do painel em conjunto!
+            alvos = [(nome_salvo, cam) for _, nome_salvo, cam in arquivos_candidatos]
+
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        client = genai.Client(api_key=api_key)
+
+        cmd_lower = (comando or "analisar").lower()
+        quer_copiar = any(w in cmd_lower for w in ["copiar", "copia", "clipboard", "área de transferência", "transcrever", "ocr"])
+
+        contents_gemini = []
+        nomes_processados = []
+
+        for i, (nome_salvo, caminho_arquivo) in enumerate(alvos):
+            match = re.match(r"^[a-zA-Z0-9]{8}-(.+)$", nome_salvo)
+            nome_exib = match.group(1) if match else nome_salvo
+            nomes_processados.append(nome_exib)
+
+            ext = os.path.splitext(caminho_arquivo)[1].lower().replace(".", "")
+            contents_gemini.append(f"\n=== DOCUMENTO {i + 1} de {len(alvos)}: '{nome_exib}' ===\n")
+
+            is_text = ext in ["txt", "md", "csv", "json", "py", "js", "ts", "tsx", "jsx", "html", "css", "sql", "sh", "bat", "log", "xml", "yaml", "yml"]
+            is_img = ext in ["png", "jpg", "jpeg", "webp", "bmp", "gif"]
+            is_pdf = ext == "pdf"
+
+            if is_text:
+                try:
+                    with open(caminho_arquivo, "r", encoding="utf-8", errors="replace") as f_in:
+                        txt_conteudo = f_in.read(50000)
+                    contents_gemini.append(f"```{ext}\n{txt_conteudo}\n```")
+                except Exception:
+                    pass
+            elif is_img:
+                try:
+                    with open(caminho_arquivo, "rb") as f_img:
+                        img_bytes = f_img.read()
+                    mime_img = "image/png" if ext == "png" else ("image/webp" if ext == "webp" else "image/jpeg")
+                    contents_gemini.append(genai_types.Part.from_bytes(data=img_bytes, mime_type=mime_img))
+                except Exception:
+                    pass
+            elif is_pdf:
+                # Tenta pypdf primeiro para texto rápido
+                extraiu_texto = False
+                try:
+                    if pypdf:
+                        reader = pypdf.PdfReader(caminho_arquivo)
+                        paginas = [p.extract_text() or "" for p in reader.pages[:10]]
+                        txt_pdf = "\n".join(paginas).strip()
+                        if txt_pdf:
+                            contents_gemini.append(f"Conteúdo do PDF:\n{txt_pdf[:40000]}")
+                            extraiu_texto = True
+                except Exception:
+                    pass
+                if not extraiu_texto:
+                    try:
+                        with open(caminho_arquivo, "rb") as f_pdf:
+                            pdf_bytes = f_pdf.read()
+                        contents_gemini.append(genai_types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"))
+                    except Exception:
+                        pass
+
+        # Busca Web inteligente sob demanda se a instrução exigir dados externos
+        precisa_web = any(w in cmd_lower for w in [
+            "reajuste", "aluguel", "indice", "índice", "igp", "ipca", "inpc", "selic", "cdi",
+            "dolar", "dólar", "cotacao", "cotação", "lei", "artigo", "codigo civil", "código civil",
+            "cnpj", "empresa", "google", "internet", "pesquis", "procur", "busc", "porcentagem", "taxa", "atual"
+        ])
+        snippets_web = []
+        if precisa_web:
+            termo_web = (
+                "IGP-M IPCA acumulado 12 meses FGV hoje reajuste aluguel"
+                if any(w in cmd_lower for w in ["reajuste", "aluguel", "igp", "ipca"])
+                else comando[:70]
+            )
+            snippets_web = await asyncio.to_thread(self._buscar_web_snippets, termo_web, 3)
+
+        if snippets_web:
+            bloco_web = (
+                "\n=== DADOS REAIS PESQUISADOS NA WEB EM TEMPO REAL (GOOGLE/DUCKDUCKGO) ===\n"
+                + "\n".join(f"{idx+1}. {s}" for idx, s in enumerate(snippets_web))
+                + "\n========================================================================\n"
+            )
+            contents_gemini.append(bloco_web)
+
+        # Identifica especialista do caderno ativo
+        nb_ativo_id = self._active_notebook_id or "geral"
+        pasta_nb_ativo = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", nb_ativo_id)
+        nb_meta_expert = "jarvis"
+        nb_meta_nome = nb_ativo_id
+
+        if os.path.isdir(pasta_nb_ativo):
+            meta_json_path = os.path.join(pasta_nb_ativo, "notebook.json")
+            if os.path.isfile(meta_json_path):
+                try:
+                    with open(meta_json_path, "r", encoding="utf-8") as f_meta:
+                        meta_dict = json.load(f_meta)
+                        nb_meta_expert = meta_dict.get("expert") or "jarvis"
+                        nb_meta_nome = meta_dict.get("name") or nb_ativo_id
+                except Exception:
+                    pass
+
+        # Se não tiver especialista explícito mas o nome for de condomínio / imobiliário, ativa Parecer Duplo por padrão
+        if nb_meta_expert == "jarvis":
+            nome_low = (nb_meta_nome + " " + nb_ativo_id).lower()
+            if any(w in nome_low for w in ["porto", "panorama", "condominio", "condomínio", "edificio", "edifício", "predio", "prédio"]):
+                nb_meta_expert = "parecer_duplo"
+
+        diretrizes_especialistas = {
+            "parecer_duplo": (
+                "ATUAÇÃO OBRIGATÓRIA COMO COMITÊ CONDOMINIAL DUPLO:\n"
+                "1) ADVOGADO ESPECIALISTA EM DIREITO CONDOMINIAL E IMOBILIÁRIO (Doutor em Direito, 20+ anos de experiência).\n"
+                "2) SÍNDICO PROFISSIONAL SÊNIOR & GESTOR PREDIAL CERTIFICADO.\n\n"
+                "ESTRUTURE SUA RESPOSTA EM DOIS BLOCOS CLAROS:\n"
+                "### 🏛️ 1. PARECER JURÍDICO (Dr. Advogado Condominial)\n"
+                "- Fundamentação legal: Código Civil (Arts. 1.331 a 1.358-U), Lei 4.591/64, Lei 8.245/91 e jurisprudência do STJ.\n"
+                "- Validade de convocações, assembleias, quóruns exigidos e convenção condominial.\n"
+                "- Responsabilidade civil/criminal do síndico e administradora e classificação de riscos.\n\n"
+                "### 🛠️ 2. DIRETRIZ OPERACIONAL & PLANO DE AÇÃO (Síndico Profissional)\n"
+                "- Normas técnicas ABNT NBR 5674 (Manutenção) e NBR 16280 (Reformas / ART), AVCB e seguro predial.\n"
+                "- Finanças, fluxo de caixa, fundo de reserva, rateios e combate à inadimplência.\n"
+                "- Mediação de conflitos e checklist executivo de medidas imediatas."
+            ),
+            "advogado_condominial": (
+                "ATUAÇÃO OBRIGATÓRIA COMO ADVOGADO ESPECIALISTA EM DIREITO CONDOMINIAL E IMOBILIÁRIO:\n"
+                "- Analise cada cláusula, ata, boleto ou notificação com rigor jurídico absoluto.\n"
+                "- Fundamente no Código Civil (Arts. 1.331-1.358), Lei 4.591/64, jurisprudência do STJ e regimento interno.\n"
+                "- Identifique nulidades, quóruns e formule minutas de notificações e salvaguardas."
+            ),
+            "sindico_profissional": (
+                "ATUAÇÃO OBRIGATÓRIA COMO SÍNDICO PROFISSIONAL E GESTOR PREDIAL:\n"
+                "- Foco em engenharia de manutenção (ABNT NBR 5674), controle de reformas (NBR 16280), AVCB e instalações.\n"
+                "- Gestão de prestadores de serviços, redução de custos e saúde do fundo de reserva.\n"
+                "- Aplicação imparcial do regimento interno e plano de ação imediato."
+            ),
+            "cfo_financeiro": (
+                "ATUAÇÃO OBRIGATÓRIA COMO CFO E AUDITOR CONTÁBIL FORENSE:\n"
+                "- Auditoria de receitas, despesas ordinárias vs extraordinárias e desvios de finalidade.\n"
+                "- Verificação de retenções tributárias (INSS, ISS, PIS/COFINS/CSLL) e conciliação bancária.\n"
+                "- Projeção de fluxo de caixa e diagnóstico de saúde financeira."
+            ),
+            "medico": (
+                "ATUAÇÃO OBRIGATÓRIA COMO MÉDICO PERITO E ESPECIALISTA EM MEDICINA BASEADA EM EVIDÊNCIAS:\n"
+                "- Análise aprofundada de laudos, exames laboratoriais e literatura médica de referência.\n"
+                "- Mecanismos fisiopatológicos, diagnósticos diferenciais e alertas clínicos."
+            ),
+            "dev_senior": (
+                "ATUAÇÃO OBRIGATÓRIA COMO ENGENHEIRO DE SOFTWARE SÊNIOR E ARQUITETO DE SISTEMAS:\n"
+                "- Code review minucioso, princípios SOLID, Clean Code e complexidade O(n).\n"
+                "- Diagnóstico cirúrgico de bugs e soluções prontas para produção."
+            ),
+            "jarvis": (
+                "ATUAÇÃO COMO JARVIS EXECUTIVO:\n"
+                "- Síntese de alto nível, raciocínio lógico, foco em resultados e clareza absoluta."
+            ),
+        }
+        diretriz_esp = diretrizes_especialistas.get(nb_meta_expert, diretrizes_especialistas["jarvis"])
+
+        # Monta a diretriz final da IA
+        is_multi = len(nomes_processados) > 1
+        aviso_web = (
+            "- ATENÇÃO: Utilize os dados da pesquisa web em tempo real fornecidos acima (ex.: porcentagem acumulada do IGP-M ou IPCA) para aplicar sobre o valor do boleto e calcular o valor final exato reajustado em reais!\n"
+            if snippets_web
+            else ""
+        )
+
+        if is_multi:
+            diretriz = (
+                f"Você está operando no caderno '{nb_meta_nome}'.\n"
+                f"{diretriz_esp}\n\n"
+                f"O usuário forneceu {len(nomes_processados)} documentos para análise CONJUNTA E CRUZADA ({', '.join(nomes_processados)}).\n"
+                f"Instrução do usuário: '{comando}'.\n\n"
+                "DIRETRIZ DE ANÁLISE CRUZADA:\n"
+                "- Analise TODOS os documentos em conjunto, relacionando e cruzando as informações entre eles.\n"
+                "- Se um documento depender de dados presentes no outro (ex.: boleto de aluguel indicando data de reajuste e contrato/foto com o índice, percentual ou cláusula de cálculo), conecte os dados e forneça a resposta final e conclusiva com os cálculos prontos.\n"
+                f"{aviso_web}"
+                "- Responda com clareza e autoridade técnica no papel do especialista ativo, citando de qual documento veio cada dado."
+            )
+        else:
+            doc_single = nomes_processados[0]
+            diretriz = (
+                f"Você está operando no caderno '{nb_meta_nome}'.\n"
+                f"{diretriz_esp}\n\n"
+                f"O usuário forneceu o documento '{doc_single}'.\n"
+                f"Instrução do usuário: '{comando}'.\n"
+                f"{aviso_web}"
+                "Responda com profundidade técnica e autoridade no papel do especialista ativo, em português do Brasil."
+            )
+
+        # Memória Conversacional do Caderno (estilo NotebookLM)
+        chat_nb_path = os.path.join(_backend_dir, "workspace_arquivos", "notebooks", self._active_notebook_id or "geral", "chat_history.json")
+        if os.path.isfile(chat_nb_path):
+            try:
+                with open(chat_nb_path, "r", encoding="utf-8") as fch:
+                    historico_nb = json.load(fch)
+                    if isinstance(historico_nb, list) and historico_nb:
+                        ultimas = historico_nb[-4:]
+                        bloco_hist = "\n=== HISTÓRICO RECENTE DA CONVERSA NESTE CADERNO (MEMÓRIA CONTÍNUA) ===\n" + "\n\n".join(
+                            f"{'Usuário' if m.get('role') == 'user' else 'JARVIS'}: {m.get('content')}"
+                            for m in ultimas
+                        ) + "\n=======================================================================\n"
+                        contents_gemini.append(bloco_hist)
+            except Exception:
+                pass
+
+        contents_gemini.append(diretriz)
+
+        try:
+            resp = await asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-3.5-flash-lite",
+                contents=contents_gemini,
+            )
+            resultado_texto = resp.text.strip() if resp and resp.text else ""
+        except Exception as e_gen:
+            logger_memoria.warning("evento=analise_workspace_gemini status=erro motivo=%s", e_gen)
+            resultado_texto = f"Não consegui processar a análise no momento ({e_gen})."
+
+        if not resultado_texto:
+            return f"Não foi possível extrair dados dos arquivos do painel."
+
+        # Salva o turno na memória persistente do caderno e atualiza o painel
+        asyncio.create_task(
+            self._adicionar_mensagem_chat_notebook(
+                role="user",
+                content=comando or "Análise das fontes",
+                sources=nomes_processados,
+            )
+        )
+        asyncio.create_task(
+            self._adicionar_mensagem_chat_notebook(
+                role="assistant",
+                content=resultado_texto,
+                sources=nomes_processados,
+                buscou_web=bool(snippets_web),
+                expert=nb_meta_expert,
+            )
+        )
+
+        if quer_copiar:
+            await asyncio.to_thread(self._copiar_para_clipboard, resultado_texto)
+            return (
+                f"Analisei os arquivos ({', '.join(nomes_processados)}) e copiei a resposta completa para a sua área de transferência (Ctrl+V pronto).\n"
+                f"Resumo: {resultado_texto[:300]}..."
+            )
+
+        return f"Análise de {len(nomes_processados)} documento(s) ({', '.join(nomes_processados)}):\n{resultado_texto}"
+
+    @staticmethod
+    def _enviar_atalho_teclado(*vks: int, repeticoes: int = 1) -> None:
+        user32 = ctypes.windll.user32
+        for _ in range(max(1, int(repeticoes))):
+            for vk in vks:
+                user32.keybd_event(vk, 0, 0, 0)
+            for vk in reversed(vks):
+                user32.keybd_event(vk, 0, 2, 0)
+            time.sleep(0.05)
+
+    @function_tool(
+        description=(
+            "Controla o ZOOM da tela: aumenta (zoom in), diminui (zoom out), restaura ao normal ou define um valor exato. "
+            "Use quando o usuário pedir 'aumenta o zoom', 'dá zoom in', 'zoom out', 'diminui a tela', 'aumenta as letras', "
+            "'volta o zoom ao normal', 'zoom 150%', 'não consigo ler, amplia'. "
+            "`acao`: 'in' (aumentar), 'out' (diminuir), 'reset' (normal 100%) ou 'set' (valor exato em `percentual`, ex.: 150). "
+            "`passos`: quantos níveis aumentar/diminuir (padrão 1; use 3 para 'bastante'). "
+            "`alvo`: 'atual' (aba/site do navegador em uso, nunca a tela do próprio Jarvis), nome de um site/aba "
+            "(ex.: 'youtube', 'gmail'), 'programa' (janela em primeiro plano, qualquer aplicativo) "
+            "ou 'windows'/'lupa' (ampliação do Windows sobre a tela inteira)."
+        )
+    )
+    async def controlar_zoom_tela(
+        self,
+        acao: str = "in",
+        passos: int = 1,
+        percentual: int = 100,
+        alvo: str = "atual",
+    ) -> str:
+        acao_n = (acao or "in").strip().lower()
+        mapa = {
+            "in": "in", "aumentar": "in", "aumenta": "in", "mais": "in", "ampliar": "in", "+": "in",
+            "out": "out", "diminuir": "out", "diminui": "out", "menos": "out", "reduzir": "out", "-": "out",
+            "reset": "reset", "normal": "reset", "restaurar": "reset", "resetar": "reset", "100": "reset",
+            "set": "set", "definir": "set", "exato": "set",
+        }
+        acao_n = mapa.get(acao_n, "")
+        if not acao_n:
+            return "Aviso: ação de zoom inválida. Use 'in', 'out', 'reset' ou 'set'."
+        passos = max(1, min(10, int(passos or 1)))
+        alvo_n = (alvo or "atual").strip().lower()
+        print(f"[AÇÃO] Zoom '{acao_n}' x{passos} alvo='{alvo_n}' percentual={percentual}")
+
+        VK_CONTROL, VK_LWIN, VK_ESCAPE = 0x11, 0x5B, 0x1B
+        VK_PLUS, VK_MINUS, VK_0 = 0xBB, 0xBD, 0x30
+
+        # 1. Lupa do Windows (tela inteira)
+        if alvo_n in ("windows", "lupa", "tela inteira", "tela toda", "monitor"):
+            if acao_n == "in":
+                await asyncio.to_thread(self._enviar_atalho_teclado, VK_LWIN, VK_PLUS, repeticoes=passos)
+                return "Ampliei a tela com a Lupa do Windows."
+            if acao_n == "out":
+                await asyncio.to_thread(self._enviar_atalho_teclado, VK_LWIN, VK_MINUS, repeticoes=passos)
+                return "Reduzi a ampliação da Lupa do Windows."
+            await asyncio.to_thread(self._enviar_atalho_teclado, VK_LWIN, VK_ESCAPE)
+            return "Fechei a Lupa do Windows e voltei a tela ao normal."
+
+        # 2. Aba/site do navegador via extensão (preciso, não afeta a tela do Jarvis)
+        if alvo_n not in ("programa", "aplicativo", "janela ativa", "app"):
+            try:
+                res = await asyncio.to_thread(
+                    jarvis_chrome.zoom_tab, acao_n, alvo_n, (percentual or 100) / 100.0, passos
+                )
+                if res.get("ok"):
+                    return f"Zoom ajustado para {round(float(res.get('zoom', 1)) * 100)}% na aba."
+                erro_ext = str(res.get("error") or "")
+                if erro_ext == "sem_aba":
+                    return (
+                        "Aviso: não achei nenhuma aba de site aberta para dar zoom (a tela do Jarvis é protegida). "
+                        "Abra o site e peça de novo."
+                    )
+                if acao_n == "set":
+                    return (
+                        "Aviso: a extensão do Chrome não respondeu a este comando, então não consigo definir o zoom exato. "
+                        "Provável causa: a extensão não foi recarregada em chrome://extensions. "
+                        "NÃO tente chegar ao valor aos poucos; peça ao usuário para recarregar a extensão."
+                    )
+            except Exception:
+                pass
+
+        # 3. Fallback: atalho Ctrl +/-/0 na janela em primeiro plano (aplicativos, Word, Explorer, Chrome sem extensão)
+        if acao_n == "in":
+            await asyncio.to_thread(self._enviar_atalho_teclado, VK_CONTROL, VK_PLUS, repeticoes=passos)
+            return "Zoom aumentado na janela em primeiro plano."
+        if acao_n == "out":
+            await asyncio.to_thread(self._enviar_atalho_teclado, VK_CONTROL, VK_MINUS, repeticoes=passos)
+            return "Zoom diminuído na janela em primeiro plano."
+        if acao_n == "reset":
+            await asyncio.to_thread(self._enviar_atalho_teclado, VK_CONTROL, VK_0)
+            return "Zoom restaurado ao normal na janela em primeiro plano."
+        return "Aviso: não consegui definir um zoom exato sem a extensão do Chrome ativa. Posso aumentar ou diminuir por passos."
+
+    @function_tool(
+        description=(
+            "Controla a navegação e a visualização da tela/aba do navegador. "
+            "`acao`: 'voltar' (página anterior), 'avancar', 'recarregar' (atualizar), 'proxima_aba', 'aba_anterior', "
+            "'tela_cheia' (liga/desliga tela cheia), 'topo' (vai ao início da página), 'fim' (vai ao final da página). "
+            "Use para 'volta a página', 'atualiza', 'próxima aba', 'tela cheia', 'vai pro topo', 'vai até o final'. "
+            "`alvo`: 'atual' (padrão) ou nome do site/aba."
+        )
+    )
+    async def controlar_navegacao_tela(self, acao: str, alvo: str = "atual") -> str:
+        a = (acao or "").strip().lower().replace(" ", "_").replace("á", "a").replace("ç", "c").replace("ó", "o")
+        sinonimos = {
+            "voltar": "voltar", "back": "voltar",
+            "avancar": "avancar", "forward": "avancar",
+            "recarregar": "recarregar", "atualizar": "recarregar", "refresh": "recarregar",
+            "proxima_aba": "proxima_aba", "proxima": "proxima_aba",
+            "aba_anterior": "aba_anterior", "anterior": "aba_anterior",
+            "tela_cheia": "tela_cheia", "fullscreen": "tela_cheia",
+            "topo": "topo", "inicio": "topo", "fim": "fim", "final": "fim", "rodape": "fim",
+        }
+        a = sinonimos.get(a, "")
+        if not a:
+            return "Aviso: ação inválida. Use voltar, avancar, recarregar, proxima_aba, aba_anterior, tela_cheia, topo ou fim."
+        print(f"[AÇÃO] Navegação de tela '{a}' alvo='{alvo}'")
+        try:
+            res = await asyncio.to_thread(jarvis_chrome.tab_control, a, (alvo or "atual").strip().lower())
+            if res.get("ok"):
+                return f"Pronto: '{a.replace('_', ' ')}' executado."
+        except Exception:
+            pass
+
+        # Fallback por teclado na janela em primeiro plano
+        VK_MENU, VK_LEFT, VK_RIGHT, VK_F5, VK_F11 = 0x12, 0x25, 0x27, 0x74, 0x7A
+        VK_CONTROL, VK_TAB, VK_SHIFT, VK_HOME, VK_END = 0x11, 0x09, 0x10, 0x24, 0x23
+        atalhos = {
+            "voltar": (VK_MENU, VK_LEFT),
+            "avancar": (VK_MENU, VK_RIGHT),
+            "recarregar": (VK_F5,),
+            "proxima_aba": (VK_CONTROL, VK_TAB),
+            "aba_anterior": (VK_CONTROL, VK_SHIFT, VK_TAB),
+            "tela_cheia": (VK_F11,),
+            "topo": (VK_CONTROL, VK_HOME),
+            "fim": (VK_CONTROL, VK_END),
+        }
+        await asyncio.to_thread(self._enviar_atalho_teclado, *atalhos[a])
+        return f"Pronto: '{a.replace('_', ' ')}' executado."
 
     @function_tool(
         description=(
@@ -6186,6 +7916,22 @@ def _handle_room_data(
             id_tarefa = str(payload.get("id") or "").strip()
             if id_tarefa:
                 asyncio.create_task(agent.executar_automacao_agendada_agora(id_tarefa))
+        return
+    if data_packet.topic == "jarvis.workspace":
+        try:
+            payload = json.loads(data_packet.data)
+        except Exception:
+            return
+        if payload.get("type") == "jarvis_active_notebook_sync":
+            nb_id = str(payload.get("notebookId") or "").strip()
+            if nb_id:
+                agent._active_notebook_id = nb_id
+            if isinstance(payload.get("isOpen"), bool):
+                agent._workspace_panel_open = payload["isOpen"]
+                logger_memoria.info("evento=sync_painel_workspace aberto=%s nb=%s", payload["isOpen"], agent._active_notebook_id)
+                if not payload["isOpen"]:
+                    agent._ultimo_texto_notebook_transcrito = ""
+        return
 
 
 async def _monitorar_chegada_emails(session: AgentSession, assistant: Assistant):
@@ -6419,7 +8165,10 @@ async def entrypoint(ctx: agents.JobContext):
     session.on("close", lambda _: (metrics_task.cancel(), email_watch_task.cancel(), automacoes_watch_task.cancel()))
 
     await session.generate_reply(
-        instructions=SESSION_INSTRUCTION + "\nCumprimente o usuário de forma breve e confiante."
+        instructions=(
+            SESSION_INSTRUCTION
+            + "\nDiga apenas uma saudação inicial curta e confiante (ex: 'Sistemas online, chefe.'), sem perguntar como pode ajudar e sem insistência."
+        )
     )
 
 if __name__ == "__main__":

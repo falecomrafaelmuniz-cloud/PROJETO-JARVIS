@@ -103,7 +103,7 @@ export function QuantPanel({ isOpen, onClose }: QuantPanelProps) {
   return (
     <aside
       aria-label="Painel Quant B3"
-      style={dragStyle}
+      style={dragStyle} data-hud-panel="trader"
       {...dragHandlers}
       title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(

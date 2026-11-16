@@ -270,7 +270,7 @@ export function AutomationsPanel({ isOpen, onClose, onOpenRequest }: Automations
 
   return (
     <aside
-      style={dragStyle}
+      style={dragStyle} data-hud-panel="automations"
       {...dragHandlers}
       title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(

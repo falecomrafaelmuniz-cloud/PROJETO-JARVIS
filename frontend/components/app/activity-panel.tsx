@@ -215,7 +215,7 @@ export function ActivityPanel({ isOpen = true, onClose }: ActivityPanelProps = {
   return (
     <aside
       aria-label="Atividades do Jarvis"
-      style={dragStyle}
+      style={dragStyle} data-hud-panel="activity"
       {...dragHandlers}
       title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(

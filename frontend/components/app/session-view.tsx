@@ -4,11 +4,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   useRemoteParticipants,
+  useRoomContext,
   useSessionContext,
   useSessionMessages,
   useTrackVolume,
   useVoiceAssistant,
 } from '@livekit/components-react';
+import { RoomEvent } from 'livekit-client';
 import type { AppConfig } from '@/app-config';
 import {
   AgentControlBar,
@@ -30,7 +32,15 @@ import { SystemDashboard } from '@/components/app/system-dashboard';
 import { NeuralNetworkVisualizer } from '@/components/app/neural-network';
 import { QuantPanel } from '@/components/app/quant-panel';
 import { TileLayout } from '@/components/app/tile-layout';
+import { WorkspaceFilesPanel } from '@/components/app/workspace-files-panel';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
+import {
+  calculateLayoutPositions,
+  calculateSinglePanelTransform,
+  HUD_PANEL_STORAGE_KEYS,
+  type LayoutMode,
+} from '@/lib/hud-layout-manager';
+import { organizeHudPanelsDom, positionSinglePanelDom } from '@/lib/hud-dom-layout';
 import { cn } from '@/lib/shadcn/utils';
 import { Shimmer } from '../ai-elements/shimmer';
 
@@ -278,11 +288,190 @@ export const SessionView = ({
   onManualDisconnect,
   ...props
 }: React.ComponentProps<'section'> & SessionViewProps) => {
+  const room = useRoomContext();
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
   const [hudPanels, setHudPanels] = useState<HudPanelsState>(DEFAULT_HUD_PANELS);
+  const hudPanelsRef = useRef<HudPanelsState>(DEFAULT_HUD_PANELS);
+  useEffect(() => {
+    hudPanelsRef.current = hudPanels;
+  }, [hudPanels]);
   const [neuralConfigSignal, setNeuralConfigSignal] = useState(0);
+
+  // Escuta comandos de voz para abrir/fechar/alternar painéis do HUD em tempo real
+  useEffect(() => {
+    if (!room) return;
+    const handleData = (
+      payload: Uint8Array,
+      _participant?: unknown,
+      _kind?: unknown,
+      topic?: string
+    ) => {
+      if (topic !== 'jarvis.hud' && topic !== 'jarvis.workspace') return;
+      try {
+        const packet = JSON.parse(new TextDecoder().decode(payload));
+        if (packet?.type === 'jarvis_switch_notebook') {
+          setPanelOpen('files', true);
+          return;
+        }
+        if (packet?.type === 'jarvis_hud_control') {
+          const target = String(packet.panel || '').toLowerCase().trim();
+          const action = packet.action || 'open';
+
+          const panelMap: Record<string, HudPanelId> = {
+            files: 'files',
+            arquivos: 'files',
+            arquivo: 'files',
+            central: 'files',
+            central_arquivos: 'files',
+            workspace: 'files',
+            notebook: 'files',
+            notebooks: 'files',
+            caderno: 'files',
+            cadernos: 'files',
+            reminders: 'reminders',
+            lembretes: 'reminders',
+            lembrete: 'reminders',
+            automations: 'automations',
+            automacoes: 'automations',
+            automacao: 'automations',
+            tarefas_agendadas: 'automations',
+            email: 'email',
+            emails: 'email',
+            rascunho: 'email',
+            system: 'system',
+            sistema: 'system',
+            dashboard: 'system',
+            metricas: 'system',
+            activity: 'activity',
+            atividades: 'activity',
+            atividade: 'activity',
+            acoes: 'activity',
+            tarefas: 'activity',
+            trader: 'trader',
+            quant: 'trader',
+            mercado: 'trader',
+            clock: 'clock',
+            relogio: 'clock',
+            neural: 'neural',
+            rede_neural: 'neural',
+          };
+
+          if (target === 'all' || target === 'todos' || target === 'tudo') {
+            const nextVal = action === 'open' ? true : action === 'close' ? false : undefined;
+            setHudPanels((prev) => {
+              const next = { ...prev };
+              (Object.keys(next) as HudPanelId[]).forEach((k) => {
+                next[k] = nextVal !== undefined ? nextVal : !prev[k];
+              });
+              try {
+                localStorage.setItem('jarvis-hud-panels-v1', JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+            return;
+          }
+
+          const panelId = panelMap[target];
+          if (panelId) {
+            setHudPanels((prev) => {
+              const current = prev[panelId];
+              const nextVal = action === 'open' ? true : action === 'close' ? false : !current;
+              if (current === nextVal) return prev;
+              const next = { ...prev, [panelId]: nextVal };
+              try {
+                localStorage.setItem('jarvis-hud-panels-v1', JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+          }
+        }
+
+        // Organização e Posicionamento Inteligente dos Layouts do HUD (Anti-sobreposição)
+        if (
+          packet?.type === 'jarvis_hud_organize' ||
+          packet?.type === 'jarvis_hud_layout' ||
+          packet?.type === 'jarvis_hud_reset_layout'
+        ) {
+          if (packet.type === 'jarvis_hud_reset_layout' || packet.action === 'reset' || packet.mode === 'reset') {
+            setHudPanels(DEFAULT_HUD_PANELS);
+            persistHudPanels(DEFAULT_HUD_PANELS);
+            Object.values(HUD_PANEL_STORAGE_KEYS).forEach((key) => {
+              try {
+                localStorage.removeItem(key);
+              } catch {}
+            });
+            window.dispatchEvent(new CustomEvent('jarvis:hud-reset-layout'));
+            return;
+          }
+
+          const targetPanelRaw = String(packet.panel || '').toLowerCase().trim();
+          const panelMap: Record<string, HudPanelId> = {
+            files: 'files', arquivos: 'files', central: 'files', workspace: 'files', caderno: 'files',
+            reminders: 'reminders', lembretes: 'reminders', lembrete: 'reminders',
+            system: 'system', sistema: 'system', dashboard: 'system',
+            trader: 'trader', quant: 'trader', mercado: 'trader',
+            automations: 'automations', automacoes: 'automations',
+            activity: 'activity', atividades: 'activity',
+            email: 'email', emails: 'email',
+            clock: 'clock', relogio: 'clock',
+          };
+
+          const targetPanelId = panelMap[targetPanelRaw];
+
+          if (targetPanelId && packet.position) {
+            // Posicionamento de um painel específico
+            const transform = calculateSinglePanelTransform(
+              targetPanelId,
+              String(packet.position || 'center'),
+              String(packet.size || 'normal'),
+              typeof window !== 'undefined' ? window.innerWidth : 1920,
+              typeof window !== 'undefined' ? window.innerHeight : 1080
+            );
+            const storageKey = HUD_PANEL_STORAGE_KEYS[targetPanelId];
+            setTimeout(() => {
+              // Usa as medidas reais do painel na tela; cai no cálculo fixo se não achar o elemento
+              const measured = positionSinglePanelDom(
+                targetPanelId,
+                String(packet.position || 'center'),
+                String(packet.size || 'normal')
+              );
+              window.dispatchEvent(
+                new CustomEvent('jarvis:hud-set-transforms', {
+                  detail: { positions: measured ?? { [storageKey]: transform } },
+                })
+              );
+            }, 50);
+            return;
+          }
+
+          // Organização coletiva de painéis abertos (evita que fiquem um em cima do outro)
+          const mode = (packet.mode as LayoutMode) || 'side_by_side';
+          setTimeout(() => {
+            const activePanels = (Object.keys(hudPanelsRef.current) as HudPanelId[]).filter(
+              (k) => hudPanelsRef.current[k]
+            );
+            const positions =
+              organizeHudPanelsDom(activePanels) ??
+              calculateLayoutPositions(activePanels, mode, window.innerWidth, window.innerHeight);
+            window.dispatchEvent(
+              new CustomEvent('jarvis:hud-set-transforms', {
+                detail: { positions },
+              })
+            );
+          }, 0);
+        }
+      } catch (err) {
+        console.warn('Erro ao processar mensagem jarvis.hud:', err);
+      }
+    };
+
+    room.on(RoomEvent.DataReceived, handleData);
+    return () => {
+      room.off(RoomEvent.DataReceived, handleData);
+    };
+  }, [room]);
 
   useEffect(() => {
     try {
@@ -298,6 +487,7 @@ export const SessionView = ({
           ...(typeof parsed.automations === 'boolean' ? { automations: parsed.automations } : {}),
           ...(typeof parsed.reminders === 'boolean' ? { reminders: parsed.reminders } : {}),
           ...(typeof parsed.email === 'boolean' ? { email: parsed.email } : {}),
+          ...(typeof parsed.files === 'boolean' ? { files: parsed.files } : {}),
           ...(typeof parsed.neural === 'boolean' ? { neural: parsed.neural } : {}),
         }));
       }
@@ -322,8 +512,22 @@ export const SessionView = ({
         persistHudPanels(next);
         return next;
       });
+
+      // Se for a central de arquivos, sincroniza imediatamente com o Jarvis backend
+      if (id === 'files' && room?.localParticipant) {
+        try {
+          const payload = JSON.stringify({
+            type: 'jarvis_active_notebook_sync',
+            isOpen: open,
+          });
+          room.localParticipant.publishData(new TextEncoder().encode(payload), {
+            reliable: true,
+            topic: 'jarvis.workspace',
+          });
+        } catch {}
+      }
     },
-    [persistHudPanels]
+    [persistHudPanels, room]
   );
 
   const toggleHudPanel = useCallback(
@@ -347,14 +551,46 @@ export const SessionView = ({
   const handleOpenReminders = useCallback(() => setPanelOpen('reminders', true), [setPanelOpen]);
   const handleCloseEmail = useCallback(() => setPanelOpen('email', false), [setPanelOpen]);
   const handleOpenEmail = useCallback(() => setPanelOpen('email', true), [setPanelOpen]);
+  const handleCloseFiles = useCallback(() => setPanelOpen('files', false), [setPanelOpen]);
 
   const handleOpenNeuralConfig = useCallback(() => {
     setNeuralConfigSignal((prev) => prev + 1);
   }, []);
 
   const handleResetHudLayout = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('jarvis:hud-reset-layout'));
-  }, []);
+    setHudPanels(DEFAULT_HUD_PANELS);
+    persistHudPanels(DEFAULT_HUD_PANELS);
+    Object.values(HUD_PANEL_STORAGE_KEYS).forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+    });
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('jarvis:hud-reset-layout'));
+    }, 0);
+  }, [persistHudPanels]);
+
+  const handleOrganizeHudLayout = useCallback(() => {
+    const activePanels = (Object.keys(hudPanels) as HudPanelId[]).filter(
+      (k) => hudPanels[k]
+    );
+    if (activePanels.length <= 1) {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('jarvis:hud-reset-layout'));
+      }, 0);
+    } else {
+      setTimeout(() => {
+        const positions =
+          organizeHudPanelsDom(activePanels) ??
+          calculateLayoutPositions(activePanels, 'auto', window.innerWidth, window.innerHeight);
+        window.dispatchEvent(
+          new CustomEvent('jarvis:hud-set-transforms', {
+            detail: { positions },
+          })
+        );
+      }, 0);
+    }
+  }, [hudPanels]);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const vantaEffectRef = useRef<VantaEffect | null>(null);
@@ -439,6 +675,7 @@ export const SessionView = ({
         onTogglePanel={toggleHudPanel}
         onOpenNeuralConfig={handleOpenNeuralConfig}
         onResetLayout={handleResetHudLayout}
+        onOrganizeLayout={handleOrganizeHudLayout}
       />
       <ActivityPanel isOpen={hudPanels.activity} onClose={handleCloseActivity} />
       <SystemDashboard isOpen={hudPanels.system} onClose={handleCloseSystem} />
@@ -463,6 +700,11 @@ export const SessionView = ({
         isOpen={hudPanels.reminders}
         onClose={handleCloseReminders}
         onOpenRequest={handleOpenReminders}
+      />
+      <WorkspaceFilesPanel
+        isOpen={hudPanels.files}
+        onClose={handleCloseFiles}
+        onOpenEmailComposer={handleOpenEmail}
       />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

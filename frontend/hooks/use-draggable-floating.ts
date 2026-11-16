@@ -214,25 +214,46 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
     };
 
     const handleResetLayout = () => {
-      const resetState: TransformState = { x: 0, y: 0, scale: 1 };
-      setState(resetState);
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // ignore storage errors
-      }
+      setTimeout(() => {
+        const resetState: TransformState = { x: 0, y: 0, scale: 1 };
+        setState(resetState);
+        try {
+          localStorage.removeItem(storageKey);
+        } catch {
+          // ignore storage errors
+        }
+      }, 0);
+    };
+
+    const handleSetTransforms = (event: Event) => {
+      const customEvent = event as CustomEvent<{ positions?: Record<string, Partial<TransformState>> }>;
+      const pos = customEvent.detail?.positions?.[storageKey];
+      if (!pos) return;
+      setTimeout(() => {
+        setState((prev) => {
+          const next: TransformState = {
+            x: typeof pos.x === 'number' && Number.isFinite(pos.x) ? pos.x : prev.x,
+            y: typeof pos.y === 'number' && Number.isFinite(pos.y) ? pos.y : prev.y,
+            scale: typeof pos.scale === 'number' && Number.isFinite(pos.scale) ? clampScale(pos.scale) : prev.scale,
+          };
+          persist(next);
+          return next;
+        });
+      }, 0);
     };
 
     window.addEventListener('pointermove', handleWindowPointerMove);
     window.addEventListener('pointerup', handleWindowPointerUp);
     window.addEventListener('pointercancel', handleWindowPointerUp);
     window.addEventListener('jarvis:hud-reset-layout', handleResetLayout);
+    window.addEventListener('jarvis:hud-set-transforms', handleSetTransforms);
 
     return () => {
       window.removeEventListener('pointermove', handleWindowPointerMove);
       window.removeEventListener('pointerup', handleWindowPointerUp);
       window.removeEventListener('pointercancel', handleWindowPointerUp);
       window.removeEventListener('jarvis:hud-reset-layout', handleResetLayout);
+      window.removeEventListener('jarvis:hud-set-transforms', handleSetTransforms);
     };
   }, [persist, storageKey]);
 
@@ -315,6 +336,7 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
     style: {
       transform: `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`,
       transformOrigin: 'center center',
+      transition: isDragging ? 'none' : 'transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
       ...(cursorStyle ? { cursor: cursorStyle } : {}),
     },
     scale: state.scale,

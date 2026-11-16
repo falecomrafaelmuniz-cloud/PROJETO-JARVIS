@@ -198,12 +198,12 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
   return (
     <aside
       aria-label="Painéis do sistema"
-      style={dragStyle}
+      style={dragStyle} data-hud-panel="system"
       {...dragHandlers}
       title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(
-        'pointer-events-auto absolute top-3 left-3 z-30 w-[min(17rem,calc(50vw-1.125rem))] touch-none overflow-hidden select-none',
-        'rounded-2xl border border-cyan-400/30 bg-black/80 text-white backdrop-blur-2xl',
+        'pointer-events-auto absolute top-3 left-3 z-30 w-[min(22rem,calc(100vw-1.5rem))] touch-none overflow-hidden select-none',
+        'rounded-2xl border border-cyan-400/30 bg-black/85 text-white backdrop-blur-2xl',
         'shadow-[0_0_20px_rgba(6,182,212,0.18)] shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 shadow-cyan-950/40 ring-cyan-500/20 transition-all duration-200',
         isDragging || isResizingEdge
           ? 'shadow-[0_0_25px_rgba(6,182,212,0.4)] ring-1 ring-cyan-300/80'
@@ -214,12 +214,12 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
       {/* Visual de linhas holográficas nos cantos superiores */}
       <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
       <div className="pointer-events-none absolute -top-1 left-1/2 h-1.5 w-12 -translate-x-1/2 rounded-full bg-cyan-400/40 blur-xs" />
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
-        <div>
-          <h2 className="text-xs font-semibold tracking-wide">Painéis do Jarvis</h2>
-          <p className="mt-0.5 text-[9px] text-white/50">Monitoramento desta sessão</p>
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3.5 py-2.5">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold tracking-wide text-white">Painéis do Jarvis</h2>
+          <p className="mt-0.5 text-[11px] text-white/60">Monitoramento desta sessão</p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             data-no-drag="true"
@@ -227,24 +227,24 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
             disabled={updateState === 'updating'}
             title="Buscar atualizações do Jarvis no GitHub"
             className={cn(
-              'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-medium transition',
+              'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition',
               updateState === 'updating'
                 ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200'
                 : updateState === 'success'
                   ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-200'
-                  : 'border-white/15 bg-white/5 text-white/75 hover:border-cyan-400/40 hover:text-cyan-200'
+                  : 'border-white/15 bg-white/5 text-white/80 hover:border-cyan-400/40 hover:text-cyan-200'
             )}
           >
             {updateState === 'updating' ? (
-              <RefreshCw className="size-2.5 animate-spin" />
+              <RefreshCw className="size-3 animate-spin" />
             ) : updateState === 'success' ? (
-              <Check className="size-2.5 text-emerald-300" />
+              <Check className="size-3 text-emerald-300" />
             ) : (
-              <RefreshCw className="size-2.5" />
+              <RefreshCw className="size-3" />
             )}
             <span>{updateState === 'updating' ? 'Atualizando...' : 'Atualizar'}</span>
           </button>
-          <span className="hidden items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-medium text-cyan-300 sm:flex">
+          <span className="hidden items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-300 sm:flex">
             <span className="size-1.5 animate-pulse rounded-full bg-cyan-400" />
             Ativo
           </span>
@@ -256,47 +256,47 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
         </div>
       </div>
       {!minimized && updateMsg && (
-        <div className="border-b border-white/10 bg-cyan-950/40 px-3 py-1 text-[9px] text-cyan-200">
+        <div className="border-b border-white/10 bg-cyan-950/40 px-3.5 py-1.5 text-xs text-cyan-200">
           {updateMsg}
         </div>
       )}
 
       {!minimized && (
-      <div className="space-y-2 p-2 text-[9px]">
-        <section aria-label="Uso do sistema" className="space-y-1.5">
-          <h3 className="font-semibold tracking-wide text-white/60 uppercase">Sistema</h3>
+      <div className="space-y-3.5 p-3.5 text-xs">
+        <section aria-label="Uso do sistema" className="space-y-2">
+          <h3 className="text-[11px] font-semibold tracking-wider text-cyan-300/80 uppercase">Sistema</h3>
           <MetricBar label="CPU" value={metrics?.cpuPercent ?? null} />
           <MetricBar label="Memória" value={metrics?.memoryPercent ?? null} />
           {metrics && (
-            <p className="pl-14 text-white/45">
+            <p className="pl-14 text-[11px] text-white/60">
               {formatMemory(metrics.memoryUsedBytes)} / {formatMemory(metrics.memoryTotalBytes)}
             </p>
           )}
         </section>
 
-        <section aria-label="Consumo de rede" className="border-t border-white/10 pt-2">
-          <h3 className="mb-1 font-semibold tracking-wide text-white/60 uppercase">
+        <section aria-label="Consumo de rede" className="border-t border-white/10 pt-2.5">
+          <h3 className="mb-1.5 text-[11px] font-semibold tracking-wider text-cyan-300/80 uppercase">
             Rede total do computador
           </h3>
-          <div className="grid grid-cols-1 gap-1 text-white/75 sm:grid-cols-2 sm:gap-2">
-            <p>↑ TX {formatBytesPerSecond(metrics?.sentBytesPerSecond ?? null)}</p>
-            <p>↓ RX {formatBytesPerSecond(metrics?.receivedBytesPerSecond ?? null)}</p>
+          <div className="grid grid-cols-1 gap-1.5 text-white/85 sm:grid-cols-2">
+            <p className="font-mono text-xs">↑ TX {formatBytesPerSecond(metrics?.sentBytesPerSecond ?? null)}</p>
+            <p className="font-mono text-xs">↓ RX {formatBytesPerSecond(metrics?.receivedBytesPerSecond ?? null)}</p>
           </div>
         </section>
 
-        <section aria-label="Localização" className="border-t border-white/10 pt-2">
-          <h3 className="mb-1 font-semibold tracking-wide text-white/60 uppercase">Localização</h3>
-          <p className={locationStatus === 'shared' ? 'text-emerald-300' : 'text-white/70'}>
+        <section aria-label="Localização" className="border-t border-white/10 pt-2.5">
+          <h3 className="mb-1.5 text-[11px] font-semibold tracking-wider text-cyan-300/80 uppercase">Localização</h3>
+          <p className={cn("text-xs font-medium", locationStatus === 'shared' ? 'text-emerald-300' : 'text-white/70')}>
             {LOCATION_LABELS[locationStatus]}
           </p>
           {locationCoordinates && (
-            <div className="mt-0.5 space-y-0.5 text-white/65">
+            <div className="mt-1 space-y-0.5 text-white/75">
               {[
                 locationCoordinates.city,
                 locationCoordinates.state,
                 locationCoordinates.country,
               ].filter(Boolean).length > 0 && (
-                <p className="font-medium text-white/90">
+                <p className="font-medium text-white/95">
                   {[
                     locationCoordinates.city,
                     locationCoordinates.state,
@@ -306,7 +306,7 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
                     .join(', ')}
                 </p>
               )}
-              <p className="font-mono break-all text-white/45">
+              <p className="font-mono text-[11px] break-all text-white/50">
                 {locationCoordinates.latitude.toFixed(4)},{' '}
                 {locationCoordinates.longitude.toFixed(4)}
               </p>
@@ -322,11 +322,11 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
 function MetricBar({ label, value }: { label: string; value: number | null }) {
   const formattedValue = value === null ? '--' : `${value.toFixed(0)}%`;
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-12 shrink-0 text-white/70">{label}</span>
+    <div className="flex items-center gap-2.5">
+      <span className="w-14 shrink-0 text-xs font-medium text-white/80">{label}</span>
       <div
         aria-label={`${label}: ${formattedValue}`}
-        className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10"
+        className="h-2 flex-1 overflow-hidden rounded-full bg-white/10"
         role="meter"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -339,7 +339,7 @@ function MetricBar({ label, value }: { label: string; value: number | null }) {
           style={{ width: `${value ?? 0}%` }}
         />
       </div>
-      <span className="w-7 text-right font-mono text-white/70">{formattedValue}</span>
+      <span className="w-9 text-right font-mono text-xs font-semibold text-cyan-200">{formattedValue}</span>
     </div>
   );
 }

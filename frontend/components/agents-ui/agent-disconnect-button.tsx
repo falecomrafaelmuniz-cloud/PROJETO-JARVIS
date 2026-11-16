@@ -15,6 +15,7 @@ export interface AgentDisconnectButtonProps
 export function AgentDisconnectButton({
   icon,
   size = 'default',
+  variant = 'destructive',
   children,
   onClick,
   ...props
@@ -26,9 +27,11 @@ export function AgentDisconnectButton({
   };
 
   return (
-    <Button variant="destructive" size={size} onClick={handleClick} {...props}>
+    <Button variant={variant} size={size} onClick={handleClick} {...props}>
       {icon ?? <PhoneOffIcon />}
-      {children ?? (
+      {children !== undefined ? (
+        children
+      ) : (
         <span className={cn(size?.includes('icon') && 'sr-only')}>ENCERRAR CHAMADA</span>
       )}
     </Button>

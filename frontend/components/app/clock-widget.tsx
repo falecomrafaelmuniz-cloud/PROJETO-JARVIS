@@ -154,11 +154,11 @@ export function ClockWidget({ isOpen = true, onClose }: ClockWidgetProps = {}) {
   return (
     <div
       aria-label="Widget de Relógio do Jarvis"
-      style={dragStyle}
+      style={dragStyle} data-hud-panel="clock"
       {...dragHandlers}
       title="Arraste pela mãozinha para mover o Relógio · Arraste pelas bordas para redimensionar"
       className={cn(
-        'pointer-events-auto absolute top-14 left-1/2 z-30 -translate-x-1/2 touch-none select-none',
+        'pointer-events-auto absolute top-14 left-[calc(50%-10rem)] z-30 touch-none select-none',
         'rounded-2xl border border-cyan-400/30 bg-black/80 text-white backdrop-blur-2xl',
         'shadow-[0_8px_32px_rgba(0,0,0,0.6)] shadow-cyan-950/40 transition-all duration-200',
         isDragging || isResizingEdge

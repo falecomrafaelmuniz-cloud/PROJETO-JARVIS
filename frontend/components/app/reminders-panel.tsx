@@ -323,7 +323,7 @@ export function RemindersPanel({ isOpen, onClose, onOpenRequest }: RemindersPane
   return (
     <aside
       aria-label="Lembretes do Jarvis"
-      style={dragStyle}
+      style={dragStyle} data-hud-panel="reminders"
       {...dragHandlers}
       title="Arraste pela mãozinha para mover · Arraste pelas bordas para aumentar ou diminuir"
       className={cn(
