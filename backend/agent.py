@@ -8002,11 +8002,31 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Adiciona ou salva um SITE, LINK WEB ou APLICATIVO/PROGRAMA na Barra de Favoritos do Jarvis. "
+            "Adiciona, favorita ou salva um APLICATIVO, PROGRAMA OU SOFTWARE DO COMPUTADOR (ex.: Calculadora, Excel, Bloco de Notas, Cortecloud, WhatsApp, Word, Spotify, Chrome, etc.) na Barra de Favoritos do Jarvis. "
+            "USE ESTA FERRAMENTA SEMPRE que o usuário pedir para colocar, favoritar ou salvar qualquer aplicativo, programa ou software do PC nos favoritos."
+        )
+    )
+    async def adicionar_aplicativo_favorito(self, nome_aplicativo: str, categoria: str = "Aplicativos") -> str:
+        """Salva um aplicativo ou programa instalado no Windows na Barra de Favoritos."""
+        return await self.adicionar_favorito(item_ou_url=nome_aplicativo, nome=nome_aplicativo, categoria=categoria or "Aplicativos")
+
+    @function_tool(
+        description=(
+            "Adiciona, favorita ou salva um SITE, LINK OU PÁGINA WEB (ex.: YouTube, Google, Portal do Aluno, etc.) na Barra de Favoritos do Jarvis. "
+            "Se o usuário disser 'salve este site' ou estiver vendo uma página no navegador, captura automaticamente a aba ativa."
+        )
+    )
+    async def adicionar_site_favorito(self, url_ou_site: str = "", nome: str = "", categoria: str = "Sites") -> str:
+        """Salva um site ou link da web na Barra de Favoritos."""
+        return await self.adicionar_favorito(item_ou_url=url_ou_site, nome=nome, categoria=categoria or "Sites")
+
+    @function_tool(
+        description=(
+            "Adiciona ou salva um SITE WEB ou um APLICATIVO/PROGRAMA DO COMPUTADOR na Barra de Favoritos do Jarvis. "
             "Exemplos: 'adicione o YouTube aos favoritos', 'salve este site nos favoritos', 'coloque a Calculadora nos favoritos', 'adicione o aplicativo Cortecloud aos favoritos'. "
             "Aceita tanto sites/links quanto aplicativos ou programas instalados no computador. "
             "Se o usuário pedir para 'salvar este site' ou estiver vendo uma página no navegador, captura automaticamente a aba ativa. "
-            "NUNCA diga que não possui barra de favoritos; use esta ferramenta imediatamente."
+            "NUNCA diga que não possui barra de favoritos nem que só aceita sites; use esta ferramenta ou adicionar_aplicativo_favorito imediatamente."
         )
     )
     async def adicionar_favorito(self, item_ou_url: str = "", nome: str = "", categoria: str = "") -> str:
@@ -8092,13 +8112,13 @@ class Assistant(Agent):
         return msg
 
     @function_tool(
-        description="Abre a Barra de Favoritos na tela e lista todos os sites salvos. Pode filtrar por 'categoria' se desejado."
+        description="Abre a Barra de Favoritos na tela e lista todos os sites e aplicativos do computador salvos. Pode filtrar por 'categoria' se desejado."
     )
     async def listar_favoritos(self, categoria: str = "") -> str:
         lista = await asyncio.to_thread(self._carregar_favoritos)
         await self._publicar_favoritos_sync(lista, abrir_painel=True)
         if not lista:
-            return "A Barra de Favoritos está aberta na tela, mas ainda não há nenhum site salvo."
+            return "A Barra de Favoritos está aberta na tela, mas ainda não há nenhum favorito salvo (sites ou aplicativos)."
 
         filtro = str(categoria or "").strip().lower()
         if filtro:
@@ -8196,7 +8216,7 @@ class Assistant(Agent):
         return f"Favorito '{antigo_nome}' atualizado para '{encontrado.get('nome')}' com sucesso."
 
     @function_tool(
-        description="Exclui/apaga um site da Barra de Favoritos pelo nome, número da lista ou id."
+        description="Exclui/apaga um site ou aplicativo da Barra de Favoritos pelo nome, número da lista ou id."
     )
     async def remover_favorito(self, identificador: str) -> str:
         lista = await asyncio.to_thread(self._carregar_favoritos)
@@ -8387,8 +8407,17 @@ def _handle_room_data(
     if data_packet.topic == "jarvis.favorites":
         try:
             payload = json.loads(data_packet.data)
-            if payload.get("action") == "open_url" and payload.get("url"):
-                asyncio.create_task(agent.abrir_site(payload["url"], nome_site=payload.get("nome", "")))
+            if payload.get("action") in ("open_url", "open") and (payload.get("url") or payload.get("nome")):
+                alvo = str(payload.get("url") or payload.get("nome") or "").strip()
+                eh_site = (
+                    alvo.startswith(("http://", "https://"))
+                    or ("." in alvo and " " not in alvo and not alvo.lower().endswith(".exe"))
+                    or "www." in alvo.lower()
+                )
+                if eh_site:
+                    asyncio.create_task(agent.abrir_site(alvo, nome_site=payload.get("nome", "")))
+                else:
+                    asyncio.create_task(agent.abrir_programa(alvo))
         except Exception:
             pass
         return

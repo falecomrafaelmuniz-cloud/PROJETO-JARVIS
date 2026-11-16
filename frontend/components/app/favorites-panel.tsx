@@ -58,6 +58,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
   const [showAddForm, setShowAddForm] = useState(false);
 
   // Form states para adicionar
+  const [novoTipo, setNovoTipo] = useState<'site' | 'app'>('site');
   const [novoNome, setNovoNome] = useState('');
   const [novaUrl, setNovaUrl] = useState('');
   const [novaCategoria, setNovaCategoria] = useState('Geral');
@@ -157,15 +158,19 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
     e.preventDefault();
     if (!novaUrl.trim()) return;
     setSaving(true);
+    const isApp = novoTipo === 'app';
+    const catFinal = novaCategoria.trim() || (isApp ? 'Aplicativos' : 'Geral');
+    const nomeFinal = novoNome.trim() || (isApp ? novaUrl.trim() : '');
     try {
       const res = await fetch('/api/favorites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'add',
-          nome: novoNome.trim(),
+          tipo: novoTipo,
+          nome: nomeFinal,
           url: novaUrl.trim(),
-          categoria: novaCategoria.trim() || 'Geral',
+          categoria: catFinal,
         }),
       });
       if (res.ok) {
@@ -175,7 +180,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
         }
         setNovoNome('');
         setNovaUrl('');
-        setNovaCategoria('Geral');
+        setNovaCategoria(isApp ? 'Aplicativos' : 'Geral');
         setShowAddForm(false);
       }
     } catch {
@@ -323,7 +328,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
               Barra de Favoritos
             </h2>
             <p className="text-[11px] text-cyan-300/60 truncate">
-              {favorites.length} {favorites.length === 1 ? 'site salvo' : 'sites salvos'}
+              {favorites.length} {favorites.length === 1 ? 'favorito salvo (sites e apps)' : 'favoritos salvos (sites e apps)'}
             </p>
           </div>
         </div>
@@ -403,20 +408,80 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
           {showAddForm && (
             <form
               onSubmit={handleSalvarNovo}
-              className="border-b border-cyan-400/20 bg-cyan-950/25 p-3 space-y-2 text-xs"
+              className="border-b border-cyan-400/20 bg-cyan-950/25 p-3 space-y-2.5 text-xs"
               data-no-drag="true"
             >
-              <div className="flex items-center justify-between text-[11px] font-semibold text-cyan-300 uppercase tracking-wider">
-                <span>Adicionar Novo Favorito</span>
-                <button
-                  type="button"
-                  onClick={handleColarClipboard}
-                  title="Colar link da área de transferência"
-                  className="text-cyan-400/80 hover:text-cyan-200 underline text-[10px] cursor-pointer"
-                >
-                  Colar da Área de Transferência
-                </button>
+              {/* Abas: Site Web vs Aplicativo do PC */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1 bg-black/60 p-0.5 rounded-lg border border-white/10 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNovoTipo('site');
+                      if (novaCategoria === 'Aplicativos') setNovaCategoria('Geral');
+                    }}
+                    className={cn(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-md transition font-medium cursor-pointer',
+                      novoTipo === 'site'
+                        ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/50'
+                        : 'text-white/60 hover:text-white'
+                    )}
+                  >
+                    <Globe className="size-3" />
+                    <span>Site Web</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNovoTipo('app');
+                      if (novaCategoria === 'Geral') setNovaCategoria('Aplicativos');
+                    }}
+                    className={cn(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-md transition font-medium cursor-pointer',
+                      novoTipo === 'app'
+                        ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/50'
+                        : 'text-white/60 hover:text-white'
+                    )}
+                  >
+                    <AppWindow className="size-3" />
+                    <span>Aplicativo / Programa</span>
+                  </button>
+                </div>
+
+                {novoTipo === 'site' && (
+                  <button
+                    type="button"
+                    onClick={handleColarClipboard}
+                    title="Colar link da área de transferência"
+                    className="text-cyan-400/80 hover:text-cyan-200 underline text-[10px] cursor-pointer"
+                  >
+                    Colar Link
+                  </button>
+                )}
               </div>
+
+              {/* Botões de Acesso Rápido para Aplicativos Comuns do Windows */}
+              {novoTipo === 'app' && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-cyan-300/70 font-medium">Programas sugeridos:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {['Calculadora', 'Bloco de Notas', 'Excel', 'Word', 'Cortecloud', 'WhatsApp', 'Spotify'].map((appSug) => (
+                      <button
+                        key={appSug}
+                        type="button"
+                        onClick={() => {
+                          setNovaUrl(appSug);
+                          setNovoNome(appSug);
+                          setNovaCategoria('Aplicativos');
+                        }}
+                        className="rounded-md border border-cyan-500/30 bg-cyan-950/40 px-2 py-0.5 text-[10px] text-cyan-200 hover:bg-cyan-500/20 hover:border-cyan-400 cursor-pointer"
+                      >
+                        +{appSug}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-2">
                 <div>
@@ -425,7 +490,11 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     required
                     value={novaUrl}
                     onChange={(e) => setNovaUrl(e.target.value)}
-                    placeholder="URL do site (ex: https://youtube.com)"
+                    placeholder={
+                      novoTipo === 'app'
+                        ? 'Nome do programa (ex: Calculadora, Excel, Cortecloud)'
+                        : 'URL do site (ex: https://youtube.com)'
+                    }
                     className="w-full rounded-md border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs text-white placeholder-white/40 focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
@@ -434,14 +503,14 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     type="text"
                     value={novoNome}
                     onChange={(e) => setNovoNome(e.target.value)}
-                    placeholder="Nome (opcional)"
+                    placeholder={novoTipo === 'app' ? 'Nome de exibição' : 'Nome (opcional)'}
                     className="rounded-md border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs text-white placeholder-white/40 focus:border-cyan-400 focus:outline-none"
                   />
                   <input
                     type="text"
                     value={novaCategoria}
                     onChange={(e) => setNovaCategoria(e.target.value)}
-                    placeholder="Categoria (ex: Geral)"
+                    placeholder={novoTipo === 'app' ? 'Categoria: Aplicativos' : 'Categoria (ex: Geral)'}
                     className="rounded-md border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs text-white placeholder-white/40 focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
@@ -461,7 +530,13 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                   className="flex items-center gap-1 rounded-md bg-cyan-500/80 hover:bg-cyan-400 px-3 py-1 text-xs font-semibold text-black transition disabled:opacity-50 cursor-pointer"
                 >
                   <Plus className="size-3.5" />
-                  <span>{saving ? 'Salvando...' : 'Salvar Favorito'}</span>
+                  <span>
+                    {saving
+                      ? 'Salvando...'
+                      : novoTipo === 'app'
+                      ? 'Salvar Aplicativo'
+                      : 'Salvar Site'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -532,7 +607,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                 <Bookmark className="size-8 stroke-1 text-cyan-400/30 mb-2" />
                 <p className="font-medium text-white/70">Nenhum favorito encontrado</p>
                 <p className="mt-1 text-[11px] text-white/40 max-w-xs">
-                  Diga por voz: &quot;Jarvis, salve este site nos favoritos&quot; ou clique em &quot;Novo&quot; acima para adicionar.
+                  Diga por voz: &quot;Jarvis, adicione o aplicativo Calculadora aos favoritos&quot; ou &quot;Jarvis, salve este site nos favoritos&quot;.
                 </p>
               </div>
             ) : (
@@ -545,12 +620,16 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     key={fav.id}
                     className="group relative flex items-center justify-between gap-2.5 rounded-xl border border-white/10 bg-white/5 p-2.5 transition hover:border-cyan-400/40 hover:bg-cyan-950/20"
                   >
-                    {/* Botão principal clicável para abrir o site */}
+                    {/* Botão principal clicável para abrir o site ou aplicativo */}
                     <button
                       type="button"
                       onClick={() => handleAbrirUrl(fav)}
                       className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
-                      title={`Abrir ${fav.url} no navegador`}
+                      title={
+                        fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://'))
+                          ? `Abrir aplicativo ${fav.nome}`
+                          : `Abrir ${fav.url} no navegador`
+                      }
                     >
                       {/* Ícone ou Favicon */}
                       <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/60 overflow-hidden shadow-xs">
