@@ -33,6 +33,7 @@ import { NeuralNetworkVisualizer } from '@/components/app/neural-network';
 import { QuantPanel } from '@/components/app/quant-panel';
 import { TileLayout } from '@/components/app/tile-layout';
 import { WorkspaceFilesPanel } from '@/components/app/workspace-files-panel';
+import { QuantumParticleOrb } from '@/components/app/quantum-particle-orb';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import {
   calculateLayoutPositions,
@@ -298,6 +299,26 @@ export const SessionView = ({
     hudPanelsRef.current = hudPanels;
   }, [hudPanels]);
   const [neuralConfigSignal, setNeuralConfigSignal] = useState(0);
+  const [orbStyle, setOrbStyle] = useState<'vanta' | 'quantum'>('vanta');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jarvis-orb-style-v1');
+      if (saved === 'quantum' || saved === 'vanta') {
+        setOrbStyle(saved);
+      }
+    } catch {}
+  }, []);
+
+  const toggleOrbStyle = useCallback(() => {
+    setOrbStyle((prev) => {
+      const next = prev === 'vanta' ? 'quantum' : 'vanta';
+      try {
+        localStorage.setItem('jarvis-orb-style-v1', next);
+      } catch {}
+      return next;
+    });
+  }, []);
 
   // Escuta comandos de voz para abrir/fechar/alternar painéis do HUD em tempo real
   useEffect(() => {
@@ -676,6 +697,8 @@ export const SessionView = ({
         onOpenNeuralConfig={handleOpenNeuralConfig}
         onResetLayout={handleResetHudLayout}
         onOrganizeLayout={handleOrganizeHudLayout}
+        orbStyle={orbStyle}
+        onToggleOrbStyle={toggleOrbStyle}
       />
       <ActivityPanel isOpen={hudPanels.activity} onClose={handleCloseActivity} />
       <SystemDashboard isOpen={hudPanels.system} onClose={handleCloseSystem} />
@@ -721,7 +744,7 @@ export const SessionView = ({
               <div
                 style={orbDragStyle}
                 {...orbDragHandlers}
-                title="Arraste pelo centro para mover o Orb · Arraste pela borda circular para aumentar ou diminuir"
+                onDoubleClick={toggleOrbStyle}
                 className={cn(
                   'pointer-events-auto relative flex size-[360px] touch-none items-center justify-center rounded-full transition-shadow select-none',
                   isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
@@ -729,7 +752,11 @@ export const SessionView = ({
                 )}
               >
                 <div className="pointer-events-none flex items-center justify-center">
-                  <VantaOrb color={currentColor} vantaRef={vantaEffectRef} />
+                  {orbStyle === 'quantum' ? (
+                    <QuantumParticleOrb color={currentColor} />
+                  ) : (
+                    <VantaOrb color={currentColor} vantaRef={vantaEffectRef} />
+                  )}
                 </div>
               </div>
             </motion.div>

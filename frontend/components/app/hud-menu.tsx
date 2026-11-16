@@ -51,6 +51,8 @@ interface HudMenuProps {
   onOpenNeuralConfig: () => void;
   onResetLayout: () => void;
   onOrganizeLayout?: () => void;
+  orbStyle?: 'vanta' | 'quantum';
+  onToggleOrbStyle?: () => void;
 }
 
 interface MenuItemDef {
@@ -77,6 +79,8 @@ export function HudMenu({
   onOpenNeuralConfig,
   onResetLayout,
   onOrganizeLayout,
+  orbStyle = 'vanta',
+  onToggleOrbStyle,
 }: HudMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -178,6 +182,18 @@ export function HudMenu({
                 >
                   <LayoutGrid className="h-3 w-3" />
                   Organizar
+                </button>
+              )}
+              {onToggleOrbStyle && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleOrbStyle();
+                  }}
+                  title="Alternar estilo do Orb central: Clássico (Vanta) ou Rede de Partículas Quânticas"
+                  className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/30 bg-cyan-400/15 px-2 py-1 text-[10px] font-medium text-cyan-100 transition hover:border-cyan-300/60 hover:bg-cyan-400/25"
+                >
+                  <span>{orbStyle === 'quantum' ? '⚛️ Quântico' : '🌀 Clássico'}</span>
                 </button>
               )}
             </div>
