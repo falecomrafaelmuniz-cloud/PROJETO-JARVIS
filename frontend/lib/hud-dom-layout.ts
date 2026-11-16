@@ -27,7 +27,7 @@ const COLUMNS: { ids: HudPanelId[]; side: boolean }[] = [
   { ids: ['system', 'trader'], side: true },
   { ids: ['email'], side: false },
   { ids: ['clock', 'files'], side: false },
-  { ids: ['reminders'], side: false },
+  { ids: ['reminders', 'favorites'], side: false },
   { ids: ['activity', 'automations'], side: true },
 ];
 

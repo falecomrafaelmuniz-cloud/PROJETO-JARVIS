@@ -14,6 +14,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  Star,
   TrendingUp,
   Zap,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ export type HudPanelId =
   | 'trader'
   | 'automations'
   | 'reminders'
+  | 'favorites'
   | 'email'
   | 'files'
   | 'neural';
@@ -40,6 +42,7 @@ export const DEFAULT_HUD_PANELS: HudPanelsState = {
   trader: false,
   automations: false,
   reminders: false,
+  favorites: false,
   email: false,
   files: false,
   neural: false,
@@ -69,6 +72,7 @@ const MENU_ITEMS: MenuItemDef[] = [
   { id: 'trader', label: 'Trader B3', icon: TrendingUp },
   { id: 'automations', label: 'Automações', icon: Bot },
   { id: 'reminders', label: 'Lembretes', icon: Bell },
+  { id: 'favorites', label: 'Favoritos', icon: Star },
   { id: 'email', label: 'E-mail', icon: Mail },
   { id: 'neural', label: 'Rede Neural', icon: Sparkles },
 ];

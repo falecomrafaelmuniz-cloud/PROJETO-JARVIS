@@ -5,6 +5,7 @@ export type HudPanelId =
   | 'trader'
   | 'automations'
   | 'reminders'
+  | 'favorites'
   | 'email'
   | 'files'
   | 'neural';
@@ -23,6 +24,7 @@ export const HUD_PANEL_STORAGE_KEYS: Record<HudPanelId, string> = {
   automations: 'jarvis-pos-automations-panel-v2',
   activity: 'jarvis-pos-activity-panel-v2',
   email: 'jarvis-pos-email-composer-v2',
+  favorites: 'jarvis-pos-favorites-panel-v1',
   clock: 'jarvis-pos-clock-widget-v2',
   neural: 'jarvis-pos-neural-v1',
 };

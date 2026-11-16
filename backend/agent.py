@@ -4827,6 +4827,12 @@ class Assistant(Agent):
             "relógio": ("clock", "Relógio HUD"),
             "clock": ("clock", "Relógio HUD"),
             "neural": ("neural", "Rede Neural"),
+            "favoritos": ("favorites", "Barra de Favoritos"),
+            "favorito": ("favorites", "Barra de Favoritos"),
+            "bookmarks": ("favorites", "Barra de Favoritos"),
+            "barra de favoritos": ("favorites", "Barra de Favoritos"),
+            "sites favoritos": ("favorites", "Barra de Favoritos"),
+            "favorites": ("favorites", "Barra de Favoritos"),
             "todos": ("all", "Todos os painéis"),
             "tudo": ("all", "Todos os painéis"),
         }
@@ -7942,6 +7948,251 @@ class Assistant(Agent):
         await self._publicar_lembretes_sync(lista, abrir_painel=True)
         return f"Lembrete '{removido.get('texto')}' excluído do painel."
 
+    # =========================================================================
+    # BARRA DE FAVORITOS E MARCADORES WEB
+    # =========================================================================
+
+    def _caminho_arquivo_favoritos(self) -> str:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "favoritos_jarvis.json")
+
+    def _carregar_favoritos(self) -> list[dict]:
+        caminho = self._caminho_arquivo_favoritos()
+        try:
+            if not os.path.exists(caminho):
+                with open(caminho, "w", encoding="utf-8") as f:
+                    json.dump([], f, indent=2, ensure_ascii=False)
+                return []
+            with open(caminho, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+                return dados if isinstance(dados, list) else []
+        except Exception as e:
+            logger_memoria.warning("evento=carregar_favoritos erro=%s", e)
+            return []
+
+    def _salvar_favoritos(self, lista: list[dict]) -> None:
+        caminho = self._caminho_arquivo_favoritos()
+        try:
+            with open(caminho, "w", encoding="utf-8") as f:
+                json.dump(lista, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger_memoria.warning("evento=salvar_favoritos erro=%s", e)
+
+    async def _publicar_favoritos_sync(self, lista: list[dict], abrir_painel: bool = True) -> None:
+        try:
+            if self.board_room and self.board_room.local_participant:
+                payload = {
+                    "type": "jarvis_favorites_sync",
+                    "favorites": lista,
+                    "open_panel": abrir_painel,
+                }
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.favorites",
+                )
+                if abrir_painel:
+                    payload_hud = {"type": "hud_panel_toggle", "panel": "favorites", "action": "open"}
+                    await self.board_room.local_participant.publish_data(
+                        json.dumps(payload_hud, ensure_ascii=False).encode("utf-8"),
+                        reliable=True,
+                        topic="jarvis.hud",
+                    )
+        except Exception as erro:
+            logger_memoria.warning("evento=publicar_favoritos_sync erro=%s", erro)
+
+    @function_tool(
+        description=(
+            "Adiciona ou salva um site/link na Barra de Favoritos do Jarvis. "
+            "Se o usuário pedir para 'salvar este site' ou não informar a URL, captura automaticamente a aba ativa do navegador. "
+            "Pode informar opcionalmente 'nome' (título do site) e 'categoria' (ex: 'Geral', 'Trabalho', 'Estudos', 'Finanças', 'Mídia')."
+        )
+    )
+    async def adicionar_favorito(self, url: str = "", nome: str = "", categoria: str = "Geral") -> str:
+        url_alvo = str(url or "").strip()
+        nome_alvo = str(nome or "").strip()
+        cat_alvo = str(categoria or "Geral").strip() or "Geral"
+
+        if not url_alvo or any(termo in url_alvo.lower() for termo in ["este", "atual", "essa", "esta"]):
+            aba = await asyncio.to_thread(self._obter_aba_ativa_navegador)
+            if aba.get("url"):
+                url_alvo = aba["url"]
+                if not nome_alvo:
+                    nome_alvo = aba.get("title") or ""
+
+        if not url_alvo:
+            return "Não consegui identificar a URL do site. Por favor, informe o link ou abra o site no navegador."
+
+        if not url_alvo.startswith(("http://", "https://")):
+            url_alvo = f"https://{url_alvo}"
+
+        if not nome_alvo:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(url_alvo)
+                dominio = parsed.netloc.replace("www.", "")
+                nome_alvo = dominio.split(".")[0].capitalize() if dominio else url_alvo
+            except Exception:
+                nome_alvo = url_alvo
+
+        lista = await asyncio.to_thread(self._carregar_favoritos)
+
+        encontrado = None
+        for item in lista:
+            if item.get("url", "").rstrip("/").lower() == url_alvo.rstrip("/").lower():
+                encontrado = item
+                break
+
+        hoje_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+        if encontrado:
+            encontrado["nome"] = nome_alvo
+            encontrado["categoria"] = cat_alvo
+            encontrado["atualizado_em"] = hoje_str
+            msg = f"Favorito '{nome_alvo}' atualizado na categoria '{cat_alvo}'."
+        else:
+            novo_id = f"fav-{uuid.uuid4().hex[:8]}"
+            novo_fav = {
+                "id": novo_id,
+                "nome": nome_alvo,
+                "url": url_alvo,
+                "categoria": cat_alvo,
+                "criado_em": hoje_str,
+                "ordem": len(lista),
+            }
+            lista.append(novo_fav)
+            msg = f"Site '{nome_alvo}' adicionado com sucesso aos Favoritos (categoria: {cat_alvo})!"
+
+        await asyncio.to_thread(self._salvar_favoritos, lista)
+        await self._publicar_favoritos_sync(lista, abrir_painel=True)
+        return msg
+
+    @function_tool(
+        description="Abre a Barra de Favoritos na tela e lista todos os sites salvos. Pode filtrar por 'categoria' se desejado."
+    )
+    async def listar_favoritos(self, categoria: str = "") -> str:
+        lista = await asyncio.to_thread(self._carregar_favoritos)
+        await self._publicar_favoritos_sync(lista, abrir_painel=True)
+        if not lista:
+            return "A Barra de Favoritos está aberta na tela, mas ainda não há nenhum site salvo."
+
+        filtro = str(categoria or "").strip().lower()
+        if filtro:
+            filtrados = [f for f in lista if filtro in str(f.get("categoria", "")).lower()]
+        else:
+            filtrados = lista
+
+        if not filtrados:
+            return f"Não encontrei favoritos na categoria '{categoria}'. Total de {len(lista)} sites salvos em outras categorias."
+
+        linhas = []
+        for idx, item in enumerate(filtrados, start=1):
+            cat = f" [{item.get('categoria')}]" if item.get("categoria") else ""
+            linhas.append(f"{idx:02d}. {item.get('nome')}{cat} - {item.get('url')}")
+        return "Barra de Favoritos:\n" + "\n".join(linhas)
+
+    @function_tool(
+        description="Abre um site da Barra de Favoritos no navegador pelo nome (ex: 'YouTube', 'Notícias', 'Banco') ou número/URL."
+    )
+    async def abrir_favorito(self, nome_ou_url: str) -> str:
+        lista = await asyncio.to_thread(self._carregar_favoritos)
+        if not lista:
+            return "Não há nenhum favorito cadastrado."
+
+        termo = str(nome_ou_url or "").strip().lower()
+        encontrado = None
+
+        num_match = re.search(r"^\s*(\d+)\s*$", termo)
+        if num_match:
+            idx = int(num_match.group(1)) - 1
+            if 0 <= idx < len(lista):
+                encontrado = lista[idx]
+
+        if not encontrado:
+            for item in lista:
+                nome_item = str(item.get("nome") or "").lower()
+                url_item = str(item.get("url") or "").lower()
+                if termo == nome_item or termo in nome_item or termo in url_item:
+                    encontrado = item
+                    break
+
+        if not encontrado:
+            return f"Não encontrei nenhum site correspondente a '{nome_ou_url}' nos favoritos."
+
+        url_final = encontrado.get("url")
+        nome_final = encontrado.get("nome")
+        await self.abrir_site(url=url_final, nome_site=nome_final)
+        return f"Abrindo '{nome_final}' ({url_final}) no navegador."
+
+    @function_tool(
+        description="Renomeia ou edita um favorito existente. Permite alterar o nome, a URL ou a categoria pelo identificador (nome atual, número da lista ou id)."
+    )
+    async def renomear_favorito(self, identificador: str, novo_nome: str, nova_url: str = "", nova_categoria: str = "") -> str:
+        lista = await asyncio.to_thread(self._carregar_favoritos)
+        if not lista:
+            return "Não há favoritos cadastrados para renomear."
+
+        alvo = str(identificador or "").strip().lower()
+        encontrado = None
+
+        num_match = re.search(r"^\s*(\d+)\s*$", alvo)
+        if num_match:
+            idx = int(num_match.group(1)) - 1
+            if 0 <= idx < len(lista):
+                encontrado = lista[idx]
+
+        if not encontrado:
+            for item in lista:
+                if alvo == str(item.get("id", "")).lower() or alvo in str(item.get("nome", "")).lower() or alvo in str(item.get("url", "")).lower():
+                    encontrado = item
+                    break
+
+        if not encontrado:
+            return f"Não encontrei o favorito '{identificador}' para renomear."
+
+        antigo_nome = encontrado.get("nome")
+        if novo_nome:
+            encontrado["nome"] = novo_nome.strip()
+        if nova_url:
+            u = nova_url.strip()
+            if not u.startswith(("http://", "https://")):
+                u = f"https://{u}"
+            encontrado["url"] = u
+        if nova_categoria:
+            encontrado["categoria"] = nova_categoria.strip()
+
+        await asyncio.to_thread(self._salvar_favoritos, lista)
+        await self._publicar_favoritos_sync(lista, abrir_painel=True)
+        return f"Favorito '{antigo_nome}' atualizado para '{encontrado.get('nome')}' com sucesso."
+
+    @function_tool(
+        description="Exclui/apaga um site da Barra de Favoritos pelo nome, número da lista ou id."
+    )
+    async def remover_favorito(self, identificador: str) -> str:
+        lista = await asyncio.to_thread(self._carregar_favoritos)
+        if not lista:
+            return "A Barra de Favoritos já está vazia."
+
+        alvo = str(identificador or "").strip().lower()
+        removido = None
+
+        num_match = re.search(r"^\s*(\d+)\s*$", alvo)
+        if num_match:
+            idx = int(num_match.group(1)) - 1
+            if 0 <= idx < len(lista):
+                removido = lista.pop(idx)
+
+        if not removido:
+            for i, item in enumerate(lista):
+                if alvo == str(item.get("id", "")).lower() or alvo in str(item.get("nome", "")).lower() or alvo in str(item.get("url", "")).lower():
+                    removido = lista.pop(i)
+                    break
+
+        if not removido:
+            return f"Não encontrei o favorito '{identificador}' para remover."
+
+        await asyncio.to_thread(self._salvar_favoritos, lista)
+        await self._publicar_favoritos_sync(lista, abrir_painel=True)
+        return f"Favorito '{removido.get('nome')}' removido com sucesso."
+
     # --- FIM DAS FERRAMENTAS ---
 
 async def _destravar_thinking_watchdog(session: AgentSession, timeout: float = 2.5):
@@ -8100,6 +8351,14 @@ def _handle_room_data(
             id_tarefa = str(payload.get("id") or "").strip()
             if id_tarefa:
                 asyncio.create_task(agent.executar_automacao_agendada_agora(id_tarefa))
+        return
+    if data_packet.topic == "jarvis.favorites":
+        try:
+            payload = json.loads(data_packet.data)
+            if payload.get("action") == "open_url" and payload.get("url"):
+                asyncio.create_task(agent.abrir_site(payload["url"], nome_site=payload.get("nome", "")))
+        except Exception:
+            pass
         return
     if data_packet.topic == "jarvis.workspace":
         try:

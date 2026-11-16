@@ -28,6 +28,7 @@ import {
 } from '@/components/app/hud-menu';
 import { LocationSharing } from '@/components/app/location-sharing';
 import { RemindersPanel } from '@/components/app/reminders-panel';
+import { FavoritesPanel } from '@/components/app/favorites-panel';
 import { SystemDashboard } from '@/components/app/system-dashboard';
 import { NeuralNetworkVisualizer } from '@/components/app/neural-network';
 import { QuantPanel } from '@/components/app/quant-panel';
@@ -354,6 +355,10 @@ export const SessionView = ({
             reminders: 'reminders',
             lembretes: 'reminders',
             lembrete: 'reminders',
+            favorites: 'favorites',
+            favoritos: 'favorites',
+            favorito: 'favorites',
+            bookmarks: 'favorites',
             automations: 'automations',
             automacoes: 'automations',
             automacao: 'automations',
@@ -431,6 +436,7 @@ export const SessionView = ({
           const panelMap: Record<string, HudPanelId> = {
             files: 'files', arquivos: 'files', central: 'files', workspace: 'files', caderno: 'files',
             reminders: 'reminders', lembretes: 'reminders', lembrete: 'reminders',
+            favorites: 'favorites', favoritos: 'favorites', favorito: 'favorites', bookmarks: 'favorites',
             system: 'system', sistema: 'system', dashboard: 'system',
             trader: 'trader', quant: 'trader', mercado: 'trader',
             automations: 'automations', automacoes: 'automations',
@@ -570,6 +576,8 @@ export const SessionView = ({
   const handleOpenAutomations = useCallback(() => setPanelOpen('automations', true), [setPanelOpen]);
   const handleCloseReminders = useCallback(() => setPanelOpen('reminders', false), [setPanelOpen]);
   const handleOpenReminders = useCallback(() => setPanelOpen('reminders', true), [setPanelOpen]);
+  const handleCloseFavorites = useCallback(() => setPanelOpen('favorites', false), [setPanelOpen]);
+  const handleOpenFavorites = useCallback(() => setPanelOpen('favorites', true), [setPanelOpen]);
   const handleCloseEmail = useCallback(() => setPanelOpen('email', false), [setPanelOpen]);
   const handleOpenEmail = useCallback(() => setPanelOpen('email', true), [setPanelOpen]);
   const handleCloseFiles = useCallback(() => setPanelOpen('files', false), [setPanelOpen]);
@@ -723,6 +731,11 @@ export const SessionView = ({
         isOpen={hudPanels.reminders}
         onClose={handleCloseReminders}
         onOpenRequest={handleOpenReminders}
+      />
+      <FavoritesPanel
+        isOpen={hudPanels.favorites}
+        onClose={handleCloseFavorites}
+        onOpenRequest={handleOpenFavorites}
       />
       <WorkspaceFilesPanel
         isOpen={hudPanels.files}

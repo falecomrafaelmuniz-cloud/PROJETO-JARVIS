@@ -33,6 +33,11 @@
   🌐 2.4. controlar_midia: Controla reprodução de mídia (pausar, continuar, próxima, anterior, volume, mutar).
   🌐 2.5. analisar_tela_ou_janela_ativa: Analisa visualmente em tempo real o que está aberto na tela.
   🌐 2.6. ler_ou_resumir_documento_ou_pdf: Lê, analisa ou resume documentos e PDFs locais ou do Drive.
+  🌐 2.7. adicionar_favorito: Salva um site/link na Barra de Favoritos (captura automaticamente a aba ativa se o usuário disser "salve este site").
+  🌐 2.8. listar_favoritos: Abre a Barra de Favoritos no HUD e lista todos os sites salvos com filtros de categoria.
+  🌐 2.9. abrir_favorito: Abre um site da Barra de Favoritos no navegador pelo nome, número ou URL.
+  🌐 2.10. renomear_favorito: Renomeia ou edita nome, URL ou categoria de um favorito salvo.
+  🌐 2.11. remover_favorito: Exclui/apaga um site da Barra de Favoritos por nome, número ou id.
 
 --------------------------------------------------------------------------------
 

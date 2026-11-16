@@ -21,6 +21,7 @@ Memorias_do_Jarvis.txt
 backend/tarefas_agendadas.json
 backend/lembretes_jarvis.json
 backend/lembretes_anexos/
+backend/favoritos_jarvis.json
 backend/alertas_email*.json
 backend/alertas_email_jarvis.json
 backend/.limpeza_teste_rafael_ok
