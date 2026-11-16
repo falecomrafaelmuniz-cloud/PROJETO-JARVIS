@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $agentDirectory = $PSScriptRoot
 $backendDirectory = Join-Path $agentDirectory 'backend'
@@ -108,34 +108,27 @@ try {
         Write-Host "  -> Servidor de Voz Local ativo!" -ForegroundColor Green
     }
 
-    # Limpa duplicatas reais do Python se houver mais de uma instância raiz rodando
+    # Reinicia o Worker do LiveKit (Cérebro Python) para sempre carregar o código mais recente
     $workers = @(Get-JarvisWorkers)
-    if ($workers.Count -gt 1) {
-        Write-Host "Detectadas múltiplas instâncias do Jarvis (Python). Limpando fantasmas..." -ForegroundColor Yellow
-        $workers | Select-Object -Skip 1 | ForEach-Object {
+    if ($workers.Count -gt 0) {
+        Write-Host "Reiniciando Cérebro do Jarvis (Python) para carregar as últimas atualizações..." -ForegroundColor Yellow
+        $workers | ForEach-Object {
             & taskkill /F /T /PID $_.ProcessId 2>$null | Out-Null
         }
-        Start-Sleep -Milliseconds 500
-        $workers = @(Get-JarvisWorkers)
+        Start-Sleep -Milliseconds 800
     }
 
-    # 1. Inicia o Worker do LiveKit (Cérebro Python) em janela CMD visível
-    if ($workers.Count -eq 1) {
-        Write-Host "[1/3] Cérebro do Jarvis (Python) já está em execução (PID: $($workers[0].ProcessId))." -ForegroundColor Green
-    }
-    else {
-        Write-Host "[1/3] Ligando o Cérebro do Jarvis em Python..." -ForegroundColor Yellow
-        Start-Process -FilePath $env:ComSpec `
-            -ArgumentList @('/k', 'title [JARVIS 1/2] BACKEND (Python) && .\.venv\Scripts\python.exe backend\agent.py dev') `
-            -WorkingDirectory $agentDirectory `
-            -WindowStyle Normal | Out-Null
-        Start-Sleep -Seconds 3
+    Write-Host "[1/3] Ligando o Cérebro do Jarvis em Python..." -ForegroundColor Yellow
+    Start-Process -FilePath $env:ComSpec `
+        -ArgumentList @('/k', 'title [JARVIS 1/2] BACKEND (Python) && .\.venv\Scripts\python.exe backend\agent.py dev') `
+        -WorkingDirectory $agentDirectory `
+        -WindowStyle Normal | Out-Null
+    Start-Sleep -Seconds 3
 
-        if (-not (Get-JarvisWorkers)) {
-            Write-Warning "O worker do Jarvis está iniciando..."
-        } else {
-            Write-Host "  -> Cérebro conectado com sucesso!" -ForegroundColor Green
-        }
+    if (-not (Get-JarvisWorkers)) {
+        Write-Warning "O worker do Jarvis está iniciando..."
+    } else {
+        Write-Host "  -> Cérebro conectado com sucesso!" -ForegroundColor Green
     }
 
     # Se o frontend estiver rodando com configuração antiga (LiveKit Cloud), reinicia o node
