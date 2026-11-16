@@ -1249,22 +1249,27 @@ class Assistant(Agent):
             time.sleep(0.03)
 
     def _chamar_gemini_visao(self, imagem_pil: Image.Image, prompt: str) -> str:
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            return "Aviso: GOOGLE_API_KEY não configurada no ambiente."
+            return "Aviso: Chave de API do Gemini não configurada no ambiente."
         client = genai.Client(api_key=api_key)
 
         img_otimizada = imagem_pil.copy()
         if img_otimizada.width > 1280 or img_otimizada.height > 720:
             img_otimizada.thumbnail((1280, 720), Image.Resampling.LANCZOS)
 
-        modelos = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+        import io
+        buf = io.BytesIO()
+        img_otimizada.convert("RGB").save(buf, format="JPEG", quality=85)
+        part_img = genai_types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg")
+
+        modelos = ["gemini-flash-lite-latest", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
         ultimo_erro = None
         for m in modelos:
             try:
                 resp = client.models.generate_content(
                     model=m,
-                    contents=[img_otimizada, prompt],
+                    contents=[prompt, part_img],
                 )
                 if resp and resp.text:
                     return resp.text.strip()
@@ -2149,6 +2154,185 @@ class Assistant(Agent):
             return f"Comando de mídia '{acao_limpa}' executado com sucesso."
         except Exception as erro:
             return f"Aviso: não foi possível enviar o comando de mídia: {erro}"
+
+    @function_tool(
+        description=(
+            "Ajusta ou consulta o volume do computador em porcentagem exata (0% a 100%). "
+            "Use sempre que o usuário pedir: 'coloque o volume em 30%', 'volume no 50', 'deixe o volume no máximo', "
+            "'aumenta 10% do volume', 'qual o volume atual?', 'volume em 80%'."
+        )
+    )
+    async def ajustar_volume_porcentagem(self, volume: int = -1, relativo: str = "") -> str:
+        def _exec_volume():
+            try:
+                from pycaw.pycaw import AudioUtilities
+                device = AudioUtilities.GetSpeakers()
+                vol_atual = round(device.volume_percent)
+                if volume == -1 and not relativo:
+                    return f"O volume atual do computador está em {vol_atual}%."
+
+                novo_vol = vol_atual
+                if relativo:
+                    rel_limpo = relativo.lower().strip()
+                    if "aument" in rel_limpo or "+" in rel_limpo:
+                        delta = volume if volume > 0 else 10
+                        novo_vol = min(100, vol_atual + delta)
+                    elif "diminu" in rel_limpo or "abaix" in rel_limpo or "-" in rel_limpo:
+                        delta = volume if volume > 0 else 10
+                        novo_vol = max(0, vol_atual - delta)
+                else:
+                    novo_vol = max(0, min(100, volume))
+
+                device.EndpointVolume.SetMasterVolumeLevelScalar(novo_vol / 100.0, None)
+                return f"Volume ajustado de {vol_atual}% para {novo_vol}%."
+            except Exception as e:
+                return f"Aviso: Não foi possível ajustar o volume por porcentagem: {e}"
+
+        return await asyncio.to_thread(_exec_volume)
+
+    @function_tool(
+        description=(
+            "Lê o conteúdo atual da área de transferência (Ctrl+C) ou copia um novo texto para ela. "
+            "Use sempre que o usuário disser: 'o que está copiado?', 'leia o que copiei', "
+            "'copie esse link', 'copie esse texto para a área de transferência', 'copie isso'."
+        )
+    )
+    async def gerenciar_area_transferencia(self, acao: str = "ler", texto_para_copiar: str = "") -> str:
+        def _exec_clipboard():
+            import tkinter as tk
+            acao_norm = (acao or "ler").lower().strip()
+            r = None
+            try:
+                r = tk.Tk()
+                r.withdraw()
+                if acao_norm in {"copiar", "salvar", "escrever", "set"}:
+                    if not texto_para_copiar:
+                        return "Aviso: informe o texto que você deseja copiar."
+                    r.clipboard_clear()
+                    r.clipboard_append(texto_para_copiar)
+                    r.update()
+                    previa = texto_para_copiar[:60] + ("..." if len(texto_para_copiar) > 60 else "")
+                    return f"Texto copiado para a área de transferência com sucesso: '{previa}'."
+                else:
+                    try:
+                        conteudo = r.clipboard_get()
+                        if not conteudo or not conteudo.strip():
+                            return "A área de transferência está vazia no momento."
+                        tamanho = len(conteudo)
+                        previa = conteudo[:300]
+                        return f"Conteúdo da área de transferência ({tamanho} caracteres):\n{previa}"
+                    except tk.TclError:
+                        return "A área de transferência está vazia ou contém apenas dados não textuais."
+            except Exception as e:
+                return f"Aviso: Não foi possível acessar a área de transferência: {e}"
+            finally:
+                if r:
+                    try:
+                        r.destroy()
+                    except Exception:
+                        pass
+
+        return await asyncio.to_thread(_exec_clipboard)
+
+    @function_tool(
+        description=(
+            "Localiza, abre ou lista os arquivos mais recentes baixados na pasta Downloads do computador. "
+            "Use sempre que o usuário disser: 'abra o último download', 'abra o arquivo que acabei de baixar', "
+            "'mostre os últimos downloads', 'qual foi o último PDF baixado?', 'abra a pasta de downloads'."
+        )
+    )
+    async def gerenciar_ultimos_downloads(self, acao: str = "abrir", filtro_tipo: str = "") -> str:
+        def _exec_downloads():
+            pasta_downloads = os.path.expanduser("~/Downloads")
+            if not os.path.exists(pasta_downloads):
+                return "Pasta Downloads não encontrada no sistema."
+
+            acao_norm = (acao or "abrir").lower().strip()
+            if acao_norm in {"mostrar_pasta", "abrir_pasta", "pasta"}:
+                os.startfile(pasta_downloads)
+                return "Pasta Downloads aberta na tela."
+
+            arquivos = []
+            filtro_norm = (filtro_tipo or "").lower().strip()
+            for entrada in os.scandir(pasta_downloads):
+                if entrada.is_file():
+                    nome = entrada.name
+                    if filtro_norm and filtro_norm not in nome.lower():
+                        continue
+                    try:
+                        mtime = entrada.stat().st_mtime
+                        tamanho = entrada.stat().st_size
+                        arquivos.append((mtime, entrada.path, nome, tamanho))
+                    except Exception:
+                        continue
+
+            if not arquivos:
+                return f"Nenhum arquivo recente encontrado na pasta Downloads{' com o filtro ' + filtro_norm if filtro_norm else ''}."
+
+            arquivos.sort(key=lambda x: x[0], reverse=True)
+
+            if acao_norm in {"listar", "ver", "quais"}:
+                top5 = arquivos[:5]
+                linhas = []
+                for _, _, nome, tam in top5:
+                    tam_kb = round(tam / 1024, 1)
+                    linhas.append(f"• {nome} ({tam_kb} KB)")
+                return "Últimos downloads encontrados:\n" + "\n".join(linhas)
+
+            # Ação padrão: abrir o arquivo mais recente
+            ultimo_caminho = arquivos[0][1]
+            ultimo_nome = arquivos[0][2]
+            try:
+                os.startfile(ultimo_caminho)
+                return f"Abrindo o último download: '{ultimo_nome}'."
+            except Exception as e:
+                return f"Aviso: Não foi possível abrir o arquivo '{ultimo_nome}': {e}"
+
+        return await asyncio.to_thread(_exec_downloads)
+
+    @function_tool(
+        description=(
+            "Executa comandos nativos do sistema operacional Windows: bloquear tela, esvaziar lixeira, "
+            "mostrar área de trabalho (minimizar tudo), ou agendar/cancelar desligamento. "
+            "Use sempre que o usuário pedir: 'bloqueie o computador', 'trave a tela', 'esvazie a lixeira', "
+            "'minimize tudo', 'mostre a área de trabalho', 'desligue o PC em X minutos', 'cancele o desligamento'."
+        )
+    )
+    async def controlar_sistema_windows(self, comando: str, minutos: int = 0) -> str:
+        cmd = (comando or "").lower().strip()
+        try:
+            if cmd in {"bloquear", "travar", "lock", "bloqueie"}:
+                ctypes.windll.user32.LockWorkStation()
+                return "Computador bloqueado com sucesso."
+
+            elif cmd in {"esvaziar_lixeira", "limpar_lixeira", "lixeira"}:
+                # SHERB_NOCONFIRMATION (1) | SHERB_NOPROGRESSUI (2) | SHERB_NOSOUND (4) = 7
+                ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 7)
+                return "Lixeira do Windows esvaziada com sucesso."
+
+            elif cmd in {"mostrar_area_trabalho", "minimizar_tudo", "desktop", "area_trabalho"}:
+                user32 = ctypes.windll.user32
+                user32.keybd_event(0x5B, 0, 0, 0)       # Win down
+                user32.keybd_event(ord('D'), 0, 0, 0)   # D down
+                time.sleep(0.05)
+                user32.keybd_event(ord('D'), 0, 2, 0)   # D up
+                user32.keybd_event(0x5B, 0, 2, 0)       # Win up
+                return "Área de trabalho exibida (todas as janelas minimizadas)."
+
+            elif cmd in {"desligar", "desligar_agendado", "shutdown"}:
+                segundos = max(60, minutos * 60) if minutos > 0 else 60
+                os.system(f"shutdown /s /t {segundos}")
+                minutos_txt = f"{round(segundos / 60)} minutos" if segundos >= 60 else f"{segundos} segundos"
+                return f"Desligamento do computador programado para daqui a {minutos_txt}. Para cancelar, diga 'Jarvis, cancele o desligamento'."
+
+            elif cmd in {"cancelar_desligamento", "abortar_desligamento"}:
+                os.system("shutdown /a")
+                return "Desligamento agendado cancelado com sucesso."
+
+            else:
+                return f"Comando do Windows '{cmd}' não reconhecido. Use: 'bloquear', 'esvaziar_lixeira', 'mostrar_area_trabalho' ou 'desligar'."
+        except Exception as e:
+            return f"Aviso: Não foi possível executar o comando de sistema '{cmd}': {e}"
 
     def _abrir_no_desktop_interativo(
         self,
