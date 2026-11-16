@@ -7964,7 +7964,16 @@ class Assistant(Agent):
                 return []
             with open(caminho, "r", encoding="utf-8") as f:
                 dados = json.load(f)
-                return dados if isinstance(dados, list) else []
+                if not isinstance(dados, list):
+                    return []
+                # Higieniza: nomes sempre em MAIÚSCULAS e limpa eventual https:// de aplicativos
+                for item in dados:
+                    if isinstance(item, dict):
+                        if item.get("nome"):
+                            item["nome"] = str(item["nome"]).upper()
+                        if item.get("tipo") == "app" and str(item.get("url", "")).lower().startswith("http"):
+                            item["url"] = re.sub(r"^https?://", "", str(item["url"]), flags=re.I).rstrip("/")
+                return dados
         except Exception as e:
             logger_memoria.warning("evento=carregar_favoritos erro=%s", e)
             return []
@@ -8068,10 +8077,13 @@ class Assistant(Agent):
             if not cat_alvo:
                 cat_alvo = "Geral"
         else:
+            alvo = re.sub(r"^https?://", "", alvo, flags=re.I).rstrip("/")
             if not nome_alvo:
-                nome_alvo = alvo.capitalize()
+                nome_alvo = alvo
             if not cat_alvo:
                 cat_alvo = "Aplicativos"
+
+        nome_alvo = nome_alvo.upper()
 
         lista = await asyncio.to_thread(self._carregar_favoritos)
 
@@ -8202,12 +8214,16 @@ class Assistant(Agent):
 
         antigo_nome = encontrado.get("nome")
         if novo_nome:
-            encontrado["nome"] = novo_nome.strip()
-        if nova_url:
+            encontrado["nome"] = novo_nome.strip().upper()
+        # Para aplicativos, NUNCA permite corromper o comando com https
+        if nova_url and encontrado.get("tipo") != "app":
             u = nova_url.strip()
             if not u.startswith(("http://", "https://")):
                 u = f"https://{u}"
             encontrado["url"] = u
+        elif encontrado.get("tipo") == "app":
+            if str(encontrado.get("url", "")).lower().startswith("http"):
+                encontrado["url"] = re.sub(r"^https?://", "", str(encontrado["url"]), flags=re.I).rstrip("/")
         if nova_categoria:
             encontrado["categoria"] = nova_categoria.strip()
 

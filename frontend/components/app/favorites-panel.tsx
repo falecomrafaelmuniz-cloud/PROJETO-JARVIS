@@ -160,7 +160,8 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
     setSaving(true);
     const isApp = novoTipo === 'app';
     const catFinal = novaCategoria.trim() || (isApp ? 'Aplicativos' : 'Geral');
-    const nomeFinal = novoNome.trim() || (isApp ? novaUrl.trim() : '');
+    const rawNome = novoNome.trim() || (isApp ? novaUrl.trim() : '');
+    const nomeFinal = rawNome.toUpperCase();
     try {
       const res = await fetch('/api/favorites', {
         method: 'POST',
@@ -192,9 +193,9 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
 
   const handleIniciarEdicao = (fav: FavoriteItem) => {
     setEditingItem(fav);
-    setEditNome(fav.nome);
+    setEditNome(fav.nome.toUpperCase());
     setEditUrl(fav.url);
-    setEditCategoria(fav.categoria || 'Geral');
+    setEditCategoria(fav.categoria || (fav.tipo === 'app' ? 'Aplicativos' : 'Geral'));
   };
 
   const handleSalvarEdicao = async (e: React.FormEvent) => {
@@ -208,9 +209,9 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
         body: JSON.stringify({
           action: 'update',
           id: editingItem.id,
-          nome: editNome.trim(),
-          url: editUrl.trim(),
-          categoria: editCategoria.trim() || 'Geral',
+          nome: editNome.trim().toUpperCase(),
+          url: editingItem.tipo === 'app' ? editingItem.url : editUrl.trim(),
+          categoria: editCategoria.trim() || (editingItem.tipo === 'app' ? 'Aplicativos' : 'Geral'),
         }),
       });
       if (res.ok) {
@@ -549,35 +550,56 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
               className="border-b border-amber-400/30 bg-amber-950/20 p-3 space-y-2 text-xs"
               data-no-drag="true"
             >
-              <div className="text-[11px] font-semibold text-amber-300 uppercase tracking-wider flex items-center gap-1">
-                <Edit2 className="size-3" />
-                <span>Editar / Renomear Favorito</span>
+              <div className="text-[11px] font-semibold text-amber-300 uppercase tracking-wider flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Edit2 className="size-3" />
+                  <span>
+                    {editingItem.tipo === 'app'
+                      ? 'Renomear Aplicativo'
+                      : 'Editar / Renomear Site'}
+                  </span>
+                </div>
+                {editingItem.tipo === 'app' && (
+                  <span className="text-[9px] text-cyan-300/90 font-mono bg-cyan-950/70 border border-cyan-400/30 px-1.5 py-0.5 rounded">
+                    🔒 Atalho protegido
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-2">
-                <input
-                  type="text"
-                  required
-                  value={editNome}
-                  onChange={(e) => setEditNome(e.target.value)}
-                  placeholder="Nome do site"
-                  className="rounded-md border border-amber-400/40 bg-black/70 px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-                <input
-                  type="text"
-                  required
-                  value={editUrl}
-                  onChange={(e) => setEditUrl(e.target.value)}
-                  placeholder="URL (https://...)"
-                  className="rounded-md border border-amber-400/40 bg-black/70 px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
-                <input
-                  type="text"
-                  value={editCategoria}
-                  onChange={(e) => setEditCategoria(e.target.value)}
-                  placeholder="Categoria"
-                  className="rounded-md border border-amber-400/40 bg-black/70 px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
-                />
+                <div>
+                  <input
+                    type="text"
+                    required
+                    value={editNome}
+                    onChange={(e) => setEditNome(e.target.value.toUpperCase())}
+                    placeholder="NOME (EM MAIÚSCULAS)"
+                    className="w-full rounded-md border border-amber-400/40 bg-black/70 px-2.5 py-1.5 text-xs text-white uppercase focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
+
+                {editingItem.tipo !== 'app' && (
+                  <div>
+                    <input
+                      type="text"
+                      required
+                      value={editUrl}
+                      onChange={(e) => setEditUrl(e.target.value)}
+                      placeholder="URL (https://...)"
+                      className="w-full rounded-md border border-amber-400/40 bg-black/70 px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <input
+                    type="text"
+                    value={editCategoria}
+                    onChange={(e) => setEditCategoria(e.target.value)}
+                    placeholder="Categoria"
+                    className="w-full rounded-md border border-amber-400/40 bg-black/70 px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-1">
@@ -590,7 +612,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                 </button>
                 <button
                   type="submit"
-                  disabled={updating}
+                  disabled={updating || !editNome.trim()}
                   className="flex items-center gap-1 rounded-md bg-amber-400 hover:bg-amber-300 px-3 py-1 text-xs font-semibold text-black transition disabled:opacity-50 cursor-pointer"
                 >
                   <Check className="size-3.5" />
@@ -614,11 +636,12 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
               filteredFavorites.map((fav) => {
                 const domain = extractDomain(fav.url);
                 const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+                const nomeMaiusculo = (fav.nome || '').toUpperCase();
 
                 return (
                   <div
                     key={fav.id}
-                    className="group relative flex items-center justify-between gap-2.5 rounded-xl border border-white/10 bg-white/5 p-2.5 transition hover:border-cyan-400/40 hover:bg-cyan-950/20"
+                    className="group relative flex items-center justify-between gap-2.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-2 transition hover:border-cyan-400/40 hover:bg-cyan-950/20"
                   >
                     {/* Botão principal clicável para abrir o site ou aplicativo */}
                     <button
@@ -627,7 +650,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                       className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                       title={
                         fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://'))
-                          ? `Abrir aplicativo ${fav.nome}`
+                          ? `Abrir aplicativo ${nomeMaiusculo}`
                           : `Abrir ${fav.url} no navegador`
                       }
                     >
@@ -656,21 +679,18 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                         )}
                       </div>
 
-                      {/* Textos */}
+                      {/* Textos: Somente o Nome em MAIÚSCULAS e Categoria (sem a segunda linha) */}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-white truncate group-hover:text-cyan-200">
-                            {fav.nome}
+                        <div className="flex items-center justify-between gap-1.5 pr-1">
+                          <span className="text-xs font-bold tracking-wide text-white truncate group-hover:text-cyan-200 uppercase">
+                            {nomeMaiusculo}
                           </span>
                           {fav.categoria && fav.categoria !== 'Geral' && (
-                            <span className="shrink-0 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-1.5 py-0.2 text-[9px] font-medium text-cyan-300">
+                            <span className="shrink-0 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-1.5 py-0.2 text-[9px] font-medium text-cyan-300 uppercase">
                               {fav.categoria}
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-white/50 truncate font-mono">
-                          {domain}
-                        </p>
                       </div>
                     </button>
 

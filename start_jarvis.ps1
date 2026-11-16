@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 $agentDirectory = $PSScriptRoot
 $backendDirectory = Join-Path $agentDirectory 'backend'

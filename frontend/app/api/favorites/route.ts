@@ -33,7 +33,20 @@ function readFavorites(): FavoriteItem[] {
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // Higieniza: nomes sempre em MAIÚSCULAS e limpa atalhos de apps que foram salvos com https://
+    return parsed.map((item: FavoriteItem) => {
+      const nomeUpper = String(item.nome || '').toUpperCase();
+      let urlSanitized = String(item.url || '');
+      if (item.tipo === 'app' && urlSanitized.toLowerCase().startsWith('http')) {
+        urlSanitized = urlSanitized.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      }
+      return {
+        ...item,
+        nome: nomeUpper,
+        url: urlSanitized,
+      };
+    });
   } catch {
     return [];
   }
@@ -78,12 +91,15 @@ export async function POST(req: Request) {
         );
       }
 
-      const ehSite =
+      const explicitTipo = body.tipo ? String(body.tipo).toLowerCase() : '';
+      const ehSite = explicitTipo === 'app' ? false : (
+        explicitTipo === 'site' ||
         rawTarget.startsWith('http://') ||
         rawTarget.startsWith('https://') ||
-        (rawTarget.includes('.') && !rawTarget.includes(' ') && !rawTarget.toLowerCase().endsWith('.exe'));
+        (rawTarget.includes('.') && !rawTarget.includes(' ') && !rawTarget.toLowerCase().endsWith('.exe'))
+      );
 
-      const url = ehSite ? normalizeUrl(rawTarget) : rawTarget;
+      const url = ehSite ? normalizeUrl(rawTarget) : rawTarget.replace(/^https?:\/\//i, '').replace(/\/$/, '');
       const tipo: 'site' | 'app' = ehSite ? 'site' : 'app';
 
       let nome = String(body.nome || '').trim();
@@ -97,9 +113,10 @@ export async function POST(req: Request) {
             nome = url;
           }
         } else {
-          nome = rawTarget.charAt(0).toUpperCase() + rawTarget.slice(1);
+          nome = rawTarget;
         }
       }
+      nome = nome.toUpperCase();
 
       const defaultCat = ehSite ? 'Geral' : 'Aplicativos';
       const categoria = String(body.categoria || defaultCat).trim() || defaultCat;
@@ -114,6 +131,7 @@ export async function POST(req: Request) {
       if (existing) {
         existing.nome = nome;
         existing.tipo = tipo;
+        existing.url = url;
         existing.categoria = categoria;
         existing.atualizado_em = nowStr;
       } else {
@@ -143,13 +161,25 @@ export async function POST(req: Request) {
         );
       }
 
-      if (body.nome !== undefined) item.nome = String(body.nome).trim() || item.nome;
-      if (body.url !== undefined) {
-        const u = normalizeUrl(body.url);
-        if (u) item.url = u;
+      if (body.nome !== undefined) {
+        const n = String(body.nome).trim();
+        if (n) item.nome = n.toUpperCase();
       }
+
+      // Regra de Proteção: Aplicativos instalados NUNCA têm seu comando/caminho alterado
+      if (item.tipo === 'app') {
+        if (item.url.toLowerCase().startsWith('http')) {
+          item.url = item.url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+        }
+      } else {
+        if (body.url !== undefined && String(body.url).trim()) {
+          const u = normalizeUrl(body.url);
+          if (u) item.url = u;
+        }
+      }
+
       if (body.categoria !== undefined) {
-        item.categoria = String(body.categoria).trim() || 'Geral';
+        item.categoria = String(body.categoria).trim() || (item.tipo === 'app' ? 'Aplicativos' : 'Geral');
       }
       item.atualizado_em = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
