@@ -4750,6 +4750,7 @@ class Assistant(Agent):
             "`painel`: nome do painel a controlar: 'arquivos' (Central de Arquivos / Notebooks), 'lembretes' (Painel de Lembretes), "
             "'automacoes' (Painel de Automações Gmail/Drive), 'email' (Compositor de E-mails), 'sistema' (Dashboard de CPU/RAM/Rede), "
             "'atividades' (Painel de Ações e Tarefas em Andamento), 'trader' (Painel Quant / Cripto / Mercado), "
+            "'atalhos' (Painel de Atalhos do Jarvis para sites e apps — NÃO é o navegador), "
             "'relogio' (Relógio HUD), 'neural' (Visualizador da Rede Neural) ou 'todos' (para abrir ou fechar todos de uma vez). "
             "`acao`: 'abrir' (padrão, para exibir o painel na tela), 'fechar' (para ocultar da tela) ou 'alternar'."
         )
@@ -4827,12 +4828,16 @@ class Assistant(Agent):
             "relógio": ("clock", "Relógio HUD"),
             "clock": ("clock", "Relógio HUD"),
             "neural": ("neural", "Rede Neural"),
-            "favoritos": ("favorites", "Barra de Favoritos"),
-            "favorito": ("favorites", "Barra de Favoritos"),
-            "bookmarks": ("favorites", "Barra de Favoritos"),
-            "barra de favoritos": ("favorites", "Barra de Favoritos"),
-            "sites favoritos": ("favorites", "Barra de Favoritos"),
-            "favorites": ("favorites", "Barra de Favoritos"),
+            "atalhos": ("favorites", "Painel Atalhos"),
+            "atalho": ("favorites", "Painel Atalhos"),
+            "meus atalhos": ("favorites", "Painel Atalhos"),
+            "barra de atalhos": ("favorites", "Painel Atalhos"),
+            "favoritos": ("favorites", "Painel Atalhos"),
+            "favorito": ("favorites", "Painel Atalhos"),
+            "bookmarks": ("favorites", "Painel Atalhos"),
+            "barra de favoritos": ("favorites", "Painel Atalhos"),
+            "sites favoritos": ("favorites", "Painel Atalhos"),
+            "favorites": ("favorites", "Painel Atalhos"),
             "todos": ("all", "Todos os painéis"),
             "tudo": ("all", "Todos os painéis"),
         }
@@ -8011,31 +8016,31 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Adiciona, favorita ou salva um APLICATIVO, PROGRAMA OU SOFTWARE DO COMPUTADOR (ex.: Calculadora, Excel, Bloco de Notas, Cortecloud, WhatsApp, Word, Spotify, Chrome, etc.) na Barra de Favoritos do Jarvis. "
-            "USE ESTA FERRAMENTA SEMPRE que o usuário pedir para colocar, favoritar ou salvar qualquer aplicativo, programa ou software do PC nos favoritos."
+            "Adiciona, favorita ou salva um APLICATIVO, PROGRAMA OU SOFTWARE DO COMPUTADOR (ex.: Calculadora, Excel, Bloco de Notas, Cortecloud, WhatsApp, Word, Spotify, Chrome, etc.) no painel ATALHOS do Jarvis (também chamado de favoritos do Jarvis; NÃO é a barra do Chrome/navegador). "
+            "USE ESTA FERRAMENTA SEMPRE que o usuário pedir para colocar, salvar ou adicionar qualquer aplicativo, programa ou software do PC nos atalhos ou favoritos."
         )
     )
     async def adicionar_aplicativo_favorito(self, nome_aplicativo: str, categoria: str = "Aplicativos") -> str:
-        """Salva um aplicativo ou programa instalado no Windows na Barra de Favoritos."""
+        """Salva um aplicativo ou programa instalado no Windows no painel Atalhos do Jarvis."""
         return await self.adicionar_favorito(item_ou_url=nome_aplicativo, nome=nome_aplicativo, categoria=categoria or "Aplicativos")
 
     @function_tool(
         description=(
-            "Adiciona, favorita ou salva um SITE, LINK OU PÁGINA WEB (ex.: YouTube, Google, Portal do Aluno, etc.) na Barra de Favoritos do Jarvis. "
+            "Adiciona, favorita ou salva um SITE, LINK OU PÁGINA WEB (ex.: YouTube, Google, Portal do Aluno, etc.) no painel ATALHOS do Jarvis (NÃO é a barra de favoritos do Chrome/navegador). "
             "Se o usuário disser 'salve este site' ou estiver vendo uma página no navegador, captura automaticamente a aba ativa."
         )
     )
     async def adicionar_site_favorito(self, url_ou_site: str = "", nome: str = "", categoria: str = "Sites") -> str:
-        """Salva um site ou link da web na Barra de Favoritos."""
+        """Salva um site ou link da web no painel Atalhos do Jarvis."""
         return await self.adicionar_favorito(item_ou_url=url_ou_site, nome=nome, categoria=categoria or "Sites")
 
     @function_tool(
         description=(
-            "Adiciona ou salva um SITE WEB ou um APLICATIVO/PROGRAMA DO COMPUTADOR na Barra de Favoritos do Jarvis. "
-            "Exemplos: 'adicione o YouTube aos favoritos', 'salve este site nos favoritos', 'coloque a Calculadora nos favoritos', 'adicione o aplicativo Cortecloud aos favoritos'. "
+            "Adiciona ou salva um SITE WEB ou um APLICATIVO/PROGRAMA DO COMPUTADOR no painel ATALHOS do Jarvis (antiga Barra de Favoritos do Jarvis — NÃO confunda com a barra de favoritos do Chrome/navegador). "
+            "Exemplos: 'adicione o YouTube aos atalhos', 'salve este site nos atalhos', 'coloque a Calculadora nos atalhos', 'adicione o aplicativo Cortecloud aos favoritos/atalhos'. "
             "Aceita tanto sites/links quanto aplicativos ou programas instalados no computador. "
             "Se o usuário pedir para 'salvar este site' ou estiver vendo uma página no navegador, captura automaticamente a aba ativa. "
-            "NUNCA diga que não possui barra de favoritos nem que só aceita sites; use esta ferramenta ou adicionar_aplicativo_favorito imediatamente."
+            "NUNCA diga que não possui painel de atalhos/favoritos nem confunda com o navegador; use esta ferramenta ou adicionar_aplicativo_favorito imediatamente."
         )
     )
     async def adicionar_favorito(self, item_ou_url: str = "", nome: str = "", categoria: str = "") -> str:

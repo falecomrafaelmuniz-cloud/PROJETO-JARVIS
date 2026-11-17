@@ -216,7 +216,7 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
       <div className="pointer-events-none absolute -top-1 left-1/2 h-1.5 w-12 -translate-x-1/2 rounded-full bg-cyan-400/40 blur-xs" />
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3.5 py-2.5">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold tracking-wide text-white">Painéis do Jarvis</h2>
+          <h2 className="text-sm font-semibold tracking-wide text-white uppercase">Painéis do Jarvis</h2>
           <p className="mt-0.5 text-[11px] text-white/60">Monitoramento desta sessão</p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

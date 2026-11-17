@@ -35,6 +35,7 @@ import { QuantPanel } from '@/components/app/quant-panel';
 import { TileLayout } from '@/components/app/tile-layout';
 import { WorkspaceFilesPanel } from '@/components/app/workspace-files-panel';
 import { QuantumParticleOrb } from '@/components/app/quantum-particle-orb';
+import { VideoStudioPanel } from '@/components/app/video-studio-panel';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import {
   calculateLayoutPositions,
@@ -358,6 +359,8 @@ export const SessionView = ({
             favorites: 'favorites',
             favoritos: 'favorites',
             favorito: 'favorites',
+            atalhos: 'favorites',
+            atalho: 'favorites',
             bookmarks: 'favorites',
             automations: 'automations',
             automacoes: 'automations',
@@ -436,7 +439,7 @@ export const SessionView = ({
           const panelMap: Record<string, HudPanelId> = {
             files: 'files', arquivos: 'files', central: 'files', workspace: 'files', caderno: 'files',
             reminders: 'reminders', lembretes: 'reminders', lembrete: 'reminders',
-            favorites: 'favorites', favoritos: 'favorites', favorito: 'favorites', bookmarks: 'favorites',
+            favorites: 'favorites', favoritos: 'favorites', favorito: 'favorites', atalhos: 'favorites', atalho: 'favorites', bookmarks: 'favorites',
             system: 'system', sistema: 'system', dashboard: 'system',
             trader: 'trader', quant: 'trader', mercado: 'trader',
             automations: 'automations', automacoes: 'automations',
@@ -513,9 +516,11 @@ export const SessionView = ({
           ...(typeof parsed.trader === 'boolean' ? { trader: parsed.trader } : {}),
           ...(typeof parsed.automations === 'boolean' ? { automations: parsed.automations } : {}),
           ...(typeof parsed.reminders === 'boolean' ? { reminders: parsed.reminders } : {}),
+          ...(typeof parsed.favorites === 'boolean' ? { favorites: parsed.favorites } : {}),
           ...(typeof parsed.email === 'boolean' ? { email: parsed.email } : {}),
           ...(typeof parsed.files === 'boolean' ? { files: parsed.files } : {}),
           ...(typeof parsed.neural === 'boolean' ? { neural: parsed.neural } : {}),
+          ...(typeof parsed.videos === 'boolean' ? { videos: parsed.videos } : {}),
         }));
       }
     } catch {
@@ -581,6 +586,7 @@ export const SessionView = ({
   const handleCloseEmail = useCallback(() => setPanelOpen('email', false), [setPanelOpen]);
   const handleOpenEmail = useCallback(() => setPanelOpen('email', true), [setPanelOpen]);
   const handleCloseFiles = useCallback(() => setPanelOpen('files', false), [setPanelOpen]);
+  const handleCloseVideos = useCallback(() => setPanelOpen('videos', false), [setPanelOpen]);
 
   const handleOpenNeuralConfig = useCallback(() => {
     setNeuralConfigSignal((prev) => prev + 1);
@@ -688,6 +694,7 @@ export const SessionView = ({
   }, [messages]);
 
   const handleDisconnect = () => {
+    persistHudPanels(hudPanelsRef.current);
     if (onManualDisconnect) onManualDisconnect();
     try {
       if (session.end) session.end();
@@ -721,7 +728,12 @@ export const SessionView = ({
         onClose={handleCloseEmail}
         onOpenRequest={handleOpenEmail}
       />
-      <QuantPanel isOpen={hudPanels.trader} onClose={handleCloseTrader} />
+      {hudPanels.trader && (
+        <QuantPanel isOpen={hudPanels.trader} onClose={handleCloseTrader} />
+      )}
+      {hudPanels.videos && (
+        <VideoStudioPanel isOpen={hudPanels.videos} onClose={handleCloseVideos} />
+      )}
       <AutomationsPanel
         isOpen={hudPanels.automations}
         onClose={handleCloseAutomations}

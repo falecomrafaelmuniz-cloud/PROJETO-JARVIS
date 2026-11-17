@@ -271,7 +271,7 @@ export function EmailComposer({ isOpen, onClose, onOpenRequest }: EmailComposerP
                 )}
               />
               <div>
-                <h2 className="text-xs font-semibold tracking-wide text-cyan-100">
+                <h2 className="text-xs font-semibold tracking-wide text-cyan-100 uppercase">
                   Novo E-mail · Gmail
                 </h2>
                 <p className="text-[10px] text-white/55">

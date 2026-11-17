@@ -32,3 +32,4 @@ backend/.limpeza_teste_rafael_ok
 backend/jarvis_tokens.json
 backend/workspace_arquivos/*
 !backend/workspace_arquivos/.gitkeep
+backend/video_studio_output/

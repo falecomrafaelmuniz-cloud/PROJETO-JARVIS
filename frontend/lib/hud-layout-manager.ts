@@ -8,7 +8,8 @@ export type HudPanelId =
   | 'favorites'
   | 'email'
   | 'files'
-  | 'neural';
+  | 'neural'
+  | 'videos';
 
 export interface PanelTransform {
   x: number;
@@ -20,13 +21,14 @@ export const HUD_PANEL_STORAGE_KEYS: Record<HudPanelId, string> = {
   files: 'jarvis-pos-workspace-files-v3',
   system: 'jarvis-pos-system-dashboard-v2',
   reminders: 'jarvis-pos-reminders-panel-v2',
-  trader: 'jarvis-pos-quant-panel-v3',
+  trader: 'jarvis-pos-quant-panel-v5',
   automations: 'jarvis-pos-automations-panel-v2',
   activity: 'jarvis-pos-activity-panel-v2',
   email: 'jarvis-pos-email-composer-v2',
   favorites: 'jarvis-pos-favorites-panel-v1',
   clock: 'jarvis-pos-clock-widget-v2',
   neural: 'jarvis-pos-neural-v1',
+  videos: 'jarvis-pos-video-studio-v2',
 };
 
 export type LayoutMode = 'side_by_side' | 'grid' | 'unstack' | 'reset' | 'padrao' | 'auto';

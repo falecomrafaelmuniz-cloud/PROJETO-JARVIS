@@ -94,8 +94,10 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
   }, []);
 
   useEffect(() => {
-    fetchFavorites();
-  }, [fetchFavorites]);
+    if (isOpen) {
+      fetchFavorites();
+    }
+  }, [isOpen, fetchFavorites]);
 
   // Listener para sincronização em tempo real via LiveKit DataPacket (quando o Jarvis altera por voz)
   useEffect(() => {
@@ -299,7 +301,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
 
   return (
     <aside
-      aria-label="Barra de Favoritos"
+      aria-label="Atalhos"
       style={dragStyle}
       data-hud-panel="favorites"
       {...dragHandlers}
@@ -325,11 +327,11 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
             <Star className="size-4 fill-cyan-400/20" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold tracking-wide text-white truncate">
-              Barra de Favoritos
+            <h2 className="text-sm font-semibold tracking-wide text-white uppercase truncate">
+              Atalhos
             </h2>
             <p className="text-[11px] text-cyan-300/60 truncate">
-              {favorites.length} {favorites.length === 1 ? 'favorito salvo (sites e apps)' : 'favoritos salvos (sites e apps)'}
+              {favorites.length} {favorites.length === 1 ? 'atalho salvo (sites e apps)' : 'atalhos salvos (sites e apps)'}
             </p>
           </div>
         </div>
@@ -627,9 +629,9 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
             {filteredFavorites.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-xs text-white/50">
                 <Bookmark className="size-8 stroke-1 text-cyan-400/30 mb-2" />
-                <p className="font-medium text-white/70">Nenhum favorito encontrado</p>
+                <p className="font-medium text-white/70">Nenhum atalho encontrado</p>
                 <p className="mt-1 text-[11px] text-white/40 max-w-xs">
-                  Diga por voz: &quot;Jarvis, adicione o aplicativo Calculadora aos favoritos&quot; ou &quot;Jarvis, salve este site nos favoritos&quot;.
+                  Diga por voz: &quot;Jarvis, adicione o aplicativo Calculadora aos atalhos&quot; ou &quot;Jarvis, salve este site nos atalhos&quot;.
                 </p>
               </div>
             ) : (
@@ -707,7 +709,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                       <button
                         type="button"
                         onClick={() => handleIniciarEdicao(fav)}
-                        title="Editar / Renomear este favorito"
+                        title="Editar / Renomear este atalho"
                         className="rounded-lg p-1.5 text-white/50 hover:bg-amber-500/20 hover:text-amber-300 transition cursor-pointer"
                       >
                         <Edit2 className="size-3.5" />
@@ -715,7 +717,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                       <button
                         type="button"
                         onClick={() => handleRemover(fav.id)}
-                        title="Apagar este favorito"
+                        title="Apagar este atalho"
                         className="rounded-lg p-1.5 text-white/50 hover:bg-red-500/20 hover:text-red-300 transition cursor-pointer"
                       >
                         <Trash2 className="size-3.5" />

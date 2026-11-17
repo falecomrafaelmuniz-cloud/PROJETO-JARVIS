@@ -233,7 +233,7 @@ export function ActivityPanel({ isOpen = true, onClose }: ActivityPanelProps = {
       <div className="pointer-events-none absolute -top-1 left-1/2 h-1.5 w-12 -translate-x-1/2 rounded-full bg-cyan-400/40 blur-xs" />
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
         <div>
-          <h2 className="text-xs font-semibold tracking-wide">Tarefas em andamento</h2>
+          <h2 className="text-xs font-semibold tracking-wide uppercase">Tarefas em andamento</h2>
           <p className="mt-0.5 text-[9px] text-white/50">Em execução primeiro; recentes abaixo</p>
         </div>
         <div className="flex items-center gap-1.5">

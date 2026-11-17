@@ -358,7 +358,7 @@ export function RemindersPanel({ isOpen, onClose, onOpenRequest }: RemindersPane
 
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
         <div>
-          <h2 className="text-xs font-semibold tracking-wide">Lembretes</h2>
+          <h2 className="text-xs font-semibold tracking-wide uppercase">Lembretes</h2>
           <p className="mt-0.5 text-[9px] text-white/50">
             Vermelho pendente · Amarelo andamento · Verde concluído
           </p>

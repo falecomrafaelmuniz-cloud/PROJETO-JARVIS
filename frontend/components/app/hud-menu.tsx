@@ -7,6 +7,7 @@ import {
   Bot,
   ChevronDown,
   Clock,
+  Film,
   FolderOpen,
   Hand,
   LayoutGrid,
@@ -31,7 +32,8 @@ export type HudPanelId =
   | 'favorites'
   | 'email'
   | 'files'
-  | 'neural';
+  | 'neural'
+  | 'videos';
 
 export type HudPanelsState = Record<HudPanelId, boolean>;
 
@@ -46,6 +48,7 @@ export const DEFAULT_HUD_PANELS: HudPanelsState = {
   email: false,
   files: false,
   neural: false,
+  videos: false,
 };
 
 interface HudMenuProps {
@@ -72,9 +75,10 @@ const MENU_ITEMS: MenuItemDef[] = [
   { id: 'trader', label: 'Trader B3', icon: TrendingUp },
   { id: 'automations', label: 'Automações', icon: Bot },
   { id: 'reminders', label: 'Lembretes', icon: Bell },
-  { id: 'favorites', label: 'Favoritos', icon: Star },
+  { id: 'favorites', label: 'Atalhos', icon: Star },
   { id: 'email', label: 'E-mail', icon: Mail },
   { id: 'neural', label: 'Rede Neural', icon: Sparkles },
+  { id: 'videos', label: 'Vídeos', icon: Film },
 ];
 
 export function HudMenu({

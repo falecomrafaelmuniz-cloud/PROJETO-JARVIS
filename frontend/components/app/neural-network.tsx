@@ -358,7 +358,7 @@ export function NeuralNetworkVisualizer({
             <header className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
                 <Brain className="size-5 text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-                <h3 className="text-sm font-semibold tracking-wide">Rede Neural do Jarvis</h3>
+                <h3 className="text-sm font-semibold tracking-wide uppercase">Rede Neural do Jarvis</h3>
               </div>
               <button
                 type="button"

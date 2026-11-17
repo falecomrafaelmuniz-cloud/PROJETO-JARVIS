@@ -112,9 +112,15 @@ function getCursorForEdge(edge: EdgeHover, isActive: boolean): string | undefine
   }
 }
 
-export function useDraggableFloating(storageKey: string, options?: { circular?: boolean }) {
+export function useDraggableFloating(
+  storageKey: string,
+  options?: { circular?: boolean; defaultScale?: number; transformOrigin?: string }
+) {
   const isCircular = Boolean(options?.circular);
-  const [state, setState] = useState<TransformState>({ x: 0, y: 0, scale: 1 });
+  const defaultScale = clampScale(options?.defaultScale ?? 1);
+  const transformOrigin = options?.transformOrigin ?? 'center center';
+  const [state, setState] = useState<TransformState>({ x: 0, y: 0, scale: defaultScale });
+  const [hydrated, setHydrated] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [edgeHover, setEdgeHover] = useState<EdgeHover>('none');
 
@@ -152,13 +158,15 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
         const scale =
           typeof parsed.scale === 'number' && Number.isFinite(parsed.scale)
             ? clampScale(parsed.scale)
-            : 1;
+            : defaultScale;
         setState({ x, y, scale });
       }
     } catch {
       // ignore storage errors
+    } finally {
+      setHydrated(true);
     }
-  }, [storageKey]);
+  }, [storageKey, defaultScale]);
 
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) => {
@@ -215,7 +223,7 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
 
     const handleResetLayout = () => {
       setTimeout(() => {
-        const resetState: TransformState = { x: 0, y: 0, scale: 1 };
+        const resetState: TransformState = { x: 0, y: 0, scale: defaultScale };
         setState(resetState);
         try {
           localStorage.removeItem(storageKey);
@@ -255,7 +263,7 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
       window.removeEventListener('jarvis:hud-reset-layout', handleResetLayout);
       window.removeEventListener('jarvis:hud-set-transforms', handleSetTransforms);
     };
-  }, [persist, storageKey]);
+  }, [persist, storageKey, defaultScale]);
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
@@ -322,21 +330,24 @@ export function useDraggableFloating(storageKey: string, options?: { circular?: 
   }, []);
 
   const resetTransform = useCallback(() => {
-    setState({ x: 0, y: 0, scale: 1 });
+    setState({ x: 0, y: 0, scale: defaultScale });
     try {
       localStorage.removeItem(storageKey);
     } catch {
       // ignore storage errors
+    } finally {
+      setHydrated(true);
     }
-  }, [storageKey]);
+  }, [storageKey, defaultScale]);
 
   const cursorStyle = getCursorForEdge(edgeHover, isDragging);
 
   return {
     style: {
       transform: `translate3d(${state.x}px, ${state.y}px, 0) scale(${state.scale})`,
-      transformOrigin: 'center center',
-      transition: isDragging ? 'none' : 'transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
+      transformOrigin,
+      transition:
+        isDragging || !hydrated ? 'none' : 'transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
       ...(cursorStyle ? { cursor: cursorStyle } : {}),
     },
     scale: state.scale,
