@@ -24,7 +24,7 @@ const selectVariants = cva(
   [
     'rounded-l-none shadow-none pl-2 ',
     'text-foreground hover:text-muted-foreground',
-    'peer-data-[state=on]/track:bg-[#1da3b9]/20 peer-data-[state=on]/track:hover:bg-[#1da3b9]/30',
+    'peer-data-[state=on]/track:bg-cyan-500/20 peer-data-[state=on]/track:hover:bg-cyan-500/30',
     'peer-data-[state=off]/track:text-destructive',
     'peer-data-[state=off]/track:focus-visible:border-destructive peer-data-[state=off]/track:focus-visible:ring-destructive/30',
     '[&_svg]:opacity-100',
@@ -34,27 +34,27 @@ const selectVariants = cva(
       variant: {
         default: [
           'border-none',
-          'peer-data-[state=off]/track:bg-[#1da3b9]/5',
-          'peer-data-[state=off]/track:hover:bg-[#1da3b9]/10',
+          'peer-data-[state=off]/track:bg-cyan-500/5',
+          'peer-data-[state=off]/track:hover:bg-cyan-500/10',
           'peer-data-[state=off]/track:[&_svg]:!text-destructive',
 
-          'dark:peer-data-[state=on]/track:bg-[#1da3b9]/20',
-          'dark:peer-data-[state=on]/track:hover:bg-[#1da3b9]/30',
-          'dark:peer-data-[state=off]/track:bg-[#1da3b9]/5',
-          'dark:peer-data-[state=off]/track:hover:bg-[#1da3b9]/10',
+          'dark:peer-data-[state=on]/track:bg-cyan-500/20',
+          'dark:peer-data-[state=on]/track:hover:bg-cyan-500/30',
+          'dark:peer-data-[state=off]/track:bg-cyan-500/5',
+          'dark:peer-data-[state=off]/track:hover:bg-cyan-500/10',
         ],
         outline: [
           'border border-l-0',
-          'peer-data-[state=off]/track:border-[#1da3b9]/20',
-          'peer-data-[state=off]/track:bg-[#1da3b9]/5',
-          'peer-data-[state=off]/track:hover:bg-[#1da3b9]/10',
+          'peer-data-[state=off]/track:border-cyan-500/20',
+          'peer-data-[state=off]/track:bg-cyan-500/5',
+          'peer-data-[state=off]/track:hover:bg-cyan-500/10',
           'peer-data-[state=off]/track:[&_svg]:!text-destructive',
           'peer-data-[state=on]/track:hover:border-foreground/12',
 
-          'dark:peer-data-[state=off]/track:bg-[#1da3b9]/5',
-          'dark:peer-data-[state=off]/track:hover:bg-[#1da3b9]/10',
-          'dark:peer-data-[state=on]/track:bg-[#1da3b9]/20',
-          'dark:peer-data-[state=on]/track:hover:bg-[#1da3b9]/30',
+          'dark:peer-data-[state=off]/track:bg-cyan-500/5',
+          'dark:peer-data-[state=off]/track:hover:bg-cyan-500/10',
+          'dark:peer-data-[state=on]/track:bg-cyan-500/20',
+          'dark:peer-data-[state=on]/track:hover:bg-cyan-500/30',
         ],
       },
       size: {
@@ -317,7 +317,7 @@ export function AgentTrackControl({
           className={cn([
             'relative',
             'before:bg-border before:absolute before:inset-y-0 before:left-0 before:my-2.5 before:w-px has-[~_button]:before:content-[""]',
-            !pressed && 'before:bg-[#1da3b9]/20',
+            !pressed && 'before:bg-cyan-500/20',
           ])}
         />
       )}

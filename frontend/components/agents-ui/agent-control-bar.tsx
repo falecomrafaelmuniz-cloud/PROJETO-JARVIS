@@ -1,6 +1,6 @@
 'use client';
 
-import { type ComponentProps, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Track } from 'livekit-client';
 import { Loader, MessageSquareTextIcon, Pin, Power, SendHorizontal } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -21,23 +21,23 @@ import {
 import { cn } from '@/lib/shadcn/utils';
 
 const TOGGLE_VARIANT_1 = [
-  '[&_[data-state=off]]:bg-[#1da3b9]/10 [&_[data-state=off]]:hover:bg-[#1da3b9]/20',
-  '[&_[data-state=off]_~_button]:bg-[#1da3b9]/10 [&_[data-state=off]_~_button]:hover:bg-[#1da3b9]/20',
-  '[&_[data-state=off]]:border-[#1da3b9]/20 [&_[data-state=off]]:hover:border-[#1da3b9]/40',
-  '[&_[data-state=off]_~_button]:border-[#1da3b9]/20 [&_[data-state=off]_~_button]:hover:border-[#1da3b9]/40',
+  '[&_[data-state=off]]:bg-cyan-500/10 [&_[data-state=off]]:hover:bg-cyan-500/20',
+  '[&_[data-state=off]_~_button]:bg-cyan-500/10 [&_[data-state=off]_~_button]:hover:bg-cyan-500/20',
+  '[&_[data-state=off]]:border-cyan-500/20 [&_[data-state=off]]:hover:border-cyan-500/40',
+  '[&_[data-state=off]_~_button]:border-cyan-500/20 [&_[data-state=off]_~_button]:hover:border-cyan-500/40',
   '[&_[data-state=off]]:text-destructive [&_[data-state=off]]:hover:text-destructive',
-  'bg-[#1da3b9]/5 border-[#1da3b9]/10 text-white', // Estilo base/ON azulado
-  'dark:bg-[#1da3b9]/5',
+  'bg-cyan-500/5 border-cyan-500/10 text-white', // Estilo base/ON azulado
+  'dark:bg-cyan-500/5',
 ];
 
 const TOGGLE_VARIANT_2 = [
-  'data-[state=off]:bg-[#1da3b9]/10 data-[state=off]:hover:bg-[#1da3b9]/20',
-  'data-[state=off]:border-[#1da3b9]/20 data-[state=off]:hover:border-[#1da3b9]/40',
+  'data-[state=off]:bg-cyan-500/10 data-[state=off]:hover:bg-cyan-500/20',
+  'data-[state=off]:border-cyan-500/20 data-[state=off]:hover:border-cyan-500/40',
   'data-[state=off]:text-white/70 data-[state=off]:hover:text-white',
   // Estado ON usando o Azul Ciano da Orb (#1da3b9)
-  'data-[state=on]:bg-[#1da3b9]/30 data-[state=on]:hover:bg-[#1da3b9]/40',
-  'data-[state=on]:border-[#1da3b9]/50 data-[state=on]:text-[#43d9f0]',
-  'dark:data-[state=on]:bg-[#1da3b9]/30 dark:data-[state=on]:text-[#43d9f0]',
+  'data-[state=on]:bg-cyan-500/30 data-[state=on]:hover:bg-cyan-500/40',
+  'data-[state=on]:border-cyan-500/50 data-[state=on]:text-cyan-300',
+  'dark:data-[state=on]:bg-cyan-500/30 dark:data-[state=on]:text-cyan-300',
 ];
 
 const MOTION_PROPS = {
@@ -211,6 +211,10 @@ export interface AgentControlBarProps extends UseInputControlsProps {
    * Messages to display inside the compact control bar chat drawer.
    */
   messages?: ReceivedMessage[];
+  /**
+   * Extra controls rendered inside the control bar button row.
+   */
+  extraControls?: ReactNode;
 }
 
 /**
@@ -246,6 +250,7 @@ export function AgentControlBar({
   onDeviceError,
   onIsChatOpenChange,
   messages = [],
+  extraControls,
   className,
   ...props
 }: AgentControlBarProps & ComponentProps<'div'>) {
@@ -308,32 +313,21 @@ export function AgentControlBar({
     handleCameraDeviceSelectError,
   } = useInputControls({ onDeviceError, saveUserChoices });
 
-  // --- Lógica de Auto-Hide Inteligente ---
+  // --- Alterna visibilidade ao clicar fora dos painéis (ao redor do orb) ---
   const [isVisible, setIsVisible] = useState(true);
-  const [isLocked, setIsLocked] = useState(false); // Novo estado para travar a barra
-  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isLocked, setIsLocked] = useState(false); // Trava a barra sempre visível quando ativado
 
   useEffect(() => {
-    const handleMouseMove = () => {
-      setIsVisible(true);
-      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-
-      // Não oculta se: Chat aberto OU Barra travada
-      if (!isChatOpen && !isChatOpenUncontrolled && !isLocked) {
-        hideTimeoutRef.current = setTimeout(() => {
-          setIsVisible(false);
-        }, 3000); // 3 segundos de inatividade
-      }
+    const handleToggleBar = () => {
+      if (isLocked) return;
+      setIsVisible((prev) => !prev);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    handleMouseMove(); // Inicia o timer
-
+    window.addEventListener('jarvis:toggle-control-bar', handleToggleBar);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+      window.removeEventListener('jarvis:toggle-control-bar', handleToggleBar);
     };
-  }, [isChatOpen, isChatOpenUncontrolled, isLocked]);
+  }, [isLocked]);
 
   const handleSendMessage = async (message: string) => {
     await send(message);
@@ -356,12 +350,13 @@ export function AgentControlBar({
 
   return (
     <motion.div
+      data-control-bar="true"
       initial={false}
       animate={{
         y: isVisible || isChatOpen || isChatOpenUncontrolled || isLocked ? 0 : 20,
         opacity: isVisible || isChatOpen || isChatOpenUncontrolled || isLocked ? 1 : 0,
       }}
-      transition={{ duration: 0.4, ease: 'easeInOut' }}
+      transition={{ duration: 0.35, ease: 'easeInOut' }}
       className={cn(
         'relative z-50 mx-auto w-fit min-w-[300px]',
         !isVisible &&
@@ -370,10 +365,6 @@ export function AgentControlBar({
           !isLocked &&
           'pointer-events-none transition-all'
       )}
-      onMouseEnter={() => {
-        setIsVisible(true);
-        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-      }}
     >
       <div
         aria-label="Controles do assistente de voz"
@@ -408,7 +399,7 @@ export function AgentControlBar({
                     className={cn(
                       'max-w-[88%] rounded-2xl px-2.5 py-1.5 text-xs leading-snug break-words',
                       isUser
-                        ? 'ml-auto border border-cyan-400/35 bg-[#1da3b9]/25 text-cyan-50'
+                        ? 'ml-auto border border-cyan-400/35 bg-cyan-500/25 text-cyan-50'
                         : 'mr-auto border border-white/10 bg-white/5 text-white/90'
                     )}
                   >
@@ -433,7 +424,7 @@ export function AgentControlBar({
               className={cn(
                 'mr-2 rounded-full p-2 transition-all duration-300',
                 isLocked
-                  ? 'bg-[#1da3b9]/20 text-[#43d9f0]'
+                  ? 'bg-cyan-500/20 text-cyan-300'
                   : 'text-white/40 hover:bg-white/5 hover:text-white/60'
               )}
               title={isLocked ? 'Auto-hide desativado' : 'Ativar auto-hide'}
@@ -521,6 +512,8 @@ export function AgentControlBar({
                 <MessageSquareTextIcon />
               </Toggle>
             )}
+
+            {extraControls}
           </div>
 
           {/* Disconnect & Full System Shutdown */}

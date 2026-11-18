@@ -44,6 +44,13 @@ import {
   type LayoutMode,
 } from '@/lib/hud-layout-manager';
 import { organizeHudPanelsDom, positionSinglePanelDom } from '@/lib/hud-dom-layout';
+import {
+  applyJarvisThemeHex,
+  DEFAULT_JARVIS_THEME_HEX,
+  hexToNumber,
+  loadJarvisThemeHex,
+  saveJarvisThemeHex,
+} from '@/lib/jarvis-theme';
 import { cn } from '@/lib/shadcn/utils';
 import { Shimmer } from '../ai-elements/shimmer';
 
@@ -302,6 +309,18 @@ export const SessionView = ({
   }, [hudPanels]);
   const [neuralConfigSignal, setNeuralConfigSignal] = useState(0);
   const [orbStyle, setOrbStyle] = useState<'vanta' | 'quantum'>('vanta');
+  const [themeHex, setThemeHex] = useState<string>(DEFAULT_JARVIS_THEME_HEX);
+
+  useEffect(() => {
+    const savedTheme = loadJarvisThemeHex();
+    setThemeHex(savedTheme);
+    applyJarvisThemeHex(savedTheme);
+  }, []);
+
+  const handleChangeThemeHex = useCallback((hex: string) => {
+    const saved = saveJarvisThemeHex(hex);
+    setThemeHex(saved);
+  }, []);
 
   useEffect(() => {
     try {
@@ -640,6 +659,7 @@ export const SessionView = ({
     style: orbDragStyle,
     isDragging: isOrbDragging,
     isResizingEdge: isOrbResizingEdge,
+    wasDragged: wasOrbDragged,
     dragHandlers: orbDragHandlers,
   } = useDraggableFloating('jarvis-pos-vanta-orb-v1', { circular: true });
 
@@ -649,12 +669,8 @@ export const SessionView = ({
   const agentPersona = agentParticipant?.attributes?.['agent_persona'] || 'jarvis';
 
   // Definição de Cores
-  const PERSONA_COLORS = {
-    alice: 0xff69b4,
-    jarvis: 0x1da3b9,
-  };
   const currentColor =
-    PERSONA_COLORS[agentPersona as keyof typeof PERSONA_COLORS] || PERSONA_COLORS.jarvis;
+    agentPersona === 'alice' ? 0xff69b4 : hexToNumber(themeHex);
 
   useEffect(() => {
     const loadScript = (src: string): Promise<boolean> => {
@@ -703,18 +719,29 @@ export const SessionView = ({
     }
   };
 
+  const handleBackgroundClick = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (wasOrbDragged() || wasControlBarDragged()) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          '[data-hud-panel], aside, [data-control-bar="true"], [data-no-bg-toggle="true"], button, a, input, textarea, select, [role="dialog"]'
+        )
+      ) {
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('jarvis:toggle-control-bar'));
+    },
+    [wasControlBarDragged, wasOrbDragged]
+  );
+
   return (
-    <section className="relative flex h-svh w-svw flex-col overflow-hidden bg-black" {...props}>
+    <section
+      onClick={handleBackgroundClick}
+      className="relative flex h-svh w-svw flex-col overflow-hidden bg-black"
+      {...props}
+    >
       <VantaController vantaRef={vantaEffectRef} />
-      <HudMenu
-        panels={hudPanels}
-        onTogglePanel={toggleHudPanel}
-        onOpenNeuralConfig={handleOpenNeuralConfig}
-        onResetLayout={handleResetHudLayout}
-        onOrganizeLayout={handleOrganizeHudLayout}
-        orbStyle={orbStyle}
-        onToggleOrbStyle={toggleOrbStyle}
-      />
       <ActivityPanel isOpen={hudPanels.activity} onClose={handleCloseActivity} />
       <SystemDashboard isOpen={hudPanels.system} onClose={handleCloseSystem} />
       <ClockWidget isOpen={hudPanels.clock} onClose={handleCloseClock} />
@@ -778,9 +805,9 @@ export const SessionView = ({
               >
                 <div className="pointer-events-none flex items-center justify-center">
                   {orbStyle === 'quantum' ? (
-                    <QuantumParticleOrb color={currentColor} />
+                    <QuantumParticleOrb key={`q-${currentColor}`} color={currentColor} />
                   ) : (
-                    <VantaOrb color={currentColor} vantaRef={vantaEffectRef} />
+                    <VantaOrb key={`v-${currentColor}`} color={currentColor} vantaRef={vantaEffectRef} />
                   )}
                 </div>
               </div>
@@ -839,6 +866,20 @@ export const SessionView = ({
             isConnected={true}
             onDisconnect={handleDisconnect}
             onIsChatOpenChange={setChatOpen}
+            extraControls={
+              <HudMenu
+                docked
+                panels={hudPanels}
+                onTogglePanel={toggleHudPanel}
+                onOpenNeuralConfig={handleOpenNeuralConfig}
+                onResetLayout={handleResetHudLayout}
+                onOrganizeLayout={handleOrganizeHudLayout}
+                orbStyle={orbStyle}
+                onToggleOrbStyle={toggleOrbStyle}
+                themeHex={themeHex}
+                onChangeThemeHex={handleChangeThemeHex}
+              />
+            }
           />
         </div>
       </MotionBottom>

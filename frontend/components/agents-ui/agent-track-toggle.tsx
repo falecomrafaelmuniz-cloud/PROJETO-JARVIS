@@ -17,19 +17,19 @@ export const agentTrackToggleVariants = cva(['size-9'], {
   variants: {
     variant: {
       default: [
-        'data-[state=off]:bg-[#1da3b9]/5 data-[state=off]:text-destructive',
-        'data-[state=off]:hover:bg-[#1da3b9]/10',
+        'data-[state=off]:bg-cyan-500/5 data-[state=off]:text-destructive',
+        'data-[state=off]:hover:bg-cyan-500/10',
         'data-[state=off]:focus-visible:ring-destructive/30',
-        'data-[state=on]:bg-[#1da3b9]/20 data-[state=on]:text-[#43d9f0]',
-        'data-[state=on]:hover:bg-[#1da3b9]/30',
+        'data-[state=on]:bg-cyan-500/20 data-[state=on]:text-cyan-300',
+        'data-[state=on]:hover:bg-cyan-500/30',
       ],
       outline: [
-        'data-[state=off]:bg-[#1da3b9]/5 data-[state=off]:text-destructive data-[state=off]:border-[#1da3b9]/20',
-        'data-[state=off]:hover:bg-[#1da3b9]/10 data-[state=off]:hover:text-destructive',
+        'data-[state=off]:bg-cyan-500/5 data-[state=off]:text-destructive data-[state=off]:border-cyan-500/20',
+        'data-[state=off]:hover:bg-cyan-500/10 data-[state=off]:hover:text-destructive',
         'data-[state=off]:focus:text-destructive',
         'data-[state=off]:focus-visible:border-destructive data-[state=off]:focus-visible:ring-destructive/30',
-        'data-[state=on]:hover:bg-[#1da3b9]/10 data-[state=on]:hover:border-[#1da3b9]/20',
-        'dark:data-[state=on]:hover:bg-[#1da3b9]/10',
+        'data-[state=on]:hover:bg-cyan-500/10 data-[state=on]:hover:border-cyan-500/20',
+        'dark:data-[state=on]:hover:bg-cyan-500/10',
       ],
     },
   },
