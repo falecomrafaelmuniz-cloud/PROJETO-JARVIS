@@ -52,36 +52,153 @@ def _escapar_query_drive(valor: str) -> str:
 def buscar_ou_criar_pasta_drive(
     drive_service, nome_pasta: str, parent_id: str | None = None
 ) -> str:
-    """Encontra ou cria dinamicamente pastas no Google Drive."""
-    nome_esc = _escapar_query_drive(nome_pasta)
-    query = (
-        f"mimeType = '{FOLDER_MIME_TYPE}' "
-        f"and name = '{nome_esc}' "
-        f"and trashed = false"
-    )
-    if parent_id:
-        query += f" and '{parent_id}' in parents"
+    """Encontra ou cria dinamicamente pastas no Google Drive (suporta caminhos compostos com '/')."""
+    partes = [p.strip() for p in nome_pasta.split("/") if p.strip()]
+    if not partes:
+        partes = [nome_pasta.strip()]
 
-    resposta = (
+    id_atual = parent_id
+    for parte in partes:
+        nome_esc = _escapar_query_drive(parte)
+        query = (
+            f"mimeType = '{FOLDER_MIME_TYPE}' "
+            f"and name = '{nome_esc}' "
+            f"and trashed = false"
+        )
+        if id_atual:
+            query += f" and '{id_atual}' in parents"
+
+        resposta = (
+            drive_service.files()
+            .list(q=query, fields="files(id, name)", pageSize=10)
+            .execute()
+        )
+        pastas = resposta.get("files", [])
+        if pastas:
+            id_atual = pastas[0]["id"]
+            continue
+
+        # Busca tolerante a espaços extras (ex: '2026 ')
+        if id_atual:
+            query_tol = (
+                f"'{id_atual}' in parents and mimeType = '{FOLDER_MIME_TYPE}' and trashed = false"
+            )
+            res_tol = (
+                drive_service.files()
+                .list(q=query_tol, fields="files(id, name)", pageSize=50)
+                .execute()
+            )
+            achou_tol = None
+            for f in res_tol.get("files", []):
+                if f.get("name", "").strip().lower() == parte.strip().lower():
+                    achou_tol = f["id"]
+                    break
+            if achou_tol:
+                id_atual = achou_tol
+                continue
+
+        metadados: dict = {
+            "name": parte,
+            "mimeType": FOLDER_MIME_TYPE,
+        }
+        if id_atual:
+            metadados["parents"] = [id_atual]
+
+        pasta_criada = (
+            drive_service.files().create(body=metadados, fields="id").execute()
+        )
+        id_atual = pasta_criada.get("id")
+
+    return id_atual
+
+
+def resolver_pasta_destino_ano_mes(
+    drive_service, id_pasta_raiz: str, pasta_raiz_nome: str, agora: datetime
+) -> tuple[str, str]:
+    """
+    Localiza ou cria inteligentemente a pasta de destino respeitando a hierarquia do Google Drive.
+    1. Verifica se dentro da pasta raiz já existe pasta de Ano (ex: '2026', '2026 ', 'Ano 2026').
+    2. Se existir pasta de Ano, procura a pasta do Mês dentro dela (reconhecendo formatos como
+       '2026 / 11 NOVEMBRO', '2026/11 NOVEMBRO', '11 NOVEMBRO').
+    3. Se não existir a subpasta do mês dentro da pasta do ano, cria no padrão '2026 / 11 NOVEMBRO' dentro do ano.
+    4. Se a raiz não tiver pasta de ano, verifica se a raiz já tem subpastas de mês diretamente.
+    5. Se for um diretório novo sem pastas, cria a pasta de ano e dentro dela a subpasta do mês.
+    Retorna: (id_pasta_destino, caminho_exibicao)
+    """
+    ano_str = str(agora.year)
+    mes_num_str = f"{agora.month:02d}"
+    mes_ext_str = MESES_PT.get(agora.month, f"{agora.month:02d}")
+    nome_padrao_mes = f"{ano_str} / {mes_ext_str}"
+
+    query_sub = (
+        f"'{id_pasta_raiz}' in parents and mimeType = '{FOLDER_MIME_TYPE}' and trashed = false"
+    )
+    res = (
         drive_service.files()
-        .list(q=query, fields="files(id, name)", pageSize=5)
+        .list(q=query_sub, fields="files(id, name)", pageSize=100)
         .execute()
     )
-    pastas = resposta.get("files", [])
-    if pastas:
-        return pastas[0]["id"]
+    subpastas_raiz = res.get("files", [])
 
-    metadados: dict = {
-        "name": nome_pasta,
+    # Procura se existe uma subpasta de Ano na raiz (ex: '2026', '2026 ', 'Ano 2026')
+    id_pasta_ano = None
+    nome_pasta_ano = None
+    for p in subpastas_raiz:
+        p_name = p.get("name", "").strip()
+        if p_name == ano_str or p_name == f"Ano {ano_str}":
+            id_pasta_ano = p["id"]
+            nome_pasta_ano = p["name"]
+            break
+
+    # Se existe pasta de Ano, busca a pasta do Mês DENTRO dela
+    if id_pasta_ano:
+        query_ano = (
+            f"'{id_pasta_ano}' in parents and mimeType = '{FOLDER_MIME_TYPE}' and trashed = false"
+        )
+        res_ano = (
+            drive_service.files()
+            .list(q=query_ano, fields="files(id, name)", pageSize=100)
+            .execute()
+        )
+        subpastas_ano = res_ano.get("files", [])
+
+        palavra_mes = mes_ext_str.split()[-1].upper()
+        for p in subpastas_ano:
+            p_name = p.get("name", "")
+            p_norm = re.sub(r"\s+", " ", p_name.strip()).upper()
+            if (mes_num_str in p_norm and palavra_mes in p_norm) or p_norm == nome_padrao_mes.upper():
+                return p["id"], f"{pasta_raiz_nome} / {nome_pasta_ano.strip()} / {p_name.strip()}"
+
+        meta = {
+            "name": nome_padrao_mes,
+            "mimeType": FOLDER_MIME_TYPE,
+            "parents": [id_pasta_ano],
+        }
+        nova_pasta = drive_service.files().create(body=meta, fields="id").execute()
+        return nova_pasta["id"], f"{pasta_raiz_nome} / {nome_pasta_ano.strip()} / {nome_padrao_mes}"
+
+    # Se NÃO existe pasta de Ano, verifica se a raiz já tem subpastas diretas com mês/ano
+    palavra_mes = mes_ext_str.split()[-1].upper()
+    for p in subpastas_raiz:
+        p_name = p.get("name", "")
+        p_norm = re.sub(r"\s+", " ", p_name.strip()).upper()
+        if (ano_str in p_norm and mes_num_str in p_norm and palavra_mes in p_norm):
+            return p["id"], f"{pasta_raiz_nome} / {p_name.strip()}"
+
+    # Se for uma pasta sem organização prévia, cria pasta de ano e subpasta de mês dentro dela
+    meta_ano = {
+        "name": ano_str,
         "mimeType": FOLDER_MIME_TYPE,
+        "parents": [id_pasta_raiz],
     }
-    if parent_id:
-        metadados["parents"] = [parent_id]
-
-    pasta_criada = (
-        drive_service.files().create(body=metadados, fields="id").execute()
-    )
-    return pasta_criada.get("id")
+    nova_ano = drive_service.files().create(body=meta_ano, fields="id").execute()
+    meta_mes = {
+        "name": nome_padrao_mes,
+        "mimeType": FOLDER_MIME_TYPE,
+        "parents": [nova_ano["id"]],
+    }
+    nova_mes = drive_service.files().create(body=meta_mes, fields="id").execute()
+    return nova_mes["id"], f"{pasta_raiz_nome} / {ano_str} / {nome_padrao_mes}"
 
 
 def _arquivo_ja_existe_na_pasta(
@@ -250,11 +367,9 @@ def executar_rotina_automacao(tarefa: dict) -> dict:
             # 1. Estrutura de pastas no Google Drive
             id_pasta_raiz = buscar_ou_criar_pasta_drive(drive_service, pasta_drive_raiz)
             if organizar_por_ano_mes:
-                pasta_mes_nome = f"{agora.year} / {MESES_PT[agora.month]}"
-                id_pasta_destino = buscar_ou_criar_pasta_drive(
-                    drive_service, pasta_mes_nome, parent_id=id_pasta_raiz
+                id_pasta_destino, caminho_exibicao = resolver_pasta_destino_ano_mes(
+                    drive_service, id_pasta_raiz, pasta_drive_raiz, agora
                 )
-                caminho_exibicao = f"{pasta_drive_raiz} / {pasta_mes_nome}"
             else:
                 id_pasta_destino = id_pasta_raiz
                 caminho_exibicao = pasta_drive_raiz

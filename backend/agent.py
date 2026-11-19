@@ -348,7 +348,7 @@ class Assistant(Agent):
         realtime_kwargs: dict = dict(
             model=live_model,
             voice="Charon",
-            temperature=0.6,
+            temperature=0.3,
             tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
             realtime_input_config=genai_types.RealtimeInputConfig(
                 automatic_activity_detection=genai_types.AutomaticActivityDetection(
@@ -8540,7 +8540,7 @@ async def _monitorar_chegada_emails(session: AgentSession, assistant: Assistant)
                     instructions=(
                         f"AVISO DE CHEGADA DE E-MAIL EM TEMPO REAL: Acabou de chegar um novo e-mail que o usuário pediu para monitorar! "
                         f"Remetente: {de_str} | Assunto: '{assunto_str}' | Trecho: '{resumo_str}'.{info_extra} "
-                        "Avise o usuário imediatamente de forma natural e pergunte se ele quer ler, responder ou mover para algum marcador no Gmail."
+                        "Fale OBRIGATORIAMENTE em Português do Brasil de forma natural e pergunte se ele quer ler, responder ou mover para algum marcador no Gmail."
                     )
                 )
             except Exception as erro:
@@ -8567,7 +8567,7 @@ async def _monitorar_automacoes_agendadas(session: AgentSession, assistant: Assi
                             instructions=(
                                 f"AVISO DE AUTOMAÇÃO CONCLUÍDA: A automação '{res.get('tarefa')}' acabou de rodar, "
                                 f"encontrou {len(arquivos)} arquivo(s) novo(s) ({nomes_arq}) no Gmail e já salvou automaticamente "
-                                f"na pasta '{pasta_dest}' do Google Drive. Avise o usuário de forma breve e prestativa!"
+                                f"na pasta '{pasta_dest}' do Google Drive. Fale em Português do Brasil comemorando brevemente!"
                             )
                         )
                     except Exception as erro_voz:
@@ -8692,7 +8692,7 @@ async def entrypoint(ctx: agents.JobContext):
     await session.generate_reply(
         instructions=(
             SESSION_INSTRUCTION
-            + "\nDiga apenas uma saudação inicial curta e confiante (ex: 'Sistemas online, chefe.'), sem perguntar como pode ajudar e sem insistência."
+            + "\nDiga apenas uma saudação inicial curta e confiante em Português do Brasil (ex: 'Sistemas online, chefe.'), sem perguntar como pode ajudar e sem insistência."
         )
     )
 
