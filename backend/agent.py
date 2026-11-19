@@ -2001,10 +2001,11 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Pesquisa qualquer informação em tempo real na web/internet (Google/DuckDuckGo) sobre qualquer assunto: "
+            "Pesquisa qualquer informação em tempo real na web/internet (Google/Bing) sobre qualquer assunto: "
             "índices econômicos (IGP-M, IPCA, CDI, Selic, inflação, cotação do dólar, euro, criptomoedas), "
-            "preços de mercado, dados de empresas, leis, regras jurídicas, fatos históricos, biografias, eventos ou dúvidas gerais. "
-            "Use sempre que o usuário perguntar: 'pesquise no Google', 'pesquise na internet', 'qual o valor de X', 'o que é Y', "
+            "dados de empresas, leis, regras jurídicas, fatos históricos, biografias, eventos ou dúvidas gerais. "
+            "(ATENÇÃO: Para compras de produtos, ofertas e comparação de lojas, NUNCA use esta ferramenta — use SEMPRE 'pesquisar_e_comparar_compras'). "
+            "Use sempre que o usuário perguntar: 'pesquise no Google', 'pesquise na internet', 'o que é Y', "
             "ou quando a resposta depender de dados e fatos reais atualizados. "
             "`termo`: termo ou pergunta de busca (ex.: 'IGP-M acumulado 12 meses 2026', 'cotação do dólar hoje', 'capital da Islândia')."
         )
@@ -2039,14 +2040,14 @@ class Assistant(Agent):
             "Especialista em Compras & Smart Shopping do Jarvis. "
             "Pesquisa opções de compra de qualquer produto comparando ofertas em lojas próximas/locais (retirada rápida na cidade) "
             "versus grandes marketplaces online (Mercado Livre, Amazon Brasil, Google Shopping). "
-            "Abre automaticamente no navegador Chrome várias abas comparativas com os produtos encontrados, "
+            "Abre automaticamente no navegador Chrome 3 abas comparativas com os produtos encontrados, "
             "audita os vendedores (identifica Loja Oficial, medalhas MercadoLíder Platinum/Gold, reputação e nota), "
             "analisa volume de vendas do anúncio (quantos já foram vendidos) e avaliações de compradores reais. "
-            "Use SEMPRE que o usuário disser: 'quero comprar [X]', 'compra um [X]', 'compra uma [X]', 'preciso comprar [X]', "
-            "'onde compro [X]', 'pesquise para comprar [X]', 'qual o melhor lugar para comprar [X]', 'compare compras perto e longe', "
-            "'veja a reputação do vendedor', 'quantos já vendeu'. "
+            "REGRA OBRIGATÓRIA: Chame IMEDIATAMENTE sempre que o usuário mencionar compra ou busca de produto "
+            "(ex.: 'quero comprar [X]', 'compra um [X]', 'compra uma [X]', 'preciso comprar [X]', 'onde compro [X]', 'pesquise para comprar [X]'). "
+            "NUNCA faça perguntas de volta (não pergunte marca, modelo, voltagem ou preço): chame esta ferramenta na hora com o termo falado. "
             "NÃO é necessário ter caderno aberto para usar esta ferramenta. "
-            "`produto`: nome ou modelo do produto a pesquisar (ex.: 'fone bluetooth JBL Wave Buds', 'iPhone 15 128GB', 'furadeira de impacto Bosch'). "
+            "`produto`: produto ou termo dito pelo usuário (ex.: 'furadeira', 'fone de ouvido', 'notebook Dell'). Passe o termo exato falado sem perguntar nada ao usuário. "
             "`cidade_ou_local`: cidade ou região para busca local/perto (opcional; se vazio, detecta automaticamente a cidade do usuário). "
             "`abrir_abas`: se True (padrão), abre abas comparativas no Chrome com os produtos encontrados."
         )
