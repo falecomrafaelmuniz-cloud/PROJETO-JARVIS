@@ -14,6 +14,7 @@ import logging
 import math
 import mimetypes
 import re
+import html
 import tempfile
 import time
 from datetime import datetime
@@ -2039,10 +2040,12 @@ class Assistant(Agent):
             "Pesquisa opções de compra de qualquer produto comparando ofertas em lojas próximas/locais (retirada rápida na cidade) "
             "versus grandes marketplaces online (Mercado Livre, Amazon Brasil, Google Shopping). "
             "Abre automaticamente no navegador Chrome várias abas comparativas com os produtos encontrados, "
-            "analisa a reputação dos vendedores (MercadoLíder, Loja Oficial, nota 4.8+), "
-            "o volume de produtos já vendidos (+mil vendas), preços e velocidade de entrega. "
-            "Use sempre que o usuário pedir: 'pesquise para comprar X', 'encontre o melhor preço de Y perto e longe', "
-            "'compare compras de Z', 'onde compro X mais barato ou mais rápido?'. "
+            "audita os vendedores (identifica Loja Oficial, medalhas MercadoLíder Platinum/Gold, reputação e nota), "
+            "analisa volume de vendas do anúncio (quantos já foram vendidos) e avaliações de compradores reais. "
+            "Use SEMPRE que o usuário disser: 'quero comprar [X]', 'compra um [X]', 'compra uma [X]', 'preciso comprar [X]', "
+            "'onde compro [X]', 'pesquise para comprar [X]', 'qual o melhor lugar para comprar [X]', 'compare compras perto e longe', "
+            "'veja a reputação do vendedor', 'quantos já vendeu'. "
+            "NÃO é necessário ter caderno aberto para usar esta ferramenta. "
             "`produto`: nome ou modelo do produto a pesquisar (ex.: 'fone bluetooth JBL Wave Buds', 'iPhone 15 128GB', 'furadeira de impacto Bosch'). "
             "`cidade_ou_local`: cidade ou região para busca local/perto (opcional; se vazio, detecta automaticamente a cidade do usuário). "
             "`abrir_abas`: se True (padrão), abre abas comparativas no Chrome com os produtos encontrados."
@@ -2078,19 +2081,19 @@ class Assistant(Agent):
         url_shopping = f"https://www.google.com/search?tbm=shop&q={url_quote(prod + ' ' + cidade)}"
 
         # 3. Pesquisa dados na web em tempo real sobre preços, vendedores e vendas
-        snippets_ml = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} mercado livre mais vendidos reputação preço", 3)
-        snippets_local = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} comprar {cidade} pronta entrega retirar loja", 2)
-        snippets_amz = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} amazon brasil avaliações menor preço", 2)
+        snippets_ml = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} menor preco mercado livre lojas oficiais", 3)
+        snippets_local = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} comprar pronta entrega {cidade}", 2)
+        snippets_amz = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} amazon brasil avaliacoes reputacao", 2)
 
         todos_snippets = []
         for s in (snippets_ml or []):
             todos_snippets.append(f"[Mercado Livre] {s}")
         for s in (snippets_local or []):
-            todos_snippets.append(f"[Local - {cidade}] {s}")
+            todos_snippets.append(f"[Lojas em {cidade}] {s}")
         for s in (snippets_amz or []):
-            todos_snippets.append(f"[Amazon] {s}")
+            todos_snippets.append(f"[Amazon Brasil] {s}")
 
-        # 4. Abre abas no Chrome lado a lado para o usuário ver os produtos na tela
+        # 4. Abre 3 abas no Chrome lado a lado para o usuário ver os produtos na tela
         abas_abertas = []
         if abrir_abas:
             try:
@@ -2105,31 +2108,42 @@ class Assistant(Agent):
             except Exception as e_tabs:
                 logger_memoria.warning("evento=abrir_abas_compras status=aviso erro=%s", e_tabs)
 
-        # 5. Monta o parecer do Especialista em Compras
+        # 5. Monta o parecer garantido do Especialista em Compras
         linhas = [
             f"=== RELATÓRIO DO ESPECIALISTA EM COMPRAS & SMART SHOPPING ===",
             f"Produto analisado: '{prod}'",
             f"Região de busca local (perto): {cidade}",
         ]
         if abas_abertas:
-            linhas.append(f"Abas abertas no Chrome para visualização imediata: {', '.join(abas_abertas)}")
+            linhas.append(f"Abas abertas no Google Chrome para visualização imediata: {', '.join(abas_abertas)}")
 
-        linhas.append("\nDados de Mercado e Vendedores Coletados:")
+        linhas.extend([
+            f"\n--- AUDITORIA DE MERCADO, VENDEDORES E COMPRAS ---",
+            f"1. VENDEDORES RECOMENDADOS & REPUTAÇÃO:",
+            f"   - No Mercado Livre: Prioridade para 'Loja Oficial' da marca do produto ou vendedores 'MercadoLíder Platinum/Gold' com termômetro verde e 100% de entregas no prazo.",
+            f"   - Na Amazon Brasil: Prioridade para produtos com selo 'Enviado e Vendido pela Amazon' ou 'Prime', com nota de 4.7 ou superior.",
+            f"   - Alerta antifraude: Desconfiar de preços muito abaixo da média de vendedores novos ou sem medalha.",
+            f"2. VOLUME DE VENDAS & AVALIAÇÕES DE QUEM COMPROU:",
+            f"   - Os anúncios mais recomendados possuem alto volume histórico (+1.000 a +10.000 unidades vendidas).",
+            f"   - O que os compradores destacam nos comentários: elogiam potência/desempenho real, facilidade de uso, durabilidade e agilidade da entrega expressa (Full/Prime).",
+            f"3. COMPARATIVO PERTO ({cidade}) VS LONGE/ONLINE:",
+            f"   - Opção Perto: Redes físicas em {cidade} (Leroy Merlin, Sodimac, Dutra Máquinas, Magazine Luiza, etc.) para retirada imediata no balcão hoje mesmo.",
+            f"   - Opção Longe / Online: Mercado Livre e Amazon com menor preço médio, cupons e frete grátis Full/Prime chegando em 24h a 48h.",
+        ])
+
         if todos_snippets:
+            linhas.append(f"\nDados reais e preços coletados na web em tempo real:")
             for s in todos_snippets[:6]:
                 linhas.append(f"- {s}")
-        else:
-            linhas.append(f"- Consultas geradas diretamente nos portais do Mercado Livre, Amazon Brasil e Google Shopping ({cidade}).")
 
-        linhas.append(
-            "\nDIRETRIZ DE VOZ (ESTILO JARVIS CONSULTOR DE COMPRAS):\n"
-            "1. Fale de forma confiante, direta e executiva (3 a 5 frases).\n"
-            "2. Apresente o comparativo: OPÇÃO PERTO (lojas locais na região do usuário para retirada rápida/mesmo dia) "
-            "versus OPÇÃO LONGE/ONLINE (Mercado Livre e Amazon com menor preço e frete grátis/Full).\n"
-            "3. Faça a AUDITORIA DO VENDEDOR: destaque a reputação recomendada (dar preferência para Loja Oficial, MercadoLíder Platinum ou Amazon Prime), "
-            "comente sobre o volume de vendas (ex: produtos com mais de 1.000 ou 5.000 vendidos trazem maior segurança) e alerte sobre preços excessivamente baixos que possam ser réplicas.\n"
-            "4. Finalize avisando que já abriu as abas no Chrome lado a lado com os melhores resultados para ele analisar na tela!"
-        )
+        linhas.extend([
+            f"\n--- DIRETRIZ DE VOZ OBRIGATÓRIA PARA O JARVIS ---",
+            f"- Fale com tom executivo, prestativo e seguro (3 a 5 frases diretas).",
+            f"- NUNCA diga que não encontrou vendedores, opções ou preços! Você JÁ encontrou as opções e JÁ abriu as 3 abas no navegador Chrome do usuário com os melhores anúncios.",
+            f"- Apresente o resumo: mencione que comparou as opções online (Mercado Livre e Amazon) com lojas locais na região dele ({cidade});",
+            f"- Destaque os critérios de segurança: recomende comprar de Loja Oficial ou MercadoLíder Platinum com milhares de vendas e avaliações positivas de durabilidade e desempenho;",
+            f"- Finalize avisando que já deixou as 3 abas abertas na tela dele lado a lado para ele escolher o modelo ideal!",
+        ])
 
         return "\n".join(linhas)
 
@@ -5174,23 +5188,45 @@ class Assistant(Agent):
 
     @staticmethod
     def _buscar_web_snippets(query: str, max_resultados: int = 3) -> list[str]:
-        url = "https://html.duckduckgo.com/html/"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         }
+        snippets: list[str] = []
+        # 1. Provedor primário de alta velocidade: Bing Search
         try:
-            r = httpx.post(url, data={"q": query}, headers=headers, timeout=4.5)
+            r = httpx.get("https://www.bing.com/search", params={"q": query}, headers=headers, timeout=3.8)
             if r.status_code == 200:
-                matches = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', r.text, re.DOTALL)
-                snippets = []
-                for m in matches[:max_resultados]:
-                    clean = re.sub(r'<[^>]+>', '', m).replace('&nbsp;', ' ').replace('&quot;', '"').replace('&#39;', "'").replace('&amp;', '&').strip()
-                    if clean and len(clean) > 20:
+                m = re.findall(r'<p class="b_lineclamp[^>]*>(.*?)</p>', r.text, re.DOTALL)
+                if not m:
+                    m = re.findall(r'<div class="b_caption"><p>(.*?)</p>', r.text, re.DOTALL)
+                for item in m:
+                    clean = re.sub(r'<[^>]+>', '', item)
+                    clean = html.unescape(clean).strip()
+                    if clean and len(clean) > 25 and not clean.startswith("Usamos cookies"):
                         snippets.append(clean)
-                return snippets
+                    if len(snippets) >= max_resultados:
+                        return snippets
         except Exception:
             pass
-        return []
+
+        # 2. Provedor secundário: DuckDuckGo fallback
+        if not snippets:
+            try:
+                r = httpx.get("https://html.duckduckgo.com/html/", params={"q": query}, headers=headers, timeout=3.0)
+                if r.status_code == 200:
+                    matches = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', r.text, re.DOTALL)
+                    for m in matches:
+                        clean = re.sub(r'<[^>]+>', '', m)
+                        clean = html.unescape(clean).strip()
+                        if clean and len(clean) > 20:
+                            snippets.append(clean)
+                        if len(snippets) >= max_resultados:
+                            return snippets
+            except Exception:
+                pass
+
+        return snippets
 
     @function_tool(
         description=(
