@@ -142,6 +142,19 @@ SUAS DIRETRIZES TÉCNICAS:
 - Forneça correções seguras, testes unitários, análise de complexidade algorítmica O(n) e otimizações de performance.
 - Priorize soluções tipadas, testáveis e prontas para produção.`,
   },
+  {
+    id: 'especialista_compras',
+    name: 'Especialista em Compras & Smart Shopping',
+    shortRole: 'Personal Shopper & Auditor de Vendedores',
+    icon: '🛒',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    description: 'Comparação entre lojas próximas (retirada rápida) vs marketplaces online (Mercado Livre, Amazon), reputação e vendas.',
+    systemPrompt: `Você é um Especialista Sênior em Compras Inteligentes, Negociação e Personal Shopper.
+SUAS DIRETRIZES TÉCNICAS:
+- Comparação Perto vs Longe: Avalie opções de retirada rápida ou pronta entrega local vs marketplaces nacionais/internacionais (Mercado Livre, Amazon, Shopee).
+- Auditoria do Vendedor: Analise reputação (MercadoLíder Platinum, Loja Oficial, nota 4.8+), quantidade vendida (+mil vendas) e avaliações reais de clientes.
+- Custo-benefício & Segurança: Alerte sobre riscos de réplicas, fretes abusivos, garantias e indique a melhor oportunidade de compra.`,
+  },
 ];
 
 export function getExpertById(id?: string, notebookName?: string): ExpertPersona {
@@ -163,6 +176,18 @@ export function getExpertById(id?: string, notebookName?: string): ExpertPersona
       nLow.includes('prédio')
     ) {
       return EXPERTS_CATALOG.find((e) => e.id === 'parecer_duplo') || EXPERTS_CATALOG[0];
+    }
+    if (
+      nLow.includes('compra') ||
+      nLow.includes('compras') ||
+      nLow.includes('shopping') ||
+      nLow.includes('shopper') ||
+      nLow.includes('oferta') ||
+      nLow.includes('produto') ||
+      nLow.includes('preço') ||
+      nLow.includes('preco')
+    ) {
+      return EXPERTS_CATALOG.find((e) => e.id === 'especialista_compras') || EXPERTS_CATALOG[0];
     }
   }
   return EXPERTS_CATALOG[0]; // JARVIS Executivo padrão

@@ -2033,6 +2033,106 @@ class Assistant(Agent):
         )
         return "\n".join(resultado)
 
+    @function_tool(
+        description=(
+            "Especialista em Compras & Smart Shopping do Jarvis. "
+            "Pesquisa opções de compra de qualquer produto comparando ofertas em lojas próximas/locais (retirada rápida na cidade) "
+            "versus grandes marketplaces online (Mercado Livre, Amazon Brasil, Google Shopping). "
+            "Abre automaticamente no navegador Chrome várias abas comparativas com os produtos encontrados, "
+            "analisa a reputação dos vendedores (MercadoLíder, Loja Oficial, nota 4.8+), "
+            "o volume de produtos já vendidos (+mil vendas), preços e velocidade de entrega. "
+            "Use sempre que o usuário pedir: 'pesquise para comprar X', 'encontre o melhor preço de Y perto e longe', "
+            "'compare compras de Z', 'onde compro X mais barato ou mais rápido?'. "
+            "`produto`: nome ou modelo do produto a pesquisar (ex.: 'fone bluetooth JBL Wave Buds', 'iPhone 15 128GB', 'furadeira de impacto Bosch'). "
+            "`cidade_ou_local`: cidade ou região para busca local/perto (opcional; se vazio, detecta automaticamente a cidade do usuário). "
+            "`abrir_abas`: se True (padrão), abre abas comparativas no Chrome com os produtos encontrados."
+        )
+    )
+    async def pesquisar_e_comparar_compras(
+        self,
+        produto: str,
+        cidade_ou_local: str = "",
+        abrir_abas: bool = True,
+    ) -> str:
+        prod = (produto or "").strip()
+        if not prod:
+            return "Por favor, informe o produto ou modelo que deseja pesquisar para compra."
+
+        # 1. Determina a localização do usuário para busca local (perto)
+        cidade = (cidade_ou_local or "").strip()
+        if not cidade:
+            cidade = self.location_state.get("city") or ""
+        if not cidade:
+            try:
+                await self.obter_localizacao_atual()
+                cidade = self.location_state.get("city") or ""
+            except Exception:
+                pass
+        if not cidade:
+            cidade = "São Paulo"
+
+        # 2. Constrói URLs diretas de compra
+        prod_encoded = url_quote(prod)
+        url_ml = f"https://lista.mercadolivre.com.br/{prod_encoded}"
+        url_amazon = f"https://www.amazon.com.br/s?k={prod_encoded}&s=review-rank"
+        url_shopping = f"https://www.google.com/search?tbm=shop&q={url_quote(prod + ' ' + cidade)}"
+
+        # 3. Pesquisa dados na web em tempo real sobre preços, vendedores e vendas
+        snippets_ml = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} mercado livre mais vendidos reputação preço", 3)
+        snippets_local = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} comprar {cidade} pronta entrega retirar loja", 2)
+        snippets_amz = await asyncio.to_thread(self._buscar_web_snippets, f"{prod} amazon brasil avaliações menor preço", 2)
+
+        todos_snippets = []
+        for s in (snippets_ml or []):
+            todos_snippets.append(f"[Mercado Livre] {s}")
+        for s in (snippets_local or []):
+            todos_snippets.append(f"[Local - {cidade}] {s}")
+        for s in (snippets_amz or []):
+            todos_snippets.append(f"[Amazon] {s}")
+
+        # 4. Abre abas no Chrome lado a lado para o usuário ver os produtos na tela
+        abas_abertas = []
+        if abrir_abas:
+            try:
+                await self.abrir_site(url_ml, nome_site=f"Mercado Livre: {prod}", nova_aba=True)
+                abas_abertas.append("Mercado Livre (Mais Vendidos / Full)")
+                await asyncio.sleep(0.35)
+                await self.abrir_site(url_amazon, nome_site=f"Amazon: {prod}", nova_aba=True)
+                abas_abertas.append("Amazon Brasil (Mais Bem Avaliados)")
+                await asyncio.sleep(0.35)
+                await self.abrir_site(url_shopping, nome_site=f"Google Shopping ({cidade}): {prod}", nova_aba=True)
+                abas_abertas.append(f"Google Shopping ({cidade} - Opções Próximas)")
+            except Exception as e_tabs:
+                logger_memoria.warning("evento=abrir_abas_compras status=aviso erro=%s", e_tabs)
+
+        # 5. Monta o parecer do Especialista em Compras
+        linhas = [
+            f"=== RELATÓRIO DO ESPECIALISTA EM COMPRAS & SMART SHOPPING ===",
+            f"Produto analisado: '{prod}'",
+            f"Região de busca local (perto): {cidade}",
+        ]
+        if abas_abertas:
+            linhas.append(f"Abas abertas no Chrome para visualização imediata: {', '.join(abas_abertas)}")
+
+        linhas.append("\nDados de Mercado e Vendedores Coletados:")
+        if todos_snippets:
+            for s in todos_snippets[:6]:
+                linhas.append(f"- {s}")
+        else:
+            linhas.append(f"- Consultas geradas diretamente nos portais do Mercado Livre, Amazon Brasil e Google Shopping ({cidade}).")
+
+        linhas.append(
+            "\nDIRETRIZ DE VOZ (ESTILO JARVIS CONSULTOR DE COMPRAS):\n"
+            "1. Fale de forma confiante, direta e executiva (3 a 5 frases).\n"
+            "2. Apresente o comparativo: OPÇÃO PERTO (lojas locais na região do usuário para retirada rápida/mesmo dia) "
+            "versus OPÇÃO LONGE/ONLINE (Mercado Livre e Amazon com menor preço e frete grátis/Full).\n"
+            "3. Faça a AUDITORIA DO VENDEDOR: destaque a reputação recomendada (dar preferência para Loja Oficial, MercadoLíder Platinum ou Amazon Prime), "
+            "comente sobre o volume de vendas (ex: produtos com mais de 1.000 ou 5.000 vendidos trazem maior segurança) e alerte sobre preços excessivamente baixos que possam ser réplicas.\n"
+            "4. Finalize avisando que já abriu as abas no Chrome lado a lado com os melhores resultados para ele analisar na tela!"
+        )
+
+        return "\n".join(linhas)
+
     async def _buscar_video_youtube(self, consulta: str) -> tuple[str | None, str | None]:
         termo = consulta.strip()
         if not termo:
@@ -4409,7 +4509,8 @@ class Assistant(Agent):
             "4) 'cfo_financeiro' (CFO & Auditor Contábil / Financeiro); "
             "5) 'medico' (Médico Perito e Medicina Baseada em Evidências); "
             "6) 'dev_senior' (Engenheiro de Software Sênior e Arquiteto); "
-            "7) 'jarvis' (JARVIS Executivo Padrão). "
+            "7) 'especialista_compras' (Especialista em Compras, Smart Shopping & Personal Shopper); "
+            "8) 'jarvis' (JARVIS Executivo Padrão). "
             "Use sempre que o usuário pedir: 'coloque o advogado e síndico no caderno Porto Panorama', "
             "'defina o especialista do caderno como advogado', 'mude o especialista para médico', etc. "
             "`especialista`: nome ou termo do especialista desejado. "
@@ -4441,6 +4542,9 @@ class Assistant(Agent):
         elif any(w in esp_termo for w in ["dev", "programador", "desenvolvedor", "software", "engenheiro", "arquiteto", "codigo", "código"]):
             id_especialista = "dev_senior"
             nome_exib = "Engenheiro de Software Sênior"
+        elif any(w in esp_termo for w in ["compra", "compras", "shopper", "shopping", "produto", "preco", "preço", "ofertas", "mercado livre", "amazon"]):
+            id_especialista = "especialista_compras"
+            nome_exib = "Especialista em Compras & Smart Shopping"
         elif any(w in esp_termo for w in ["jarvis", "padrao", "padrão", "executivo"]):
             id_especialista = "jarvis"
             nome_exib = "JARVIS Executivo"
@@ -5252,6 +5356,8 @@ class Assistant(Agent):
             nome_low = (nb_meta_nome + " " + nb_ativo_id).lower()
             if any(w in nome_low for w in ["porto", "panorama", "condominio", "condomínio", "edificio", "edifício", "predio", "prédio"]):
                 nb_meta_expert = "parecer_duplo"
+            elif any(w in nome_low for w in ["compra", "compras", "shopping", "shopper", "produtos", "ofertas", "precos", "preços"]):
+                nb_meta_expert = "especialista_compras"
 
         diretrizes_especialistas = {
             "parecer_duplo": (
@@ -5295,6 +5401,12 @@ class Assistant(Agent):
                 "ATUAÇÃO OBRIGATÓRIA COMO ENGENHEIRO DE SOFTWARE SÊNIOR E ARQUITETO DE SISTEMAS:\n"
                 "- Code review minucioso, princípios SOLID, Clean Code e complexidade O(n).\n"
                 "- Diagnóstico cirúrgico de bugs e soluções prontas para produção."
+            ),
+            "especialista_compras": (
+                "ATUAÇÃO OBRIGATÓRIA COMO ESPECIALISTA CONSULTOR DE COMPRAS & SMART SHOPPING (PERSONAL SHOPPER):\n"
+                "- Comparação inteligente de preços, prazos e fretes entre opções próximas/locais (retirada rápida) vs marketplaces online (Mercado Livre, Amazon, Shopee, Magalu).\n"
+                "- Auditoria criteriosa de vendedores: reputação (MercadoLíder, Platinum, Loja Oficial, nota 4.8+), quantidade total de produtos vendidos, garantia e histórico de avaliações.\n"
+                "- Detecção de fraudes, anúncios suspeitos ou réplicas, sugerindo sempre a melhor relação custo-benefício e segurança para a compra."
             ),
             "jarvis": (
                 "ATUAÇÃO COMO JARVIS EXECUTIVO:\n"
