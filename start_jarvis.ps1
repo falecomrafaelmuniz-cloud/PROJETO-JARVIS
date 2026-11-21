@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $agentDirectory = $PSScriptRoot
 $backendDirectory = Join-Path $agentDirectory 'backend'
@@ -118,11 +118,11 @@ try {
         Start-Sleep -Milliseconds 800
     }
 
-    Write-Host "[1/3] Ligando o Cérebro do Jarvis em Python..." -ForegroundColor Yellow
+    Write-Host "[1/3] Ligando o Cérebro do Jarvis em Python (Modo Silencioso)..." -ForegroundColor Yellow
     Start-Process -FilePath $env:ComSpec `
-        -ArgumentList @('/k', 'title [JARVIS 1/2] BACKEND (Python) && .\.venv\Scripts\python.exe backend\agent.py dev') `
+        -ArgumentList @('/c', 'title [JARVIS 1/2] BACKEND (Python) && .\.venv\Scripts\python.exe backend\agent.py dev') `
         -WorkingDirectory $agentDirectory `
-        -WindowStyle Normal | Out-Null
+        -WindowStyle Hidden | Out-Null
     Start-Sleep -Seconds 3
 
     if (-not (Get-JarvisWorkers)) {
@@ -145,12 +145,12 @@ try {
         Write-Host "[2/3] Interface web do Jarvis já está ativa e respondendo." -ForegroundColor Green
     }
     else {
-        Write-Host "[2/3] Ligando a Interface Gráfica Next.js..." -ForegroundColor Yellow
+        Write-Host "[2/3] Ligando a Interface Gráfica Next.js (Modo Silencioso)..." -ForegroundColor Yellow
         $pkgCommand = if (Get-Command pnpm.cmd -ErrorAction SilentlyContinue) { 'pnpm dev' } else { 'npm run dev' }
         Start-Process -FilePath $env:ComSpec `
-            -ArgumentList @('/k', "title [JARVIS 2/2] FRONTEND (Next.js) && $pkgCommand") `
+            -ArgumentList @('/c', "title [JARVIS 2/2] FRONTEND (Next.js) && $pkgCommand") `
             -WorkingDirectory $webDirectory `
-            -WindowStyle Normal | Out-Null
+            -WindowStyle Hidden | Out-Null
 
         $deadline = (Get-Date).AddSeconds(45)
         while ((Get-Date) -lt $deadline) {
@@ -166,10 +166,15 @@ try {
         }
     }
 
-    # 3. Abre o Navegador
-    Write-Host "[3/3] Abrindo o Jarvis no navegador..." -ForegroundColor Cyan
+    # 3. Abre na Janela Desktop Nativa OSONE
+    Write-Host "[3/3] Abrindo o Jarvis na Janela Desktop OSONE..." -ForegroundColor Cyan
     Start-Sleep -Seconds 1
-    Start-Process $webUrl
+    Push-Location $webDirectory
+    try {
+        & node desktop/run.cjs
+    } finally {
+        Pop-Location
+    }
     Write-Host "Jarvis pronto para uso!" -ForegroundColor Green
     Start-Sleep -Seconds 2
 }
