@@ -17,6 +17,7 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { ActivityPanel } from '@/components/app/activity-panel';
+import { AntigravityPanel } from '@/components/app/antigravity-panel';
 import { AutomationsPanel } from '@/components/app/automations-panel';
 import { ClockWidget } from '@/components/app/clock-widget';
 import { EmailComposer } from '@/components/app/email-composer';
@@ -404,6 +405,11 @@ export const SessionView = ({
             relogio: 'clock',
             neural: 'neural',
             rede_neural: 'neural',
+            antigravity: 'antigravity',
+            codigo: 'antigravity',
+            desenvolvimento: 'antigravity',
+            dev: 'antigravity',
+            programacao: 'antigravity',
           };
 
           if (target === 'all' || target === 'todos' || target === 'tudo') {
@@ -606,6 +612,8 @@ export const SessionView = ({
   const handleOpenEmail = useCallback(() => setPanelOpen('email', true), [setPanelOpen]);
   const handleCloseFiles = useCallback(() => setPanelOpen('files', false), [setPanelOpen]);
   const handleCloseVideos = useCallback(() => setPanelOpen('videos', false), [setPanelOpen]);
+  const handleCloseAntigravity = useCallback(() => setPanelOpen('antigravity', false), [setPanelOpen]);
+  const handleOpenAntigravity = useCallback(() => setPanelOpen('antigravity', true), [setPanelOpen]);
 
   const handleOpenNeuralConfig = useCallback(() => {
     setNeuralConfigSignal((prev) => prev + 1);
@@ -780,6 +788,11 @@ export const SessionView = ({
         isOpen={hudPanels.files}
         onClose={handleCloseFiles}
         onOpenEmailComposer={handleOpenEmail}
+      />
+      <AntigravityPanel
+        isOpen={hudPanels.antigravity}
+        onClose={handleCloseAntigravity}
+        onOpenRequest={handleOpenAntigravity}
       />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

@@ -25,7 +25,7 @@ const CENTER_BOTTOM_RESERVED = 100;
 // Colunas da esquerda para a direita
 const COLUMNS: { ids: HudPanelId[]; side: boolean }[] = [
   { ids: ['system', 'trader'], side: true },
-  { ids: ['email'], side: false },
+  { ids: ['email', 'antigravity'], side: false },
   { ids: ['clock', 'files'], side: false },
   { ids: ['reminders', 'favorites'], side: false },
   { ids: ['activity', 'automations'], side: true },

@@ -7,6 +7,7 @@ import {
   Bot,
   ChevronDown,
   Clock,
+  Code2,
   Film,
   FolderOpen,
   Hand,
@@ -37,7 +38,8 @@ export type HudPanelId =
   | 'email'
   | 'files'
   | 'neural'
-  | 'videos';
+  | 'videos'
+  | 'antigravity';
 
 export type HudPanelsState = Record<HudPanelId, boolean>;
 
@@ -53,6 +55,7 @@ export const DEFAULT_HUD_PANELS: HudPanelsState = {
   files: false,
   neural: false,
   videos: false,
+  antigravity: false,
 };
 
 interface HudMenuProps {
@@ -85,6 +88,7 @@ const MENU_ITEMS: MenuItemDef[] = [
   { id: 'favorites', label: 'Atalhos', icon: Star },
   { id: 'email', label: 'E-mail', icon: Mail },
   { id: 'neural', label: 'Rede Neural', icon: Sparkles },
+  { id: 'antigravity', label: 'Antigravity Code', icon: Code2 },
   { id: 'videos', label: 'Vídeos', icon: Film },
 ];
 

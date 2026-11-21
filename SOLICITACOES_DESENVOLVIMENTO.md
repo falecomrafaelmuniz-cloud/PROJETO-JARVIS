@@ -4,11 +4,12 @@
 
 | ID | Data / Hora | Título | Arquivo Alvo | Prioridade | Status |
 |---|---|---|---|---|---|
-| #1 | 15/11/2026 01:22:35 | **Ferramenta de zoom para sites** | `backend/jarvis_browser.py` | MÉDIA | 🟡 pendente |
+| #2 | 20/11/2026 16:55:19 | **Criar aba de Resumo de Capacidades** | `frontend/components/app/system-dashboard.tsx` | BAIXA | 🟡 pendente |
+| #1 | 15/11/2026 01:22:35 | **Ferramenta de zoom para sites** | `backend/jarvis_browser.py` | MÉDIA | 🟡 concluida |
 
 ## Detalhes da Última Solicitação:
-- **ID**: #1
-- **Título**: Ferramenta de zoom para sites
-- **Arquivo Alvo**: `backend/jarvis_browser.py`
-- **Descrição**: Implementar uma funcionalidade que permita ao usuário aumentar e diminuir o tamanho dos elementos e fontes dentro dos sites acessados pelo navegador.
-- **Prioridade**: média
+- **ID**: #2
+- **Título**: Criar aba de Resumo de Capacidades
+- **Arquivo Alvo**: `frontend/components/app/system-dashboard.tsx`
+- **Descrição**: Criar um novo componente visual no HUD que exibe o resumo das capacidades do Jarvis em uma aba dedicada.
+- **Prioridade**: baixa

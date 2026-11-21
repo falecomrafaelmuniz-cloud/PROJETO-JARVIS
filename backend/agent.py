@@ -37,6 +37,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from urllib.parse import quote as url_quote
+from jarvis_antigravity import obter_antigravity_engine, AntigravityEngine
 
 from livekit import agents, rtc
 from livekit.agents import (
@@ -52,7 +53,7 @@ from livekit.agents.voice import room_io
 from livekit.agents._exceptions import APIConnectionError
 from livekit.plugins import (
     noise_cancellation,
-    google
+    google,
 )
 import livekit.plugins.google.realtime.realtime_api as lk_google_realtime
 
@@ -342,6 +343,9 @@ class Assistant(Agent):
         self._ultimo_destino_gmail: str = ""
         self._ultimo_tempo_gmail: float = 0.0
         self._gmail_ja_aberto_na_sessao: bool = False
+        self._calendar_lock = asyncio.Lock()
+        self._ultimo_destino_calendar: str = ""
+        self._ultimo_tempo_calendar: float = 0.0
         self._active_notebook_id: str = "geral"
         self._workspace_panel_open: bool = False
         self._ultimo_texto_notebook_transcrito: str = ""
@@ -421,6 +425,31 @@ class Assistant(Agent):
                 self._gmail_ja_aberto_na_sessao = True
             except Exception as erro:
                 logger_memoria.warning("evento=navegar_gmail status=erro motivo=%s", erro)
+
+    async def _navegar_no_calendar_navegador(self, caminho_ou_url: str = "") -> None:
+        destino = (caminho_ou_url or "").strip()
+        if not destino.startswith("http"):
+            if destino.startswith("/"):
+                url_final = f"https://calendar.google.com/calendar/u/0/r{destino}"
+            elif destino.startswith("#"):
+                url_final = f"https://calendar.google.com/calendar/u/0/r{destino}"
+            elif destino:
+                url_final = f"https://calendar.google.com/calendar/u/0/r/{destino}"
+            else:
+                url_final = "https://calendar.google.com/calendar/u/0/r"
+        else:
+            url_final = destino
+
+        agora = time.monotonic()
+        async with self._calendar_lock:
+            if url_final == self._ultimo_destino_calendar and (agora - self._ultimo_tempo_calendar) < 3.0:
+                return
+            self._ultimo_destino_calendar = url_final
+            self._ultimo_tempo_calendar = agora
+            try:
+                await asyncio.to_thread(jarvis_chrome.open_url, url_final)
+            except Exception as erro:
+                logger_memoria.warning("evento=navegar_calendar status=erro motivo=%s", erro)
 
     async def _publicar_rascunho_email(self):
         payload = {
@@ -1249,6 +1278,171 @@ class Assistant(Agent):
             user32.mouse_event(0x0800, 0, 0, delta, 0)  # MOUSEEVENTF_WHEEL
             time.sleep(0.03)
 
+    def _localizar_elemento_tela(self, alvo: str, qual_tela: str = "atual") -> dict:
+        termo = (alvo or "").strip()
+        if not termo:
+            return {"encontrado": False, "motivo": "Nenhum alvo informado"}
+
+        img = self._capturar_imagem_tela(qual_tela)
+        if not img:
+            return {"encontrado": False, "motivo": "Não foi possível capturar a imagem da tela"}
+
+        x_src, y_src, w, h, desc_monitor = self._obter_retangulo_monitor_alvo(qual_tela)
+        largura_orig, altura_orig = img.size
+
+        prompt = (
+            f"Você é um sistema de visão computacional de altíssima precisão para controle de mouse e automação de interface no Windows.\n"
+            f"O usuário deseja interagir com o seguinte alvo na tela: '{termo}'.\n"
+            f"Exemplos de alvos possíveis:\n"
+            f"- Campo de pesquisa / barra de busca / input de texto (ex: 'Pesquise fotos e álbuns', 'barra de pesquisa', 'campo de texto');\n"
+            f"- Botão de ação (ex: 'Concluir', 'Salvar', 'Enviar', 'Pesquisar', 'Adicionar', 'Cancelar');\n"
+            f"- Foto, miniatura ou imagem (ex: 'foto da geladeira', 'painel do carro', 'terceira foto');\n"
+            f"- Círculo ou caixa de seleção / checkbox para marcar ou desselecionar uma foto/item (ex: 'círculo de seleção', 'marcar foto');\n"
+            f"- Link, aba do navegador, ícone ou menu.\n\n"
+            f"Analise a imagem da tela e localize com máxima precisão a caixa delimitadora 2D (bounding box) "
+            f"do elemento correspondente no formato [ymin, xmin, ymax, xmax] normalizado de 0 a 1000.\n"
+            f"Se o usuário pedir para 'marcar' ou 'selecionar' um item (como uma foto numa galeria), localize preferencialmente o círculo ou caixa de seleção daquele item.\n"
+            f"Se houver múltiplos elementos semelhantes, escolha o que melhor corresponde à descrição '{termo}'. Se for por ordem ('primeira', 'segunda', 'terceira'), "
+            f"respeite a ordem de leitura (esquerda para direita, cima para baixo).\n"
+            f"Retorne sua resposta ESTRITAMENTE em formato JSON:\n"
+            f'{{"encontrado": true, "box_2d": [ymin, xmin, ymax, xmax], "descricao": "descrição concisa do elemento localizado"}}\n'
+            f'Se o elemento não estiver visível nesta tela, retorne:\n'
+            f'{{"encontrado": false, "motivo": "não localizado visualmente na tela atual"}}'
+        )
+
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return {"encontrado": False, "motivo": "GOOGLE_API_KEY não configurada"}
+
+        client = genai.Client(api_key=api_key)
+        resp_json = None
+        for m in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite"):
+            try:
+                resp = client.models.generate_content(model=m, contents=[img, prompt])
+                if resp and resp.text:
+                    txt = resp.text.strip()
+                    if "```" in txt:
+                        m_json = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", txt, re.DOTALL)
+                        if m_json:
+                            txt = m_json.group(1)
+                    resp_json = json.loads(txt)
+                    if resp_json:
+                        break
+            except Exception:
+                continue
+
+        if not resp_json or not resp_json.get("encontrado"):
+            motivo = resp_json.get("motivo", "não localizado visualmente") if resp_json else "tempo limite de visão"
+            return {"encontrado": False, "motivo": motivo}
+
+        box = resp_json.get("box_2d")
+        if not box or len(box) != 4:
+            return {"encontrado": False, "motivo": "coordenadas inválidas"}
+
+        ymin, xmin, ymax, xmax = [float(v) for v in box]
+        x_norm = (xmin + xmax) / 2.0
+        y_norm = (ymin + ymax) / 2.0
+
+        target_x = x_src + int((x_norm / 1000.0) * largura_orig)
+        target_y = y_src + int((y_norm / 1000.0) * altura_orig)
+        descricao = resp_json.get("descricao", termo)
+
+        return {
+            "encontrado": True,
+            "target_x": target_x,
+            "target_y": target_y,
+            "descricao": descricao,
+            "desc_monitor": desc_monitor,
+            "box_2d": box,
+        }
+
+    @staticmethod
+    def _executar_limpar_campo() -> None:
+        user32 = ctypes.windll.user32
+        KEYEVENTF_KEYUP = 0x0002
+        VK_CONTROL = 0x11
+        VK_A = 0x41
+        VK_BACK = 0x08
+
+        time.sleep(0.05)
+        user32.keybd_event(VK_CONTROL, 0, 0, 0)
+        user32.keybd_event(VK_A, 0, 0, 0)
+        time.sleep(0.03)
+        user32.keybd_event(VK_A, 0, KEYEVENTF_KEYUP, 0)
+        user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+        time.sleep(0.05)
+        user32.keybd_event(VK_BACK, 0, 0, 0)
+        time.sleep(0.03)
+        user32.keybd_event(VK_BACK, 0, KEYEVENTF_KEYUP, 0)
+
+    def _executar_teclas_teclado(self, comando_tecla: str, repeticoes: int = 1) -> tuple[bool, str]:
+        user32 = ctypes.windll.user32
+        KEYEVENTF_KEYUP = 0x0002
+
+        KEY_MAP = {
+            'enter': 0x0D, 'return': 0x0D, 'intro': 0x0D,
+            'esc': 0x1B, 'escape': 0x1B,
+            'tab': 0x09,
+            'backspace': 0x08, 'back': 0x08, 'apagar': 0x08,
+            'delete': 0x2E, 'del': 0x2E,
+            'space': 0x20, 'espaco': 0x20, 'espaço': 0x20,
+            'up': 0x26, 'seta_cima': 0x26, 'cima': 0x26,
+            'down': 0x28, 'seta_baixo': 0x28, 'baixo': 0x28,
+            'left': 0x27, 'seta_esquerda': 0x27, 'esquerda': 0x27,
+            'right': 0x29, 'seta_direita': 0x29, 'direita': 0x29,
+            'home': 0x24, 'end': 0x23, 'fim': 0x23,
+            'pageup': 0x21, 'pgup': 0x21,
+            'pagedown': 0x22, 'pgdn': 0x22,
+        }
+        for i in range(1, 13):
+            KEY_MAP[f"f{i}"] = 0x6F + i
+
+        MODIFIERS = {
+            'ctrl': 0x11, 'control': 0x11,
+            'alt': 0x12,
+            'shift': 0x10,
+            'win': 0x5B, 'windows': 0x5B,
+        }
+
+        parts = [p.strip().lower() for p in (comando_tecla or "").replace('+', ' ').replace('-', ' ').split() if p.strip()]
+        if not parts:
+            return False, "Nenhuma tecla especificada."
+
+        mods = []
+        main_key = None
+        for p in parts:
+            if p in MODIFIERS:
+                mods.append(MODIFIERS[p])
+            elif p in KEY_MAP:
+                main_key = KEY_MAP[p]
+            elif len(p) == 1 and p.isalnum():
+                main_key = ord(p.upper())
+
+        if main_key is None and not mods:
+            return False, f"Tecla ou atalho '{comando_tecla}' não reconhecido."
+
+        reps = max(1, min(int(repeticoes or 1), 20))
+        for _ in range(reps):
+            for m in mods:
+                user32.keybd_event(m, 0, 0, 0)
+                time.sleep(0.02)
+            if main_key is not None:
+                user32.keybd_event(main_key, 0, 0, 0)
+                time.sleep(0.03)
+                user32.keybd_event(main_key, 0, KEYEVENTF_KEYUP, 0)
+            for m in reversed(mods):
+                time.sleep(0.02)
+                user32.keybd_event(m, 0, KEYEVENTF_KEYUP, 0)
+            if reps > 1:
+                time.sleep(0.08)
+
+        msg = f"Tecla/Atalho '{comando_tecla}' pressionado com sucesso"
+        if reps > 1:
+            msg += f" {reps} vezes."
+        else:
+            msg += "."
+        return True, msg
+
     def _chamar_gemini_visao(self, imagem_pil: Image.Image, prompt: str) -> str:
         api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
         if not api_key:
@@ -1525,6 +1719,22 @@ class Assistant(Agent):
             "evento=salvar_drive status=sucesso numero=%04d",
             arquivo_drive["numero_memoria"],
         )
+
+        # Atualiza em tempo real o arquivo de texto local aberto no editor
+        try:
+            caminho_local_txt = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Memorias_do_Jarvis.txt")
+            bloco_local = (
+                f"\n\nMemória {arquivo_drive['numero_memoria']:04d}\n"
+                f"Data de gravação (UTC): {datetime.now(timezone.utc).isoformat()}\n"
+                f"ID local: {id_unico}\n\n"
+                f"{informacao_detalhada}\n\n"
+                f"----------------------------------------"
+            )
+            with open(caminho_local_txt, "a", encoding="utf-8") as f_local:
+                f_local.write(bloco_local)
+        except Exception as erro_txt:
+            logger_memoria.warning("evento=salvar_local_txt status=erro motivo=%s", erro_txt)
+
         return (
             "Informação guardada na memória local e arquivada no Google Drive "
             f"como {arquivo_drive['nome']}."
@@ -4048,9 +4258,13 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Localiza visualmente e clica com precisão do mouse em QUALQUER foto, imagem, miniatura, botão, link, ícone ou elemento visual na tela do computador. "
-            "Exemplos: 'clica na segunda foto', 'clica na foto do motor', 'clica na imagem da turbina', 'clica no botão de tela cheia', 'clica no link do artigo X'. "
-            "Use sempre que o usuário pedir para clicar em algo na tela ou quando você quiser abrir, focar ou expandir uma foto ou elemento individualmente."
+            "Localiza visualmente e clica com precisão do mouse em QUALQUER botão, foto, miniatura, "
+            "caixa ou círculo de seleção (checkbox), link, ícone ou elemento visual na tela do computador. "
+            "Exemplos: 'clica na foto da geladeira', 'marca a caixinha da terceira foto', 'clica no botão Concluir', "
+            "'clica no botão de fechar', 'clica na aba do WhatsApp', 'clica duas vezes no arquivo X'. "
+            "`alvo`: o nome ou descrição do elemento a ser clicado na tela (ex: 'botão Concluir', 'círculo de seleção da foto da geladeira', 'foto do motor'). "
+            "`tipo_clique`: 'esquerdo', 'direito' ou 'duplo'. "
+            "`clique_duplo`: True para dar dois cliques rápidos com o botão esquerdo."
         )
     )
     async def clicar_em_elemento_ou_imagem(
@@ -4062,89 +4276,130 @@ class Assistant(Agent):
     ) -> str:
         termo = (alvo or "").strip()
         if not termo:
-            return "Aviso: informe o que você deseja clicar na tela (ex.: 'foto da turbina', 'segunda imagem', 'botão de play')."
+            return "Aviso: informe o que você deseja clicar na tela (ex.: 'botão Concluir', 'foto da geladeira', 'círculo de seleção da foto')."
 
-        img = await asyncio.to_thread(self._capturar_imagem_tela, qual_tela)
-        if not img:
-            return "Aviso: Não foi possível capturar a imagem da tela para localizar o elemento."
-
-        x_src, y_src, w, h, desc_monitor = self._obter_retangulo_monitor_alvo(qual_tela)
-        largura_orig, altura_orig = img.size
-
-        prompt = (
-            f"Você é um sistema de visão computacional de alta precisão para controle de mouse.\n"
-            f"O usuário quer clicar no seguinte elemento visual na tela: '{termo}'.\n"
-            f"Analise a imagem da tela e localize com exatidão a caixa delimitadora 2D (bounding box) "
-            f"do elemento correspondente no formato [ymin, xmin, ymax, xmax] normalizado de 0 a 1000.\n"
-            f"Se houver múltiplos elementos semelhantes (ex: várias miniaturas de fotos em uma pesquisa de imagens ou galeria), "
-            f"escolha o que melhor corresponde à descrição '{termo}'. Se o usuário pediu por ordem ('primeira', 'segunda', 'terceira', 'quarta foto'), "
-            f"respeite rigorosamente a ordem de leitura ocidental (linha por linha, da esquerda para a direita, de cima para baixo).\n"
-            f"Retorne sua resposta ESTRITAMENTE em formato JSON:\n"
-            f'{{"encontrado": true, "box_2d": [ymin, xmin, ymax, xmax], "descricao": "descrição concisa do elemento localizado"}}\n'
-            f'Se o elemento não estiver visível nesta tela, retorne:\n'
-            f'{{"encontrado": false, "motivo": "não localizado visualmente na tela atual"}}'
-        )
-
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            return "Aviso: GOOGLE_API_KEY não configurada no ambiente."
-
-        client = genai.Client(api_key=api_key)
-        resp_json = None
-        for m in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"):
-            try:
-                resp = client.models.generate_content(model=m, contents=[img, prompt])
-                if resp and resp.text:
-                    txt = resp.text.strip()
-                    if "```" in txt:
-                        m_json = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", txt, re.DOTALL)
-                        if m_json:
-                            txt = m_json.group(1)
-                    resp_json = json.loads(txt)
-                    break
-            except Exception:
-                continue
-
-        if not resp_json or not resp_json.get("encontrado"):
-            motivo = resp_json.get("motivo", "não localizado visualmente") if resp_json else "tempo limite de visão"
+        loc = await asyncio.to_thread(self._localizar_elemento_tela, termo, qual_tela)
+        if not loc.get("encontrado"):
+            motivo = loc.get("motivo", "não localizado visualmente")
             return f"Não consegui localizar '{termo}' na tela atual ({motivo}). Você pode pedir para rolar a página ou especificar com outros detalhes."
 
-        box = resp_json.get("box_2d")
-        if not box or len(box) != 4:
-            return f"Aviso: Coordenadas visuais inválidas para '{termo}'."
+        target_x = loc["target_x"]
+        target_y = loc["target_y"]
+        desc = loc.get("descricao", termo)
+        desc_monitor = loc.get("desc_monitor", "tela")
 
-        ymin, xmin, ymax, xmax = [float(v) for v in box]
-        x_norm = (xmin + xmax) / 2.0
-        y_norm = (ymin + ymax) / 2.0
-
-        target_x = x_src + int((x_norm / 1000.0) * largura_orig)
-        target_y = y_src + int((y_norm / 1000.0) * altura_orig)
-
-        descricao = resp_json.get("descricao", termo)
-        print(f"[CLIQUE VISUAL] Clicando em '{descricao}' nas coordenadas ({target_x}, {target_y}) na {desc_monitor}")
-
+        print(f"[CLIQUE VISUAL] Clicando em '{desc}' nas coordenadas ({target_x}, {target_y}) na {desc_monitor}")
         await asyncio.to_thread(self._executar_clique_mouse, target_x, target_y, tipo_clique, clique_duplo)
 
         # Aguarda 0.8s para a ação refletir na tela
         await asyncio.sleep(0.8)
 
-        # Inspeciona a tela após o clique para reportar ao usuário o que abriu
+        # Inspeciona a tela após o clique para reportar ao usuário o que abriu ou mudou
         nova_visao = ""
         try:
             img_pos = await asyncio.to_thread(self._capturar_imagem_tela, qual_tela)
             if img_pos:
                 prompt_pos = (
-                    f"O usuário clicou em '{descricao}'. "
+                    f"O usuário clicou em '{desc}'. "
                     "Descreva em 1 ou 2 frases curtas o que aconteceu ou o que se abriu na tela agora."
                 )
                 nova_visao = await asyncio.to_thread(self._chamar_gemini_visao, img_pos, prompt_pos)
         except Exception:
             pass
 
-        msg_ret = f"Cliquei com sucesso em '{descricao}' na tela ({desc_monitor}, posição x={target_x}, y={target_y})."
+        msg_ret = f"Cliquei com sucesso em '{desc}' na tela ({desc_monitor}, posição x={target_x}, y={target_y})."
         if nova_visao and not nova_visao.startswith("Aviso:"):
             msg_ret += f" O que apareceu na tela: {nova_visao}"
         return msg_ret
+
+    @function_tool(
+        description=(
+            "Localiza visualmente um campo de busca/pesquisa ou caixa de texto na tela, clica nele com precisão, "
+            "limpa o texto anterior (se houver), digita o termo desejado e opcionalmente pressiona Enter para submeter. "
+            "Use sempre que o usuário pedir: 'pesquise por X no campo de busca', 'procure fotos de geladeira', "
+            "'digite X na barra de pesquisa e dê enter', 'busque tal termo no Google Fotos/YouTube/site', 'clique e escreva X'. "
+            "`alvo_campo`: descrição do campo onde deve clicar para digitar (ex: 'campo de pesquisa Pesquise fotos e álbuns', 'barra de busca', 'campo de texto'). "
+            "`texto_para_digitar`: o texto que deve ser digitado/pesquisado. "
+            "`pressionar_enter`: True para apertar Enter após digitar e submeter a busca (padrão True). "
+            "`limpar_campo_antes`: True para selecionar tudo (Ctrl+A) e apagar antes de digitar (padrão True)."
+        )
+    )
+    async def procurar_e_escrever_na_tela(
+        self,
+        alvo_campo: str = "campo de pesquisa",
+        texto_para_digitar: str = "",
+        pressionar_enter: bool = True,
+        limpar_campo_antes: bool = True,
+        qual_tela: str = "atual",
+    ) -> str:
+        termo_campo = (alvo_campo or "campo de pesquisa").strip()
+        loc = await asyncio.to_thread(self._localizar_elemento_tela, termo_campo, qual_tela)
+        if not loc.get("encontrado") and termo_campo != "campo de pesquisa":
+            loc = await asyncio.to_thread(self._localizar_elemento_tela, "campo de pesquisa ou barra de busca", qual_tela)
+
+        if not loc.get("encontrado"):
+            motivo = loc.get("motivo", "não localizado visualmente")
+            return f"Não consegui localizar o campo de busca '{termo_campo}' na tela ({motivo})."
+
+        target_x = loc["target_x"]
+        target_y = loc["target_y"]
+        desc = loc.get("descricao", termo_campo)
+
+        # 1. Clica no campo
+        await asyncio.to_thread(self._executar_clique_mouse, target_x, target_y, "esquerdo", False)
+        await asyncio.sleep(0.3)
+
+        # 2. Limpa o campo se solicitado
+        if limpar_campo_antes:
+            await asyncio.to_thread(self._executar_limpar_campo)
+            await asyncio.sleep(0.08)
+
+        # 3. Digita / cola o texto e dá Enter
+        if texto_para_digitar:
+            await asyncio.to_thread(self._copiar_para_clipboard, texto_para_digitar)
+            await asyncio.to_thread(self._executar_colar_no_cursor, pressionar_enter)
+        elif pressionar_enter:
+            await asyncio.to_thread(self._executar_teclas_teclado, "enter", 1)
+
+        # 4. Aguarda a página reagir e lê o que apareceu
+        await asyncio.sleep(1.0)
+        nova_visao = ""
+        try:
+            img_pos = await asyncio.to_thread(self._capturar_imagem_tela, qual_tela)
+            if img_pos:
+                prompt_pos = (
+                    f"O usuário pesquisou por '{texto_para_digitar}' no campo '{desc}'. "
+                    "Descreva em 1 ou 2 frases curtas e objetivas o que apareceu ou mudou na tela agora."
+                )
+                nova_visao = await asyncio.to_thread(self._chamar_gemini_visao, img_pos, prompt_pos)
+        except Exception:
+            pass
+
+        msg_ret = f"Pesquisei por '{texto_para_digitar}' no campo '{desc}'"
+        if pressionar_enter:
+            msg_ret += " e apertei Enter."
+        else:
+            msg_ret += "."
+        if nova_visao and not nova_visao.startswith("Aviso:"):
+            msg_ret += f" O que apareceu na tela: {nova_visao}"
+        return msg_ret
+
+    @function_tool(
+        description=(
+            "Pressiona uma ou mais teclas ou atalhos de teclado no computador. "
+            "Suporta teclas: 'enter', 'esc', 'tab', 'backspace', 'delete', 'espaco', 'seta_baixo', 'seta_cima', "
+            "'seta_esquerda', 'seta_direita', 'page_down', 'page_up', 'home', 'end', 'f5'. "
+            "Suporta atalhos: 'ctrl+a', 'ctrl+c', 'ctrl+v', 'ctrl+x', 'ctrl+f', 'ctrl+w', 'ctrl+t', 'ctrl+z', 'alt+f4', 'alt+tab'. "
+            "Exemplos de pedidos: 'dê enter', 'aperte enter', 'aperte esc', 'dê tab', 'aperte ctrl+a', 'selecione tudo com ctrl+a'."
+        )
+    )
+    async def pressionar_teclas_teclado(
+        self,
+        teclas: str,
+        repeticoes: int = 1,
+    ) -> str:
+        sucesso, msg = await asyncio.to_thread(self._executar_teclas_teclado, teclas, repeticoes)
+        return msg
 
     @function_tool(
         description=(
@@ -6132,35 +6387,110 @@ class Assistant(Agent):
             id_item,
         )
 
-    @function_tool(description="Lista eventos do Google Calendar. Use datas ISO 8601; sem início, lista eventos futuros.")
+    @function_tool(
+        description=(
+            "Lista e busca eventos do Google Calendar. Suporta intervalo de datas "
+            "(início e fim em formato ISO 8601 ou YYYY-MM-DD), busca por texto livre ('termo_busca'), "
+            "e escolha da agenda ('id_agenda', padrão 'primary'). Sem início informado, lista os próximos eventos futuros."
+        )
+    )
     async def listar_eventos_google_calendar(
         self,
         inicio_iso: str = "",
         fim_iso: str = "",
+        termo_busca: str = "",
+        id_agenda: str = "primary",
+        max_resultados: int = 50,
     ):
         return await self._executar_google(
             google_workspace.list_calendar_events,
-            inicio_iso,
-            fim_iso,
+            time_min=inicio_iso,
+            time_max=fim_iso,
+            calendar_id=id_agenda,
+            query=termo_busca,
+            max_results=max_resultados,
         )
 
-    @function_tool(description="Cria um evento no Google Calendar. Início e fim devem estar em ISO 8601 com fuso horário.")
+    @function_tool(
+        description="Obtém os detalhes completos de um evento específico do Google Calendar pelo ID (horários, descrição, localização, cor, participantes, link do Meet, recorrência)."
+    )
+    async def obter_detalhes_evento_google_calendar(
+        self,
+        id_evento: str,
+        id_agenda: str = "primary",
+    ):
+        return await self._executar_google(
+            google_workspace.get_calendar_event,
+            id_evento,
+            id_agenda,
+        )
+
+    @function_tool(
+        description=(
+            "Cria um evento no Google Calendar com controle total: título, início (ISO 8601 ou YYYY-MM-DD), "
+            "fim (opcional, assume 1 hora por padrão se omitido), descrição, localização, cor do evento "
+            "(ex: 'Lavanda'/'azul claro', 'Sálvia'/'verde claro', 'Uva'/'roxo', 'Flamingo'/'rosa', 'Banana'/'amarelo', "
+            "'Tangerina'/'laranja', 'Pavão'/'ciano', 'Grafite'/'cinza', 'Mirtilo'/'azul escuro', 'Manjericão'/'verde escuro', "
+            "'Tomate'/'vermelho', ou IDs 1..11), participantes (e-mails separados por vírgula), "
+            "link do Google Meet automático ('adicionar_google_meet=True'), evento de dia inteiro ('dia_inteiro=True'), "
+            "recorrência ('diario', 'semanal', 'mensal') e lembretes em minutos."
+        )
+    )
     async def criar_evento_google_calendar(
         self,
         titulo: str,
         inicio_iso: str,
-        fim_iso: str,
+        fim_iso: str = "",
         descricao: str = "",
+        localizacao: str = "",
+        cor: str = "",
+        participantes: str = "",
+        adicionar_google_meet: bool = False,
+        dia_inteiro: bool = False,
+        recorrencia: str = "",
+        lembrete_minutos: int = 0,
+        id_agenda: str = "primary",
     ):
         return await self._executar_google(
             google_workspace.create_calendar_event,
-            titulo,
-            inicio_iso,
-            fim_iso,
-            descricao,
+            summary=titulo,
+            start_iso=inicio_iso,
+            end_iso=fim_iso,
+            description=descricao,
+            location=localizacao,
+            color=cor,
+            attendees=participantes,
+            create_meet_link=adicionar_google_meet,
+            all_day=dia_inteiro,
+            recurrence=recorrencia,
+            reminder_minutes=lembrete_minutos,
+            calendar_id=id_agenda,
         )
 
-    @function_tool(description="Edita os campos informados de um evento do Google Calendar identificado pelo ID; campos vazios ficam inalterados.")
+    @function_tool(
+        description=(
+            "Cria um evento no Google Calendar rapidamente a partir de linguagem natural livre. "
+            "Exemplo: 'Almoço amanhã às 12h com a equipe no Centro' ou 'Consulta médica quinta às 14h'."
+        )
+    )
+    async def criar_evento_rapido_google_calendar(
+        self,
+        texto: str,
+        id_agenda: str = "primary",
+    ):
+        return await self._executar_google(
+            google_workspace.quick_add_calendar_event,
+            text=texto,
+            calendar_id=id_agenda,
+        )
+
+    @function_tool(
+        description=(
+            "Edita qualquer campo de um evento do Google Calendar identificado pelo ID: "
+            "título, início, fim, descrição, localização, cor (nome da cor ou ID 1..11), "
+            "e participantes. Campos não preenchidos permanecem inalterados."
+        )
+    )
     async def editar_evento_google_calendar(
         self,
         id_evento: str,
@@ -6168,22 +6498,269 @@ class Assistant(Agent):
         descricao: str = "",
         inicio_iso: str = "",
         fim_iso: str = "",
+        localizacao: str = "",
+        cor: str = "",
+        participantes: str = "",
+        id_agenda: str = "primary",
     ):
         return await self._executar_google(
             google_workspace.update_calendar_event,
-            id_evento,
-            titulo,
-            descricao,
-            inicio_iso,
-            fim_iso,
+            event_id=id_evento,
+            summary=titulo,
+            description=descricao,
+            start_iso=inicio_iso,
+            end_iso=fim_iso,
+            location=localizacao,
+            color=cor,
+            attendees=participantes,
+            calendar_id=id_agenda,
         )
 
-    @function_tool(description="Exclui permanentemente um evento do Google Calendar. Confirme o ID e a identidade do evento antes de chamar.")
-    async def excluir_evento_google_calendar(self, id_evento: str):
+    @function_tool(
+        description=(
+            "Altera especificamente a cor de um evento do Google Calendar. "
+            "Cores disponíveis: Lavanda (1 - azul claro), Sálvia (2 - verde claro), "
+            "Uva (3 - roxo), Flamingo (4 - rosa), Banana (5 - amarelo), Tangerina (6 - laranja), "
+            "Pavão (7 - ciano), Grafite (8 - cinza), Mirtilo (9 - azul escuro), "
+            "Manjericão (10 - verde escuro), Tomate (11 - vermelho)."
+        )
+    )
+    async def alterar_cor_evento_google_calendar(
+        self,
+        id_evento: str,
+        cor: str,
+        id_agenda: str = "primary",
+    ):
+        return await self._executar_google(
+            google_workspace.change_event_color,
+            event_id=id_evento,
+            color=cor,
+            calendar_id=id_agenda,
+        )
+
+    @function_tool(
+        description=(
+            "Altera a cor de uma agenda/calendário inteira no Google Calendar (na barra lateral de calendários). "
+            "Aceita 'primary' (agenda principal) ou o ID da agenda secundária, e o nome da cor "
+            "(ex: 'azul', 'verde', 'vermelho', 'laranja', 'roxo', 'amarelo', 'pavao', 'salvia', 'mirtilo', 'cacau', etc.), "
+            "ID da paleta (1 a 24) ou código hexadecimal customizado ('#336699')."
+        )
+    )
+    async def alterar_cor_agenda_google_calendar(
+        self,
+        id_agenda: str = "primary",
+        cor: str = "",
+        cor_fundo_hex: str = "",
+        cor_texto_hex: str = "",
+    ):
+        return await self._executar_google(
+            google_workspace.update_calendar_color,
+            calendar_id=id_agenda,
+            color=cor,
+            background_color_hex=cor_fundo_hex,
+            foreground_color_hex=cor_texto_hex,
+        )
+
+    @function_tool(
+        description="Move um evento existente de uma agenda para outra no Google Calendar."
+    )
+    async def mover_evento_google_calendar(
+        self,
+        id_evento: str,
+        id_agenda_destino: str,
+        id_agenda_origem: str = "primary",
+    ):
+        return await self._executar_google(
+            google_workspace.move_calendar_event,
+            event_id=id_evento,
+            destination_calendar_id=id_agenda_destino,
+            source_calendar_id=id_agenda_origem,
+        )
+
+    @function_tool(
+        description="Responde a um convite de evento no Google Calendar. Opções de resposta: 'aceitar', 'recusar' ou 'talvez'."
+    )
+    async def responder_convite_google_calendar(
+        self,
+        id_evento: str,
+        resposta: str,
+        id_agenda: str = "primary",
+    ):
+        return await self._executar_google(
+            google_workspace.respond_calendar_event,
+            event_id=id_evento,
+            response_status=resposta,
+            calendar_id=id_agenda,
+        )
+
+    @function_tool(
+        description="Exclui permanentemente um evento do Google Calendar. Confirme o ID e a identidade do evento antes de chamar."
+    )
+    async def excluir_evento_google_calendar(
+        self,
+        id_evento: str,
+        id_agenda: str = "primary",
+    ):
         return await self._executar_google(
             google_workspace.delete_calendar_event,
-            id_evento,
+            event_id=id_evento,
+            calendar_id=id_agenda,
         )
+
+    @function_tool(
+        description="Lista todas as agendas (calendários) do usuário no Google Calendar, exibindo ID, nome, descrição, cor atual, fuso horário e permissões."
+    )
+    async def listar_agendas_google_calendar(self):
+        return await self._executar_google(
+            google_workspace.list_calendars,
+        )
+
+    @function_tool(
+        description="Cria uma nova agenda secundária no Google Calendar (ex: 'Estudos', 'Trabalho', 'Saúde', 'Projetos') com descrição, fuso horário e cor opcional."
+    )
+    async def criar_agenda_google_calendar(
+        self,
+        nome: str,
+        descricao: str = "",
+        fuso_horario: str = "America/Sao_Paulo",
+        cor: str = "",
+    ):
+        return await self._executar_google(
+            google_workspace.create_calendar,
+            summary=nome,
+            description=descricao,
+            timezone=fuso_horario,
+            color=cor,
+        )
+
+    @function_tool(
+        description="Edita os metadados de uma agenda no Google Calendar (nome/título, descrição ou fuso horário)."
+    )
+    async def editar_agenda_google_calendar(
+        self,
+        id_agenda: str,
+        nome: str = "",
+        descricao: str = "",
+        fuso_horario: str = "",
+    ):
+        return await self._executar_google(
+            google_workspace.update_calendar,
+            calendar_id=id_agenda,
+            summary=nome,
+            description=descricao,
+            timezone=fuso_horario,
+        )
+
+    @function_tool(
+        description="Exclui permanentemente uma agenda secundária no Google Calendar. A agenda primária do usuário não pode ser excluída."
+    )
+    async def excluir_agenda_google_calendar(self, id_agenda: str):
+        return await self._executar_google(
+            google_workspace.delete_calendar,
+            calendar_id=id_agenda,
+        )
+
+    @function_tool(
+        description="Remove TODOS os eventos da agenda primária do Google Calendar. Use com extrema cautela e apenas após confirmação explícita do usuário."
+    )
+    async def limpar_agenda_google_calendar(self, id_agenda: str = "primary"):
+        return await self._executar_google(
+            google_workspace.clear_calendar,
+            calendar_id=id_agenda,
+        )
+
+    @function_tool(
+        description="Retorna o catálogo completo de cores disponíveis no Google Calendar para eventos (11 cores oficiais com nomes e hex) e para agendas (24 cores oficiais)."
+    )
+    async def obter_paleta_cores_google_calendar(self):
+        return await self._executar_google(
+            google_workspace.get_calendar_colors,
+        )
+
+    @function_tool(
+        description="Consulta as configurações da conta do usuário no Google Agenda: primeiro dia da semana (Domingo, Segunda ou Sábado), fuso horário, formato 24h, duração padrão de reuniões e preferências de visualização."
+    )
+    async def obter_configuracoes_google_calendar(self):
+        return await self._executar_google(
+            google_workspace.get_calendar_settings,
+        )
+
+    @function_tool(
+        description=(
+            "Configura e orienta a mudança do primeiro dia da semana no Google Agenda "
+            "(começar pelo Domingo, Segunda-feira ou Sábado). "
+            "Abre instantaneamente o Google Agenda na tela de configurações de visualização "
+            "no Chrome do usuário e traz a aba para a frente para aplicação imediata."
+        )
+    )
+    async def configurar_primeiro_dia_semana_google_calendar(
+        self,
+        dia_da_semana: str = "segunda",
+    ):
+        dia_norm = (dia_da_semana or "segunda").strip().lower()
+        mapa_dias = {
+            "domingo": ("0", "Domingo"),
+            "sunday": ("0", "Domingo"),
+            "dom": ("0", "Domingo"),
+            "0": ("0", "Domingo"),
+            "segunda": ("1", "Segunda-feira"),
+            "segunda-feira": ("1", "Segunda-feira"),
+            "monday": ("1", "Segunda-feira"),
+            "seg": ("1", "Segunda-feira"),
+            "1": ("1", "Segunda-feira"),
+            "sabado": ("6", "Sábado"),
+            "sábado": ("6", "Sábado"),
+            "saturday": ("6", "Sábado"),
+            "sab": ("6", "Sábado"),
+            "6": ("6", "Sábado"),
+        }
+        codigo_alvo, nome_alvo = mapa_dias.get(dia_norm, ("1", "Segunda-feira"))
+
+        try:
+            atual_info = await asyncio.to_thread(google_workspace.get_week_start_setting)
+            nome_atual = atual_info.get("primeiro_dia_semana", "Desconhecido")
+        except Exception:
+            nome_atual = "Não identificado"
+
+        await self._navegar_no_calendar_navegador("settings")
+
+        return (
+            f"Configuração do Google Agenda: atualmente o primeiro dia da semana está definido como '{nome_atual}'. "
+            f"Abri a tela de configurações do Google Agenda diretamente no seu navegador Chrome para aplicar para '{nome_alvo}'. "
+            f"Basta conferir em 'Opções de visualização' -> 'Começar a semana em' e selecionar '{nome_alvo}'."
+        )
+
+    @function_tool(
+        description=(
+            "Abre o Google Agenda (Google Calendar) no navegador Chrome na visualização solicitada: "
+            "'semana' ('week'), 'mes' ('month'), 'dia' ('day'), 'ano' ('year'), "
+            "'programacao' ('agenda') ou 'configuracoes' ('settings'). Traz o navegador para a frente."
+        )
+    )
+    async def abrir_google_calendar_navegador(
+        self,
+        visualizacao: str = "week",
+    ):
+        rotas = {
+            "semana": "week",
+            "week": "week",
+            "mes": "month",
+            "mês": "month",
+            "month": "month",
+            "dia": "day",
+            "day": "day",
+            "ano": "year",
+            "year": "year",
+            "agenda": "agenda",
+            "programacao": "agenda",
+            "programação": "agenda",
+            "configuracoes": "settings",
+            "configurações": "settings",
+            "settings": "settings",
+        }
+        rota = rotas.get(visualizacao.strip().lower(), visualizacao.strip())
+        await self._navegar_no_calendar_navegador(rota)
+        return f"Google Agenda aberto no navegador Chrome na visualização '{rota}'."
 
     @function_tool(
         description=(
@@ -7685,6 +8262,151 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
+            "Executa uma tarefa de desenvolvimento autônoma usando o Motor Antigravity integrado no Jarvis. "
+            "O Antigravity lê o repositório, escreve e edita arquivos cirurgicamente, executa comandos no terminal PowerShell, "
+            "valida e corrige erros até concluir a implementação. "
+            "Use sempre que o usuário pedir para o Jarvis implementar, programar, criar uma função, corrigir um bug, "
+            "ou alterar o código do Jarvis ou do projeto diretamente por aqui."
+        )
+    )
+    async def executar_tarefa_antigravity(
+        self,
+        tarefa: str,
+        arquivo_alvo: str = "",
+        id_solicitacao: int = 0,
+    ) -> str:
+        tarefa_limpa = (tarefa or "").strip()
+        if not tarefa_limpa:
+            return "Aviso: informe a tarefa de desenvolvimento que o Antigravity deve executar."
+
+        engine = obter_antigravity_engine()
+
+        # Abre o painel Antigravity no HUD do Jarvis para o usuário ver o console em tempo real
+        try:
+            if self.board_room and self.board_room.local_participant:
+                payload_hud = {"type": "hud_panel_toggle", "panel": "antigravity", "action": "open"}
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload_hud, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+        except Exception:
+            pass
+
+        # Callback para transmitir cada passo do Antigravity em tempo real para a sala LiveKit
+        async def _on_antigravity_event(evento: dict):
+            try:
+                if self.board_room and self.board_room.local_participant:
+                    payload = {
+                        "type": "antigravity_step",
+                        "step": evento,
+                    }
+                    await self.board_room.local_participant.publish_data(
+                        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                        reliable=True,
+                        topic="jarvis.antigravity",
+                    )
+            except Exception as e:
+                logger_memoria.warning(f"Erro ao transmitir evento Antigravity: {e}")
+
+        if id_solicitacao > 0:
+            AntigravityEngine.atualizar_status_fila(id_solicitacao, "em_progresso")
+
+        # Notifica o usuário por broadcast de início
+        try:
+            if self.board_room and self.board_room.local_participant:
+                await self.board_room.local_participant.publish_data(
+                    json.dumps({
+                        "type": "antigravity_status",
+                        "estado": "pensando",
+                        "tarefa": tarefa_limpa,
+                        "isExecuting": True,
+                        "open_panel": True,
+                    }, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.antigravity",
+                )
+        except Exception:
+            pass
+
+        resultado = await engine.executar_tarefa(
+            prompt_tarefa=tarefa_limpa,
+            arquivo_alvo=arquivo_alvo,
+            max_passos=16,
+            on_event=_on_antigravity_event,
+        )
+
+        sucesso = resultado.get("sucesso", False)
+        resumo = resultado.get("resumo", "")
+        arquivos = resultado.get("arquivos_alterados", [])
+        passos = resultado.get("passos_executados", 0)
+
+        if id_solicitacao > 0:
+            novo_status = "concluida" if sucesso else "falha"
+            AntigravityEngine.atualizar_status_fila(id_solicitacao, novo_status, resumo)
+
+        if sucesso:
+            arqs_str = ", ".join(arquivos) if arquivos else "arquivos do projeto"
+            return (
+                f"Chefe, o motor Antigravity concluiu a tarefa com sucesso em {passos} passos! "
+                f"Arquivos alterados: {arqs_str}. "
+                f"Resumo da execução: {resumo}"
+            )
+        else:
+            return (
+                f"Aviso: O motor Antigravity encontrou dificuldades na execução da tarefa. "
+                f"Resumo: {resumo}"
+            )
+
+    @function_tool(
+        description="Executa a próxima solicitação de desenvolvimento pendente na fila do Antigravity."
+    )
+    async def executar_proxima_solicitacao_antigravity(self) -> str:
+        raiz_projeto = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        caminho_json = os.path.join(raiz_projeto, "solicitacoes_antigravity.json")
+        if not os.path.isfile(caminho_json):
+            return "Nenhuma solicitação pendente no momento."
+
+        try:
+            with open(caminho_json, "r", encoding="utf-8") as f:
+                tarefas = json.load(f)
+            pendentes = [t for t in tarefas if t.get("status") == "pendente"]
+            if not pendentes:
+                return "Todas as solicitações de desenvolvimento já foram concluídas!"
+
+            proxima = pendentes[0]
+            desc = proxima.get("descricao") or proxima.get("titulo")
+            alvo = proxima.get("arquivo_sugerido", "")
+            tid = proxima.get("id", 0)
+
+            return await self.executar_tarefa_antigravity(tarefa=desc, arquivo_alvo=alvo, id_solicitacao=tid)
+        except Exception as e:
+            return f"Aviso ao executar próxima solicitação: {e}"
+
+    @function_tool(
+        description="Abre ou fecha o painel do Antigravity Engine no HUD da interface do Jarvis."
+    )
+    async def alternar_painel_antigravity(self, acao: str = "abrir") -> str:
+        abrir = acao.lower().strip() in ("abrir", "open", "mostrar", "exibir")
+        try:
+            if self.board_room and self.board_room.local_participant:
+                payload = {
+                    "type": "hud_panel_toggle",
+                    "panel": "antigravity",
+                    "action": "open" if abrir else "close",
+                }
+                await self.board_room.local_participant.publish_data(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    reliable=True,
+                    topic="jarvis.hud",
+                )
+                return f"Painel do Antigravity {'aberto' if abrir else 'fechado'} com sucesso."
+        except Exception as e:
+            return f"Aviso ao alternar painel Antigravity: {e}"
+        return "Comando processado."
+
+    @function_tool(
+        description=(
             "Reverte alterações de código não salvas usando o Git como botão de emergência. "
             "Use se alguma tela ou código apresentar erro e o usuário pedir para desfazer ou reverter."
         )
@@ -8606,6 +9328,21 @@ def _handle_room_data(
                 if not payload["isOpen"]:
                     agent._ultimo_texto_notebook_transcrito = ""
         return
+    if data_packet.topic == "jarvis.antigravity":
+        try:
+            payload = json.loads(data_packet.data)
+            action = payload.get("action")
+            if action == "run_task":
+                tarefa = payload.get("tarefa") or payload.get("prompt") or ""
+                alvo = payload.get("arquivo_alvo") or ""
+                id_sol = int(payload.get("id_solicitacao") or 0)
+                if tarefa:
+                    asyncio.create_task(agent.executar_tarefa_antigravity(tarefa, alvo, id_sol))
+            elif action == "run_next":
+                asyncio.create_task(agent.executar_proxima_solicitacao_antigravity())
+        except Exception as e:
+            logger_memoria.warning(f"Erro ao processar pacote jarvis.antigravity: {e}")
+        return
 
 
 async def _monitorar_chegada_emails(session: AgentSession, assistant: Assistant):
@@ -8779,6 +9516,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     def _on_user_transcribed(ev):
         texto = getattr(ev, "transcript", "") or ""
+        logger_memoria.info("evento=user_input_transcribed texto=%s", texto)
         _verificar_texto_abrir_rascunho(str(texto), True, assistant)
 
     def _on_item_added(ev):
@@ -8795,6 +9533,7 @@ async def entrypoint(ctx: agents.JobContext):
         if not texto and hasattr(item, "content"):
             partes = getattr(item, "content", []) or []
             texto = " ".join(str(p) for p in partes if isinstance(p, str))
+        logger_memoria.info("evento=conversation_item_added role=%s texto=%s", role, texto)
         _verificar_texto_abrir_rascunho(str(texto), role == "user", assistant)
 
     def _on_session_close(ev):
@@ -8803,6 +9542,7 @@ async def entrypoint(ctx: agents.JobContext):
         # desconecta a sala para acionar a reconexão automática instantânea do frontend.
         reason = getattr(ev, "reason", None)
         err = getattr(ev, "error", None)
+        logger_memoria.info("evento=session_close reason=%s err=%s", reason, err)
         if str(reason).lower() in ("error", "closereason.error") or err is not None:
             if ctx.room and ctx.room.remote_participants:
                 logger_memoria.warning("evento=recuperar_sessao motivo=erro_fechamento_com_participante_ativo")
@@ -8810,6 +9550,14 @@ async def entrypoint(ctx: agents.JobContext):
                     asyncio.create_task(ctx.room.disconnect())
                 except Exception:
                     pass
+
+    @ctx.room.on("track_subscribed")
+    def _on_track_sub(track: rtc.Track, publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
+        logger_memoria.info("evento=track_subscribed tipo=%s source=%s part=%s", track.kind, publication.source, participant.identity)
+
+    @ctx.room.on("track_published")
+    def _on_track_pub(publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
+        logger_memoria.info("evento=track_published source=%s muted=%s part=%s", publication.source, publication.muted, participant.identity)
 
     session.on("user_input_transcribed", _on_user_transcribed)
     session.on("conversation_item_added", _on_item_added)

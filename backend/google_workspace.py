@@ -4,7 +4,7 @@ import os
 import re
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.parse import quote
@@ -40,6 +40,82 @@ GOOGLE_SHEET_MIME_TYPE = "application/vnd.google-apps.spreadsheet"
 GOOGLE_SLIDES_MIME_TYPE = "application/vnd.google-apps.presentation"
 MAX_TEXT_BYTES = 1_000_000
 MAX_RETURNED_TEXT = 20_000
+
+CALENDAR_EVENT_COLORS = {
+    "1": {"nome": "Lavanda", "hex": "#a4bdfc", "aliases": ["lavanda", "lavender", "azul claro", "azul-claro", "light blue"]},
+    "2": {"nome": "Sálvia", "hex": "#7ae7bf", "aliases": ["salvia", "sálvia", "sage", "verde claro", "verde-claro", "menta", "light green"]},
+    "3": {"nome": "Uva", "hex": "#dbadff", "aliases": ["uva", "grape", "roxo", "purple", "violeta", "lilas", "lilás"]},
+    "4": {"nome": "Flamingo", "hex": "#ff887c", "aliases": ["flamingo", "rosa", "pink", "coral"]},
+    "5": {"nome": "Banana", "hex": "#fbd75b", "aliases": ["banana", "amarelo", "amarela", "yellow"]},
+    "6": {"nome": "Tangerina", "hex": "#ffb878", "aliases": ["tangerina", "tangerine", "laranja", "orange"]},
+    "7": {"nome": "Pavão", "hex": "#46d6db", "aliases": ["pavao", "pavão", "peacock", "ciano", "cyan", "turquesa", "azul piscina", "azul turquesa"]},
+    "8": {"nome": "Grafite", "hex": "#e1e1e1", "aliases": ["grafite", "graphite", "cinza", "gray", "grey"]},
+    "9": {"nome": "Mirtilo", "hex": "#5484ed", "aliases": ["mirtilo", "blueberry", "azul", "blue", "azul escuro", "azul-escuro", "dark blue"]},
+    "10": {"nome": "Manjericão", "hex": "#51b749", "aliases": ["manjericao", "manjericão", "basil", "verde", "green", "verde escuro", "verde-escuro", "dark green"]},
+    "11": {"nome": "Tomate", "hex": "#dc2127", "aliases": ["tomate", "tomato", "vermelho", "vermelha", "red"]},
+}
+
+CALENDAR_PALETTE_COLORS = {
+    "1": {"nome": "Cacau", "hex": "#ac725e", "aliases": ["cacau", "marrom", "castanho", "brown"]},
+    "2": {"nome": "Framboesa", "hex": "#d06b64", "aliases": ["framboesa", "vinho", "rubi"]},
+    "3": {"nome": "Abóbora", "hex": "#f83a22", "aliases": ["abobora", "abóbora", "vermelho vivo", "scarlet"]},
+    "4": {"nome": "Flamingo", "hex": "#fa573c", "aliases": ["flamingo", "coral", "rosa escuro"]},
+    "5": {"nome": "Manga", "hex": "#ff7537", "aliases": ["manga", "laranja forte"]},
+    "6": {"nome": "Laranja", "hex": "#ffad46", "aliases": ["laranja", "orange", "ambar"]},
+    "7": {"nome": "Pistache", "hex": "#42d692", "aliases": ["pistache", "verde agua", "verde-água"]},
+    "8": {"nome": "Sálvia", "hex": "#16a765", "aliases": ["salvia", "sálvia", "verde folha", "verde"]},
+    "9": {"nome": "Manjericão", "hex": "#7bd148", "aliases": ["manjericao", "manjericão", "verde limao", "lima"]},
+    "10": {"nome": "Eucalipto", "hex": "#b3dc6c", "aliases": ["eucalipto", "verde oliva"]},
+    "11": {"nome": "Banana", "hex": "#fbe983", "aliases": ["banana", "amarelo claro"]},
+    "12": {"nome": "Amarelo solar", "hex": "#fad165", "aliases": ["amarelo solar", "amarelo", "dourado", "gold"]},
+    "13": {"nome": "Cardamomo", "hex": "#92e1c0", "aliases": ["cardamomo", "verde menta"]},
+    "14": {"nome": "Pavão", "hex": "#9fe1e7", "aliases": ["pavao", "pavão", "ciano", "turquesa", "azul claro"]},
+    "15": {"nome": "Cobalto", "hex": "#9fc6e7", "aliases": ["cobalto", "azul pastel", "azul ceu"]},
+    "16": {"nome": "Mirtilo", "hex": "#4986e7", "aliases": ["mirtilo", "azul royal", "azul", "blue"]},
+    "17": {"nome": "Lavanda", "hex": "#9a9cff", "aliases": ["lavanda", "azul lavanda"]},
+    "18": {"nome": "Glicínia", "hex": "#b99aff", "aliases": ["glicinia", "glicínia", "lilas", "lilás", "roxo claro"]},
+    "19": {"nome": "Uva", "hex": "#c2c2fb", "aliases": ["uva", "violeta", "roxo"]},
+    "20": {"nome": "Ametista", "hex": "#cabdbf", "aliases": ["ametista", "cinza rosado"]},
+    "21": {"nome": "Grafite", "hex": "#cca6ac", "aliases": ["grafite", "cinza", "gray"]},
+    "22": {"nome": "Chumbo", "hex": "#f691b2", "aliases": ["chumbo", "rosa", "pink"]},
+    "23": {"nome": "Turquesa", "hex": "#cd74e6", "aliases": ["turquesa", "magenta", "purpura", "púrpura"]},
+    "24": {"nome": "Ameixa", "hex": "#a47ae2", "aliases": ["ameixa", "roxo escuro", "indigo"]},
+}
+
+def resolve_event_color_id(color_input: str) -> str:
+    if not color_input:
+        return ""
+    cleaned = str(color_input).strip().lower()
+    if cleaned in CALENDAR_EVENT_COLORS:
+        return cleaned
+    for cid, data in CALENDAR_EVENT_COLORS.items():
+        if cleaned == data["nome"].lower():
+            return cid
+        for alias in data["aliases"]:
+            if cleaned == alias or alias in cleaned:
+                return cid
+    return ""
+
+def resolve_calendar_color_id(color_input: str) -> str:
+    if not color_input:
+        return ""
+    cleaned = str(color_input).strip().lower()
+    if cleaned in CALENDAR_PALETTE_COLORS:
+        return cleaned
+    for cid, data in CALENDAR_PALETTE_COLORS.items():
+        if cleaned == data["nome"].lower():
+            return cid
+        for alias in data["aliases"]:
+            if cleaned == alias or alias in cleaned:
+                return cid
+    mapeamento_basico = {
+        "vermelho": "3", "laranja": "6", "verde": "8", "amarelo": "11",
+        "azul": "16", "roxo": "18", "rosa": "22", "cinza": "21", "ciano": "14"
+    }
+    for k, v in mapeamento_basico.items():
+        if k in cleaned:
+            return v
+    return ""
 
 
 class GoogleWorkspaceError(RuntimeError):
@@ -1197,62 +1273,412 @@ class GoogleWorkspace:
                 cleaned = cleaned.replace(" ", "T") + "-03:00"
         return cleaned
 
-    def list_calendar_events(self, time_min="", time_max=""):
+    def _resolve_primary_calendar_id(self) -> str:
+        try:
+            cal = self._execute(
+                self._service("calendar", "v3").calendars().get(calendarId="primary")
+            )
+            return cal.get("id", "primary")
+        except Exception:
+            return "primary"
+
+    @staticmethod
+    def _format_event_item(event: dict) -> dict:
+        color_id = event.get("colorId", "")
+        color_info = CALENDAR_EVENT_COLORS.get(color_id, {})
+        meet_link = ""
+        conference_data = event.get("conferenceData") or {}
+        entry_points = conference_data.get("entryPoints") or []
+        for ep in entry_points:
+            if ep.get("entryPointType") == "video":
+                meet_link = ep.get("uri", "")
+                break
+        if not meet_link and event.get("hangoutLink"):
+            meet_link = event.get("hangoutLink")
+
+        attendees = [
+            {
+                "email": att.get("email"),
+                "nome": att.get("displayName", ""),
+                "status": att.get("responseStatus", "needsAction"),
+            }
+            for att in (event.get("attendees") or [])
+        ]
+
+        start_raw = event.get("start", {})
+        end_raw = event.get("end", {})
+        is_all_day = "date" in start_raw
+
+        return {
+            "id": event.get("id"),
+            "titulo": event.get("summary") or "(Sem título)",
+            "inicio": start_raw.get("dateTime") or start_raw.get("date"),
+            "fim": end_raw.get("dateTime") or end_raw.get("date"),
+            "dia_inteiro": is_all_day,
+            "descricao": event.get("description", ""),
+            "localizacao": event.get("location", ""),
+            "cor_id": color_id,
+            "cor_nome": color_info.get("nome", ""),
+            "cor_hex": color_info.get("hex", ""),
+            "link": event.get("htmlLink"),
+            "reuniao_meet": meet_link,
+            "participantes": attendees,
+            "status": event.get("status", "confirmed"),
+            "recorrencia": event.get("recurrence", []),
+        }
+
+    def list_calendars(self):
+        response = self._execute(
+            self._service("calendar", "v3").calendarList().list()
+        )
+        calendars = []
+        for item in response.get("items", []):
+            cid = item.get("colorId", "")
+            palette_info = CALENDAR_PALETTE_COLORS.get(cid, {})
+            calendars.append({
+                "id": item.get("id"),
+                "titulo": item.get("summary"),
+                "descricao": item.get("description", ""),
+                "cor_id": cid,
+                "cor_nome": palette_info.get("nome", ""),
+                "cor_fundo": item.get("backgroundColor", palette_info.get("hex", "")),
+                "cor_texto": item.get("foregroundColor", ""),
+                "primario": item.get("primary", False),
+                "fuso_horario": item.get("timeZone", ""),
+                "acesso": item.get("accessRole", ""),
+            })
+        return calendars
+
+    def get_calendar(self, calendar_id="primary"):
+        calendar = self._execute(
+            self._service("calendar", "v3").calendars().get(calendarId=calendar_id)
+        )
+        return {
+            "id": calendar.get("id"),
+            "titulo": calendar.get("summary"),
+            "descricao": calendar.get("description", ""),
+            "fuso_horario": calendar.get("timeZone", ""),
+        }
+
+    def create_calendar(self, summary, description="", timezone="America/Sao_Paulo", color=""):
+        if not summary.strip():
+            raise GoogleWorkspaceError("Informe o nome/título da nova agenda.")
+        calendar = self._execute(
+            self._service("calendar", "v3").calendars().insert(
+                body={
+                    "summary": summary.strip(),
+                    "description": description.strip(),
+                    "timeZone": timezone.strip() or "America/Sao_Paulo",
+                }
+            )
+        )
+        new_id = calendar.get("id")
+        cor_aplicada = ""
+        if color.strip():
+            cid = resolve_calendar_color_id(color)
+            if cid:
+                try:
+                    self._execute(
+                        self._service("calendar", "v3").calendarList().patch(
+                            calendarId=new_id,
+                            body={"colorId": cid},
+                        )
+                    )
+                    cor_aplicada = CALENDAR_PALETTE_COLORS.get(cid, {}).get("nome", cid)
+                except Exception:
+                    pass
+        return {
+            "id": new_id,
+            "titulo": calendar.get("summary"),
+            "descricao": calendar.get("description", ""),
+            "fuso_horario": calendar.get("timeZone", ""),
+            "cor": cor_aplicada,
+        }
+
+    def update_calendar(self, calendar_id="primary", summary="", description="", timezone=""):
+        changes = {}
+        if summary.strip():
+            changes["summary"] = summary.strip()
+        if description.strip():
+            changes["description"] = description.strip()
+        if timezone.strip():
+            changes["timeZone"] = timezone.strip()
+        if not changes:
+            raise GoogleWorkspaceError("Informe ao menos um campo para atualizar a agenda.")
+        calendar = self._execute(
+            self._service("calendar", "v3").calendars().patch(
+                calendarId=calendar_id,
+                body=changes,
+            )
+        )
+        return {
+            "id": calendar.get("id"),
+            "titulo": calendar.get("summary"),
+            "descricao": calendar.get("description", ""),
+            "fuso_horario": calendar.get("timeZone", ""),
+        }
+
+    def delete_calendar(self, calendar_id):
+        if not calendar_id.strip() or calendar_id.strip() == "primary":
+            raise GoogleWorkspaceError("A agenda principal não pode ser excluída. Use limpar_agenda se quiser remover todos os eventos.")
+        self._execute(
+            self._service("calendar", "v3").calendars().delete(calendarId=calendar_id.strip())
+        )
+        return {"id": calendar_id, "excluido": True}
+
+    def clear_calendar(self, calendar_id="primary"):
+        self._execute(
+            self._service("calendar", "v3").calendars().clear(calendarId=calendar_id)
+        )
+        return {"id": calendar_id, "limpo": True, "mensagem": "Todos os eventos da agenda foram removidos com sucesso."}
+
+    def update_calendar_color(
+        self,
+        calendar_id="primary",
+        color="",
+        background_color_hex="",
+        foreground_color_hex="",
+    ):
+        target_id = calendar_id.strip()
+        if target_id == "primary":
+            target_id = self._resolve_primary_calendar_id()
+
+        patch_body = {}
+        cor_resolvida_nome = ""
+        if color.strip():
+            cid = resolve_calendar_color_id(color)
+            if cid:
+                patch_body["colorId"] = cid
+                cor_resolvida_nome = CALENDAR_PALETTE_COLORS.get(cid, {}).get("nome", cid)
+            else:
+                # Se passou código hex em cor
+                if color.strip().startswith("#"):
+                    patch_body["backgroundColor"] = color.strip()
+                    patch_body["foregroundColor"] = "#ffffff"
+        if background_color_hex.strip():
+            patch_body["backgroundColor"] = background_color_hex.strip()
+        if foreground_color_hex.strip():
+            patch_body["foregroundColor"] = foreground_color_hex.strip()
+
+        if not patch_body:
+            raise GoogleWorkspaceError("Informe uma cor válida (nome em português ou ID 1..24) ou código hexadecimal para a agenda.")
+
+        entry = self._execute(
+            self._service("calendar", "v3").calendarList().patch(
+                calendarId=target_id,
+                body=patch_body,
+            )
+        )
+        return {
+            "id": entry.get("id"),
+            "titulo": entry.get("summary"),
+            "cor_id": entry.get("colorId"),
+            "cor_nome": cor_resolvida_nome or CALENDAR_PALETTE_COLORS.get(entry.get("colorId", ""), {}).get("nome", ""),
+            "cor_fundo": entry.get("backgroundColor"),
+            "cor_texto": entry.get("foregroundColor"),
+        }
+
+    def get_calendar_colors(self):
+        colors_api = self._execute(self._service("calendar", "v3").colors().get())
+        event_colors_result = []
+        for cid, data in CALENDAR_EVENT_COLORS.items():
+            api_info = colors_api.get("event", {}).get(cid, {})
+            event_colors_result.append({
+                "id": cid,
+                "nome": data["nome"],
+                "hex": api_info.get("background", data["hex"]),
+                "aliases": data["aliases"],
+            })
+        calendar_colors_result = []
+        for cid, data in CALENDAR_PALETTE_COLORS.items():
+            api_info = colors_api.get("calendar", {}).get(cid, {})
+            calendar_colors_result.append({
+                "id": cid,
+                "nome": data["nome"],
+                "hex": api_info.get("background", data["hex"]),
+            })
+        return {
+            "cores_eventos": event_colors_result,
+            "cores_agendas": calendar_colors_result,
+        }
+
+    def get_calendar_settings(self):
+        settings_api = self._execute(self._service("calendar", "v3").settings().list())
+        settings_dict = {item.get("id"): item.get("value") for item in settings_api.get("items", [])}
+        week_start_val = settings_dict.get("weekStart", "0")
+        dias_map = {"0": "Domingo", "1": "Segunda-feira", "6": "Sábado"}
+        return {
+            "primeiro_dia_semana": dias_map.get(week_start_val, f"Dia {week_start_val}"),
+            "codigo_primeiro_dia": week_start_val,
+            "fuso_horario": settings_dict.get("timezone", "America/Sao_Paulo"),
+            "formato_24_horas": settings_dict.get("format24HourTime", "true") == "true",
+            "ordem_campos_data": settings_dict.get("dateFieldOrder", "DMY"),
+            "duracao_padrao_minutos": settings_dict.get("defaultEventLength", "30"),
+            "ocultar_fins_de_semana": settings_dict.get("hideWeekends", "false") == "true",
+            "todas_configuracoes": settings_dict,
+        }
+
+    def get_week_start_setting(self):
+        setting = self._execute(self._service("calendar", "v3").settings().get(setting="weekStart"))
+        val = setting.get("value", "0")
+        dias_map = {"0": "Domingo", "1": "Segunda-feira", "6": "Sábado"}
+        return {
+            "primeiro_dia_semana": dias_map.get(val, f"Dia {val}"),
+            "codigo": val,
+        }
+
+    def list_calendar_events(
+        self,
+        time_min="",
+        time_max="",
+        calendar_id="primary",
+        query="",
+        max_results=50,
+    ):
         if not time_min.strip():
             time_min = datetime.now(timezone.utc).isoformat()
         else:
             time_min = self._normalize_calendar_iso(time_min)
         parameters = {
-            "calendarId": "primary",
+            "calendarId": calendar_id.strip() or "primary",
             "timeMin": time_min,
-            "maxResults": 50,
+            "maxResults": max(1, min(int(max_results), 250)),
             "singleEvents": True,
             "orderBy": "startTime",
         }
         if time_max.strip():
             parameters["timeMax"] = self._normalize_calendar_iso(time_max)
+        if query.strip():
+            parameters["q"] = query.strip()
         response = self._execute(
-            self._service("calendar", "v3")
-            .events()
-            .list(**parameters)
+            self._service("calendar", "v3").events().list(**parameters)
         )
-        return [
-            {
-                "id": event.get("id"),
-                "titulo": event.get("summary"),
-                "inicio": event.get("start"),
-                "fim": event.get("end"),
-                "descricao": event.get("description"),
-                "link": event.get("htmlLink"),
-            }
-            for event in response.get("items", [])
-        ]
+        return [self._format_event_item(event) for event in response.get("items", [])]
 
-    def create_calendar_event(self, summary, start_iso, end_iso, description=""):
-        if not summary.strip() or not start_iso.strip() or not end_iso.strip():
-            raise GoogleWorkspaceError("Informe título, início e fim do evento.")
-        start_norm = self._normalize_calendar_iso(start_iso)
-        end_norm = self._normalize_calendar_iso(end_iso)
+    def get_calendar_event(self, event_id, calendar_id="primary"):
         event = self._execute(
-            self._service("calendar", "v3")
-            .events()
-            .insert(
-                calendarId="primary",
-                body={
-                    "summary": summary.strip(),
-                    "description": description,
-                    "start": {"dateTime": start_norm, "timeZone": "America/Sao_Paulo"},
-                    "end": {"dateTime": end_norm, "timeZone": "America/Sao_Paulo"},
-                },
+            self._service("calendar", "v3").events().get(
+                calendarId=calendar_id.strip() or "primary",
+                eventId=event_id.strip(),
             )
         )
-        return {
-            "id": event.get("id"),
-            "titulo": event.get("summary"),
-            "inicio": event.get("start"),
-            "fim": event.get("end"),
-            "link": event.get("htmlLink"),
+        return self._format_event_item(event)
+
+    def create_calendar_event(
+        self,
+        summary,
+        start_iso,
+        end_iso="",
+        description="",
+        location="",
+        color="",
+        attendees="",
+        create_meet_link=False,
+        all_day=False,
+        recurrence="",
+        reminder_minutes=0,
+        calendar_id="primary",
+    ):
+        if not summary.strip():
+            raise GoogleWorkspaceError("Informe o título do evento.")
+        if not start_iso.strip():
+            raise GoogleWorkspaceError("Informe a data/hora de início do evento.")
+
+        body = {
+            "summary": summary.strip(),
+            "description": description.strip() if description else "",
         }
+        if location.strip():
+            body["location"] = location.strip()
+
+        if all_day:
+            start_date = start_iso.strip().split("T")[0]
+            if not end_iso.strip():
+                end_date = start_date
+            else:
+                end_date = end_iso.strip().split("T")[0]
+            body["start"] = {"date": start_date}
+            body["end"] = {"date": end_date}
+        else:
+            start_norm = self._normalize_calendar_iso(start_iso)
+            if not end_iso.strip():
+                # Define 1 hora de duração por padrão
+                try:
+                    dt_start = datetime.fromisoformat(start_norm)
+                    dt_end = dt_start + timedelta(hours=1)
+                    end_norm = dt_end.isoformat()
+                except Exception:
+                    end_norm = start_norm
+            else:
+                end_norm = self._normalize_calendar_iso(end_iso)
+            body["start"] = {"dateTime": start_norm, "timeZone": "America/Sao_Paulo"}
+            body["end"] = {"dateTime": end_norm, "timeZone": "America/Sao_Paulo"}
+
+        if color.strip():
+            cid = resolve_event_color_id(color)
+            if cid:
+                body["colorId"] = cid
+
+        if attendees:
+            emails_list = []
+            if isinstance(attendees, list):
+                emails_list = [str(e).strip() for e in attendees if str(e).strip()]
+            elif isinstance(attendees, str):
+                emails_list = [e.strip() for e in attendees.split(",") if e.strip()]
+            if emails_list:
+                body["attendees"] = [{"email": e} for e in emails_list]
+
+        if create_meet_link:
+            body["conferenceData"] = {
+                "createRequest": {
+                    "requestId": str(uuid.uuid4()),
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            }
+
+        if recurrence.strip():
+            rec_upper = recurrence.strip().upper()
+            if rec_upper in {"DIARIO", "DIÁRIO", "DAILY"}:
+                body["recurrence"] = ["RRULE:FREQ=DAILY"]
+            elif rec_upper in {"SEMANAL", "WEEKLY"}:
+                body["recurrence"] = ["RRULE:FREQ=WEEKLY"]
+            elif rec_upper in {"MENSAL", "MONTHLY"}:
+                body["recurrence"] = ["RRULE:FREQ=MONTHLY"]
+            elif rec_upper in {"ANUAL", "YEARLY"}:
+                body["recurrence"] = ["RRULE:FREQ=YEARLY"]
+            elif rec_upper.startswith("RRULE:"):
+                body["recurrence"] = [recurrence.strip()]
+            else:
+                body["recurrence"] = [f"RRULE:FREQ={rec_upper}"]
+
+        if reminder_minutes and int(reminder_minutes) > 0:
+            body["reminders"] = {
+                "useDefault": False,
+                "overrides": [{"method": "popup", "minutes": int(reminder_minutes)}],
+            }
+
+        insert_kwargs = {
+            "calendarId": calendar_id.strip() or "primary",
+            "body": body,
+        }
+        if create_meet_link:
+            insert_kwargs["conferenceDataVersion"] = 1
+
+        event = self._execute(
+            self._service("calendar", "v3").events().insert(**insert_kwargs)
+        )
+        return self._format_event_item(event)
+
+    def quick_add_calendar_event(self, text, calendar_id="primary"):
+        if not text.strip():
+            raise GoogleWorkspaceError("Informe o texto do evento em linguagem natural.")
+        event = self._execute(
+            self._service("calendar", "v3").events().quickAdd(
+                calendarId=calendar_id.strip() or "primary",
+                text=text.strip(),
+            )
+        )
+        return self._format_event_item(event)
 
     def update_calendar_event(
         self,
@@ -1261,12 +1687,18 @@ class GoogleWorkspace:
         description="",
         start_iso="",
         end_iso="",
+        location="",
+        color="",
+        attendees="",
+        calendar_id="primary",
     ):
         changes = {}
         if summary.strip():
             changes["summary"] = summary.strip()
-        if description:
-            changes["description"] = description
+        if description.strip():
+            changes["description"] = description.strip()
+        if location.strip():
+            changes["location"] = location.strip()
         if start_iso.strip():
             changes["start"] = {
                 "dateTime": self._normalize_calendar_iso(start_iso),
@@ -1277,32 +1709,118 @@ class GoogleWorkspace:
                 "dateTime": self._normalize_calendar_iso(end_iso),
                 "timeZone": "America/Sao_Paulo",
             }
+        if color.strip():
+            cid = resolve_event_color_id(color)
+            if cid:
+                changes["colorId"] = cid
+        if attendees:
+            emails_list = []
+            if isinstance(attendees, list):
+                emails_list = [str(e).strip() for e in attendees if str(e).strip()]
+            elif isinstance(attendees, str):
+                emails_list = [e.strip() for e in attendees.split(",") if e.strip()]
+            if emails_list:
+                changes["attendees"] = [{"email": e} for e in emails_list]
+
         if not changes:
             raise GoogleWorkspaceError("Informe pelo menos um campo para alterar.")
         event = self._execute(
-            self._service("calendar", "v3")
-            .events()
-            .patch(
-                calendarId="primary",
-                eventId=event_id,
+            self._service("calendar", "v3").events().patch(
+                calendarId=calendar_id.strip() or "primary",
+                eventId=event_id.strip(),
                 body=changes,
             )
         )
+        return self._format_event_item(event)
+
+    def change_event_color(self, event_id, color, calendar_id="primary"):
+        cid = resolve_event_color_id(color)
+        if not cid:
+            raise GoogleWorkspaceError(
+                f"Cor '{color}' não reconhecida. Use cores como: Lavanda (azul claro), Sálvia (verde claro), "
+                "Uva (roxo), Flamingo (rosa), Banana (amarelo), Tangerina (laranja), Pavão (ciano), "
+                "Grafite (cinza), Mirtilo (azul escuro), Manjericão (verde escuro), Tomate (vermelho), "
+                "ou números de 1 a 11."
+            )
+        event = self._execute(
+            self._service("calendar", "v3").events().patch(
+                calendarId=calendar_id.strip() or "primary",
+                eventId=event_id.strip(),
+                body={"colorId": cid},
+            )
+        )
+        formatted = self._format_event_item(event)
         return {
-            "id": event.get("id"),
-            "titulo": event.get("summary"),
-            "inicio": event.get("start"),
-            "fim": event.get("end"),
-            "link": event.get("htmlLink"),
+            "id": formatted["id"],
+            "titulo": formatted["titulo"],
+            "cor_id": cid,
+            "cor_nome": CALENDAR_EVENT_COLORS.get(cid, {}).get("nome", cid),
+            "cor_hex": CALENDAR_EVENT_COLORS.get(cid, {}).get("hex", ""),
+            "mensagem": f"Cor do evento alterada para {CALENDAR_EVENT_COLORS.get(cid, {}).get('nome', cid)} com sucesso!",
         }
 
-    def delete_calendar_event(self, event_id):
+    def move_calendar_event(self, event_id, destination_calendar_id, source_calendar_id="primary"):
+        if not destination_calendar_id.strip():
+            raise GoogleWorkspaceError("Informe o ID da agenda de destino.")
+        event = self._execute(
+            self._service("calendar", "v3").events().move(
+                calendarId=source_calendar_id.strip() or "primary",
+                eventId=event_id.strip(),
+                destination=destination_calendar_id.strip(),
+            )
+        )
+        return self._format_event_item(event)
+
+    def respond_calendar_event(self, event_id, response_status, calendar_id="primary"):
+        status_map = {
+            "aceitar": "accepted",
+            "aceito": "accepted",
+            "accepted": "accepted",
+            "recusar": "declined",
+            "recusado": "declined",
+            "declined": "declined",
+            "talvez": "tentative",
+            "tentative": "tentative",
+        }
+        status_val = status_map.get(response_status.strip().lower(), response_status.strip().lower())
+        if status_val not in {"accepted", "declined", "tentative"}:
+            raise GoogleWorkspaceError("Resposta inválida. Escolha: aceitar, recusar ou talvez.")
+        user_email = self._resolve_primary_calendar_id()
+        event_obj = self.get_calendar_event(event_id, calendar_id=calendar_id)
+        attendees = event_obj.get("participantes") or []
+        updated = False
+        new_attendees = []
+        for att in attendees:
+            em = att.get("email", "")
+            if em.lower() == user_email.lower():
+                new_attendees.append({"email": em, "responseStatus": status_val})
+                updated = True
+            else:
+                new_attendees.append({"email": em, "responseStatus": att.get("status")})
+        if not updated:
+            new_attendees.append({"email": user_email, "responseStatus": status_val})
+
+        res = self._execute(
+            self._service("calendar", "v3").events().patch(
+                calendarId=calendar_id.strip() or "primary",
+                eventId=event_id.strip(),
+                body={"attendees": new_attendees},
+            )
+        )
+        return {
+            "id": res.get("id"),
+            "titulo": res.get("summary"),
+            "resposta": status_val,
+            "mensagem": f"Convite respondido com '{status_val}'.",
+        }
+
+    def delete_calendar_event(self, event_id, calendar_id="primary"):
         self._execute(
             self._service("calendar", "v3")
             .events()
-            .delete(calendarId="primary", eventId=event_id)
+            .delete(calendarId=calendar_id.strip() or "primary", eventId=event_id)
         )
-        return {"id": event_id, "excluido": True}
+        return {"id": event_id, "excluido": True, "agenda": calendar_id}
 
     def _gmail_service(self):
         return self._service("gmail", "v1", required_scopes=[GMAIL_SCOPE])

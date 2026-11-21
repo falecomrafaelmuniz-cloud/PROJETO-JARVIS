@@ -6,6 +6,18 @@
     "descricao": "Implementar uma funcionalidade que permita ao usuário aumentar e diminuir o tamanho dos elementos e fontes dentro dos sites acessados pelo navegador.",
     "arquivo_sugerido": "backend/jarvis_browser.py",
     "prioridade": "média",
+    "status": "concluida",
+    "origem": "Comando de voz do usuário via Jarvis",
+    "resolucao": "Funcionalidade de zoom_tab integrada no jarvis_browser.py e exposta via controlar_zoom_tela no agent.py.",
+    "resolvido_em": "20/11/2026 11:47:49"
+  },
+  {
+    "id": 2,
+    "data_hora": "20/11/2026 16:55:19",
+    "titulo": "Criar aba de Resumo de Capacidades",
+    "descricao": "Criar um novo componente visual no HUD que exibe o resumo das capacidades do Jarvis em uma aba dedicada.",
+    "arquivo_sugerido": "frontend/components/app/system-dashboard.tsx",
+    "prioridade": "baixa",
     "status": "pendente",
     "origem": "Comando de voz do usuário via Jarvis"
   }

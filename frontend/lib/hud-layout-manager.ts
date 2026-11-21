@@ -9,7 +9,8 @@ export type HudPanelId =
   | 'email'
   | 'files'
   | 'neural'
-  | 'videos';
+  | 'videos'
+  | 'antigravity';
 
 export interface PanelTransform {
   x: number;
@@ -29,6 +30,7 @@ export const HUD_PANEL_STORAGE_KEYS: Record<HudPanelId, string> = {
   clock: 'jarvis-pos-clock-widget-v2',
   neural: 'jarvis-pos-neural-v1',
   videos: 'jarvis-pos-video-studio-v2',
+  antigravity: 'jarvis-pos-antigravity-panel-v1',
 };
 
 export type LayoutMode = 'side_by_side' | 'grid' | 'unstack' | 'reset' | 'padrao' | 'auto';
