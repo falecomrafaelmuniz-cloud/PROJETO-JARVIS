@@ -1,4 +1,3 @@
 @echo off
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "start_jarvis.ps1"
-
+start "" wscript.exe "Iniciar_Jarvis_Silencioso.vbs"
