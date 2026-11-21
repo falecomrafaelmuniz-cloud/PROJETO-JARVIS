@@ -823,7 +823,7 @@ export const SessionView = ({
                   ) : (
                     <VantaOrb key={`v-${currentColor}`} color={currentColor} vantaRef={vantaEffectRef} />
                   )}
-                  {/* Status Cyberpunk OSONE */}
+                  {/* Status Cyberpunk Neural */}
                   <div className="mt-1 flex flex-col items-center justify-center text-center pointer-events-none select-none">
                     <div className="flex items-center gap-2 text-[10px] font-mono tracking-[0.25em] uppercase text-cyan-400 font-semibold drop-shadow-[0_0_8px_rgba(255,85,0,0.6)]">
                       <span className="inline-block size-1.5 rounded-xs bg-cyan-500 animate-pulse" />

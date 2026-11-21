@@ -166,8 +166,8 @@ try {
         }
     }
 
-    # 3. Abre na Janela Desktop Nativa OSONE
-    Write-Host "[3/3] Abrindo o Jarvis na Janela Desktop OSONE..." -ForegroundColor Cyan
+    # 3. Abre na Janela Desktop Nativa do Jarvis
+    Write-Host "[3/3] Abrindo a Janela Desktop do Jarvis..." -ForegroundColor Cyan
     Start-Sleep -Seconds 1
     Push-Location $webDirectory
     try {

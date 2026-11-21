@@ -110,7 +110,7 @@ async function createWindow() {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: 'JARVIS OSONE SYSTEM V3.0',
+    title: 'JARVIS SYSTEM V3.0',
     backgroundColor: '#08080a',
     icon: iconPath,
     autoHideMenuBar: true,

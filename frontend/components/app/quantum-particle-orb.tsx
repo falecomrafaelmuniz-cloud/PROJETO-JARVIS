@@ -110,7 +110,7 @@ function playHolographicSearchChirp() {
 }
 
 /**
- * Esfera Cósmica Quântica Tridimensional (Estilo OSONE):
+ * Esfera Cósmica Quântica Tridimensional (Jarvis Core):
  * - Rotação orbital suave tridimensional com 520 partículas;
  * - Núcleo incandescente branco-dourado com halo na cor do tema;
  * - Reatividade dinâmica à voz do usuário e do Jarvis;
@@ -224,7 +224,7 @@ export const QuantumParticleOrb: React.FC<QuantumParticleOrbProps> = ({ color })
 
       ctx.clearRect(0, 0, size, size);
 
-      // --- 1. Núcleo Solar / Quântico Incandescente (Glow OSONE) ---
+      // --- 1. Núcleo Solar / Quântico Incandescente (Glow Cósmico) ---
       const corePulse = (18 + smoothJarvis * 40 + (isThinking ? 24 : 0)) * condenseFactor;
       const coreGrad = ctx.createRadialGradient(
         center,

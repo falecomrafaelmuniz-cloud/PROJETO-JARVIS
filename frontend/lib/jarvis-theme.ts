@@ -8,7 +8,7 @@ export const DEFAULT_JARVIS_THEME_HEX = '#ff5500';
 export const JARVIS_THEME_STORAGE_KEY = 'jarvis-theme-color-v1';
 
 export const JARVIS_THEME_PRESETS: JarvisThemePreset[] = [
-  { id: 'osone', label: 'OSONE Fogo Cósmico', hex: '#ff5500' },
+  { id: 'fire', label: 'Fogo Cósmico', hex: '#ff5500' },
   { id: 'cyan', label: 'Ciano Clássico', hex: '#1da3b9' },
   { id: 'blue', label: 'Azul Stark', hex: '#3b82f6' },
   { id: 'emerald', label: 'Esmeralda', hex: '#10b981' },

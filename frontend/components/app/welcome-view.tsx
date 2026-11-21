@@ -105,7 +105,7 @@ export const WelcomeView = ({
             <span className="size-4 rounded-full bg-[#ff5500] animate-pulse shadow-[0_0_15px_#ff5500]" />
           </div>
           <h1 className="font-mono text-2xl font-bold tracking-[0.3em] uppercase text-white drop-shadow-[0_0_12px_rgba(255,85,0,0.5)]">
-            JARVIS <span className="text-[#ff5500]">OSONE</span>
+            JARVIS <span className="text-[#ff5500]">SYSTEM</span>
           </h1>
           <p className="mt-1 font-serif italic text-xs tracking-wider text-orange-200/70">
             Sistema Neural de Inteligência e Automação Desktop
@@ -174,7 +174,7 @@ export const WelcomeView = ({
 
       <div className="fixed bottom-5 left-0 flex w-full items-center justify-center select-none pointer-events-none">
         <p className="font-mono text-[10px] tracking-[0.25em] text-orange-400/50 uppercase">
-          QUANTUM ENCRYPTED TUNNEL ACTIVE · OSONE SYSTEM V3.0
+          QUANTUM ENCRYPTED TUNNEL ACTIVE · JARVIS SYSTEM V3.0
         </p>
       </div>
     </div>
