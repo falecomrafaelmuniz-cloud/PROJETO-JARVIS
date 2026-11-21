@@ -1241,6 +1241,15 @@ class Assistant(Agent):
 
         return None
 
+    def _obter_posicao_atual_mouse(self) -> tuple[int, int]:
+        user32 = ctypes.windll.user32
+        class _POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+        pt = _POINT()
+        if user32.GetCursorPos(ctypes.byref(pt)):
+            return int(pt.x), int(pt.y)
+        return 0, 0
+
     def _executar_clique_mouse(
         self,
         x: int,
@@ -1256,6 +1265,11 @@ class Assistant(Agent):
             user32.mouse_event(0x0008, 0, 0, 0, 0)  # MOUSEEVENTF_RIGHTDOWN
             time.sleep(0.03)
             user32.mouse_event(0x0010, 0, 0, 0, 0)  # MOUSEEVENTF_RIGHTUP
+            if clique_duplo:
+                time.sleep(0.08)
+                user32.mouse_event(0x0008, 0, 0, 0, 0)  # MOUSEEVENTF_RIGHTDOWN
+                time.sleep(0.03)
+                user32.mouse_event(0x0010, 0, 0, 0, 0)  # MOUSEEVENTF_RIGHTUP
         elif "meio" in tipo or "scroll" in tipo:
             user32.mouse_event(0x0020, 0, 0, 0, 0)  # MOUSEEVENTF_MIDDLEDOWN
             time.sleep(0.03)
@@ -4311,6 +4325,35 @@ class Assistant(Agent):
         if nova_visao and not nova_visao.startswith("Aviso:"):
             msg_ret += f" O que apareceu na tela: {nova_visao}"
         return msg_ret
+
+    @function_tool(
+        description=(
+            "Executa IMEDIATAMENTE um clique na posição EXATA onde o cursor do mouse do usuário já está parado na tela. "
+            "NÃO precisa procurar nada visualmente nem tirar print: é instantâneo e ultra rápido. "
+            "Use sempre que o usuário disser comandos diretos de mouse: "
+            "- 'clica', 'clicar', 'dá um clique' -> tipo_clique='esquerdo', clique_duplo=False; "
+            "- 'clique duplo', 'dois cliques', 'duplo clique', 'clica duas vezes' -> tipo_clique='esquerdo', clique_duplo=True; "
+            "- 'clica com botão direito', 'clique com botão direito', 'botão direito' -> tipo_clique='direito', clique_duplo=False; "
+            "- 'clique duplo com botão direito', 'dois cliques com botão direito' -> tipo_clique='direito', clique_duplo=True. "
+            "`tipo_clique`: 'esquerdo' ou 'direito'. "
+            "`clique_duplo`: True para dois cliques rápidos, False para clique simples."
+        )
+    )
+    async def clicar_na_posicao_atual_do_mouse(
+        self,
+        tipo_clique: str = "esquerdo",
+        clique_duplo: bool = False,
+    ) -> str:
+        x, y = await asyncio.to_thread(self._obter_posicao_atual_mouse)
+        tipo_normalizado = "direito" if "direito" in str(tipo_clique).lower() else "esquerdo"
+        duplo = bool(clique_duplo)
+
+        print(f"[CLIQUE MOUSE ATUAL] Clicando na posição ({x}, {y}) | Botão: {tipo_normalizado} | Duplo: {duplo}")
+        await asyncio.to_thread(self._executar_clique_mouse, x, y, tipo_normalizado, duplo)
+
+        nome_botao = "botão direito" if tipo_normalizado == "direito" else "botão esquerdo"
+        acao = "Clique duplo com o" if duplo else "Clique com o"
+        return f"{acao} {nome_botao} executado onde o mouse estava apontado ({x}, {y})."
 
     @function_tool(
         description=(
