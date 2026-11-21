@@ -3,6 +3,9 @@ const path = require('path');
 const { spawn, exec } = require('child_process');
 const http = require('http');
 
+app.setAppUserModelId('com.jarvis.system');
+app.name = 'JARVIS';
+
 let mainWindow = null;
 let pythonProcess = null;
 let livekitProcess = null;

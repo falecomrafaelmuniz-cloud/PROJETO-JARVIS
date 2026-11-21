@@ -54,6 +54,7 @@ from livekit.agents._exceptions import APIConnectionError
 from livekit.plugins import (
     noise_cancellation,
     google,
+    silero,
 )
 import livekit.plugins.google.realtime.realtime_api as lk_google_realtime
 
@@ -9545,7 +9546,11 @@ def _verificar_texto_abrir_rascunho(texto: str, eh_usuario: bool, agent: Assista
 async def entrypoint(ctx: agents.JobContext):
     jarvis_chrome.start_bridge()
     session = AgentSession(
-        vad=None,
+        vad=silero.VAD.load(
+            min_speech_duration=0.25,
+            min_silence_duration=0.6,
+            activation_threshold=0.6,
+        ),
         turn_handling={"turn_detection": "realtime_llm"},
         aec_warmup_duration=0.6,
     )
