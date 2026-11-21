@@ -119,8 +119,8 @@ try {
     }
 
     Write-Host "[1/3] Ligando o Cérebro do Jarvis em Python (Modo Silencioso)..." -ForegroundColor Yellow
-    Start-Process -FilePath $env:ComSpec `
-        -ArgumentList @('/c', 'title [JARVIS 1/2] BACKEND (Python) && .\.venv\Scripts\python.exe backend\agent.py dev') `
+    Start-Process -FilePath $pythonExe `
+        -ArgumentList 'backend\agent.py dev' `
         -WorkingDirectory $agentDirectory `
         -WindowStyle Hidden | Out-Null
     Start-Sleep -Seconds 3
