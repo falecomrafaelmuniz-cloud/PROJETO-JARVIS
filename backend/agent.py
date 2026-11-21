@@ -54,7 +54,6 @@ from livekit.agents._exceptions import APIConnectionError
 from livekit.plugins import (
     noise_cancellation,
     google,
-    silero,
 )
 import livekit.plugins.google.realtime.realtime_api as lk_google_realtime
 
@@ -358,10 +357,10 @@ class Assistant(Agent):
             tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
             realtime_input_config=genai_types.RealtimeInputConfig(
                 automatic_activity_detection=genai_types.AutomaticActivityDetection(
-                    start_of_speech_sensitivity=genai_types.StartSensitivity.START_SENSITIVITY_HIGH,
+                    start_of_speech_sensitivity=genai_types.StartSensitivity.START_SENSITIVITY_LOW,
                     end_of_speech_sensitivity=genai_types.EndSensitivity.END_SENSITIVITY_HIGH,
                     prefix_padding_ms=100,
-                    silence_duration_ms=280,
+                    silence_duration_ms=500,
                 )
             ),
             context_window_compression=genai_types.ContextWindowCompressionConfig(
@@ -9546,11 +9545,7 @@ def _verificar_texto_abrir_rascunho(texto: str, eh_usuario: bool, agent: Assista
 async def entrypoint(ctx: agents.JobContext):
     jarvis_chrome.start_bridge()
     session = AgentSession(
-        vad=silero.VAD.load(
-            min_speech_duration=0.25,
-            min_silence_duration=0.6,
-            activation_threshold=0.6,
-        ),
+        vad=None,
         turn_handling={"turn_detection": "realtime_llm"},
         aec_warmup_duration=0.6,
     )
