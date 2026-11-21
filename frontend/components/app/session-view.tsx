@@ -301,6 +301,7 @@ export const SessionView = ({
 }: React.ComponentProps<'section'> & SessionViewProps) => {
   const room = useRoomContext();
   const session = useSessionContext();
+  const { state: agentState } = useVoiceAssistant();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
   const [hudPanels, setHudPanels] = useState<HudPanelsState>(DEFAULT_HUD_PANELS);
@@ -309,7 +310,7 @@ export const SessionView = ({
     hudPanelsRef.current = hudPanels;
   }, [hudPanels]);
   const [neuralConfigSignal, setNeuralConfigSignal] = useState(0);
-  const [orbStyle, setOrbStyle] = useState<'vanta' | 'quantum'>('vanta');
+  const [orbStyle, setOrbStyle] = useState<'vanta' | 'quantum'>('quantum');
   const [themeHex, setThemeHex] = useState<string>(DEFAULT_JARVIS_THEME_HEX);
 
   useEffect(() => {
@@ -816,12 +817,28 @@ export const SessionView = ({
                   isOrbDragging ? 'cursor-grabbing' : 'cursor-grab'
                 )}
               >
-                <div className="pointer-events-none flex items-center justify-center">
+                <div className="pointer-events-none flex flex-col items-center justify-center">
                   {orbStyle === 'quantum' ? (
                     <QuantumParticleOrb key={`q-${currentColor}`} color={currentColor} />
                   ) : (
                     <VantaOrb key={`v-${currentColor}`} color={currentColor} vantaRef={vantaEffectRef} />
                   )}
+                  {/* Status Cyberpunk OSONE */}
+                  <div className="mt-1 flex flex-col items-center justify-center text-center pointer-events-none select-none">
+                    <div className="flex items-center gap-2 text-[10px] font-mono tracking-[0.25em] uppercase text-cyan-400 font-semibold drop-shadow-[0_0_8px_rgba(255,85,0,0.6)]">
+                      <span className="inline-block size-1.5 rounded-xs bg-cyan-500 animate-pulse" />
+                      {agentState === 'thinking' ? 'PROCESSANDO REDE NEURAL' : session.isConnected ? 'NEURAL LINK ACTIVE' : 'SISTEMA EM ESPERA'}
+                    </div>
+                    <p className="mt-0.5 font-serif italic text-xs tracking-wider text-cyan-200/75 drop-shadow-[0_0_6px_rgba(255,85,0,0.3)]">
+                      {agentState === 'thinking'
+                        ? '"Sintetizando pensamentos..."'
+                        : agentState === 'speaking'
+                          ? '"Transmitindo resposta..."'
+                          : session.isConnected
+                            ? '"Ouvindo seus pensamentos..."'
+                            : '"Aguardando conexão..."'}
+                    </p>
+                  </div>
                 </div>
               </div>
             </motion.div>

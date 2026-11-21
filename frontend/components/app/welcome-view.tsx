@@ -100,19 +100,25 @@ export const WelcomeView = ({
   return (
     <div ref={ref}>
       <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
-
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
-        </p>
+        <div className="mb-6 flex flex-col items-center">
+          <div className="relative mb-3 flex size-20 items-center justify-center rounded-3xl border border-[#ff5500]/40 bg-[#ff5500]/10 shadow-[0_0_35px_rgba(255,85,0,0.35)] backdrop-blur-xl">
+            <span className="size-4 rounded-full bg-[#ff5500] animate-pulse shadow-[0_0_15px_#ff5500]" />
+          </div>
+          <h1 className="font-mono text-2xl font-bold tracking-[0.3em] uppercase text-white drop-shadow-[0_0_12px_rgba(255,85,0,0.5)]">
+            JARVIS <span className="text-[#ff5500]">OSONE</span>
+          </h1>
+          <p className="mt-1 font-serif italic text-xs tracking-wider text-orange-200/70">
+            Sistema Neural de Inteligência e Automação Desktop
+          </p>
+        </div>
 
         <Button
           size="lg"
           onClick={onStartCall}
           disabled={updateState === 'updating'}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
+          className="mt-2 w-72 h-12 rounded-2xl bg-gradient-to-r from-[#ff6b00] to-[#ff4500] font-mono text-xs font-bold tracking-widest text-white uppercase shadow-[0_0_30px_rgba(255,85,0,0.45)] hover:from-[#ff7a1a] hover:to-[#ff5500] hover:shadow-[0_0_40px_rgba(255,85,0,0.65)] transition-all active:scale-[0.98] border border-orange-400/30"
         >
-          {startButtonText}
+          {startButtonText === 'Iniciar Chamada' ? 'INICIAR NEURAL LINK' : startButtonText}
         </Button>
 
         <Button
@@ -120,22 +126,22 @@ export const WelcomeView = ({
           size="sm"
           onClick={handleUpdateJarvis}
           disabled={updateState === 'updating'}
-          className="mt-3 w-64 rounded-full border-cyan-500/30 bg-cyan-500/10 font-mono text-[11px] font-semibold tracking-wider text-cyan-300 uppercase hover:border-cyan-500/50 hover:bg-cyan-500/20 hover:text-cyan-200"
+          className="mt-3.5 w-72 rounded-2xl border-orange-500/30 bg-orange-500/10 font-mono text-[11px] font-semibold tracking-wider text-orange-300 uppercase hover:border-orange-500/50 hover:bg-orange-500/20 hover:text-orange-200 backdrop-blur-md"
         >
           {updateState === 'updating' ? (
             <>
-              <RefreshCw className="mr-1.5 size-3.5 animate-spin" />
-              Atualizando...
+              <RefreshCw className="mr-1.5 size-3.5 animate-spin text-[#ff5500]" />
+              Baixando Atualização...
             </>
           ) : updateState === 'success' ? (
             <>
               <Check className="mr-1.5 size-3.5 text-emerald-400" />
-              Jarvis Atualizado!
+              Sistema Atualizado!
             </>
           ) : (
             <>
               <RefreshCw className="mr-1.5 size-3.5" />
-              Atualizar Jarvis
+              Checar Atualizações
             </>
           )}
         </Button>
@@ -145,10 +151,10 @@ export const WelcomeView = ({
           size="sm"
           onClick={handleShutdownSystem}
           disabled={updateState === 'updating'}
-          className="mt-3 w-64 rounded-full border-red-500/30 bg-red-500/10 font-mono text-[11px] font-semibold tracking-wider text-red-300 uppercase hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-200"
+          className="mt-3 w-72 rounded-2xl border-red-500/30 bg-red-500/10 font-mono text-[11px] font-semibold tracking-wider text-red-300 uppercase hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-200 backdrop-blur-md"
         >
           <Power className="mr-1.5 size-3.5" />
-          Desligar Tudo
+          Encerrar Sistemas
         </Button>
 
         {updateMessage && (
@@ -158,7 +164,7 @@ export const WelcomeView = ({
                 ? 'text-red-400'
                 : updateState === 'success'
                   ? 'text-emerald-400'
-                  : 'text-cyan-300'
+                  : 'text-orange-300'
             }`}
           >
             {updateMessage}
@@ -166,18 +172,9 @@ export const WelcomeView = ({
         )}
       </section>
 
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
-          >
-            Voice AI quickstart
-          </a>
-          .
+      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center select-none pointer-events-none">
+        <p className="font-mono text-[10px] tracking-[0.25em] text-orange-400/50 uppercase">
+          QUANTUM ENCRYPTED TUNNEL ACTIVE · OSONE SYSTEM V3.0
         </p>
       </div>
     </div>
