@@ -30,31 +30,97 @@ export async function GET() {
     const repoRoot = path.resolve(process.cwd(), '..');
     const gitExe = resolveGitExecutable();
 
-    await execFileAsync(gitExe, ['fetch', 'origin', 'main'], {
-      cwd: repoRoot,
-      timeout: 15_000,
-    });
+    // 1. Obter branch atual e número de versão progressivo local (contagem de commits)
+    let currentBranch = 'main';
+    try {
+      const { stdout: branchOut } = await execFileAsync(gitExe, ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: repoRoot,
+        timeout: 5_000,
+      });
+      currentBranch = branchOut.trim() || 'main';
+    } catch {
+      // fallback
+    }
 
-    const { stdout: localHead } = await execFileAsync(gitExe, ['rev-parse', 'HEAD'], {
-      cwd: repoRoot,
-    });
-    const { stdout: remoteHead } = await execFileAsync(gitExe, ['rev-parse', 'origin/main'], {
-      cwd: repoRoot,
-    });
+    let buildNumber = 90;
+    try {
+      const { stdout: countOut } = await execFileAsync(gitExe, ['rev-list', '--count', 'HEAD'], {
+        cwd: repoRoot,
+        timeout: 5_000,
+      });
+      const parsed = parseInt(countOut.trim(), 10);
+      if (!isNaN(parsed) && parsed > 0) buildNumber = parsed;
+    } catch {
+      // fallback
+    }
 
-    const localSha = localHead.trim();
-    const remoteSha = remoteHead.trim();
+    const localVersion = `v3.0.${buildNumber}`;
+
+    let localSha = '';
+    try {
+      const { stdout: headOut } = await execFileAsync(gitExe, ['rev-parse', 'HEAD'], {
+        cwd: repoRoot,
+        timeout: 5_000,
+      });
+      localSha = headOut.trim();
+    } catch {
+      // fallback
+    }
+
+    // 2. Tenta checar o GitHub silenciosamente em segundo plano com timeout curto (10s)
+    let updateAvailable = false;
+    let remoteSha = '';
+    let remoteVersion = localVersion;
+
+    try {
+      await execFileAsync(gitExe, ['fetch', 'origin', currentBranch], {
+        cwd: repoRoot,
+        timeout: 10_000,
+      });
+
+      const { stdout: rHeadOut } = await execFileAsync(gitExe, ['rev-parse', `origin/${currentBranch}`], {
+        cwd: repoRoot,
+        timeout: 5_000,
+      });
+      remoteSha = rHeadOut.trim();
+
+      if (localSha && remoteSha && localSha !== remoteSha) {
+        // Verifica se o remote está à frente
+        const { stdout: aheadOut } = await execFileAsync(
+          gitExe,
+          ['rev-list', '--count', `${localSha}..${remoteSha}`],
+          { cwd: repoRoot, timeout: 5_000 }
+        );
+        const aheadCount = parseInt(aheadOut.trim(), 10) || 0;
+        if (aheadCount > 0) {
+          updateAvailable = true;
+          remoteVersion = `v3.0.${buildNumber + aheadCount}`;
+        }
+      }
+    } catch {
+      // Falha de rede ou sem conexão com GitHub: não interrompe a inicialização
+    }
 
     return NextResponse.json({
       status: 'ok',
-      updateAvailable: localSha !== remoteSha,
-      localCommit: localSha.slice(0, 7),
-      remoteCommit: remoteSha.slice(0, 7),
+      version: localVersion,
+      buildNumber,
+      currentBranch,
+      updateAvailable,
+      remoteVersion,
+      localCommit: localSha ? localSha.slice(0, 7) : '',
+      remoteCommit: remoteSha ? remoteSha.slice(0, 7) : '',
     });
   } catch {
     return NextResponse.json({
       status: 'ok',
+      version: 'v3.0.90',
+      buildNumber: 90,
+      currentBranch: 'main',
       updateAvailable: false,
+      remoteVersion: 'v3.0.90',
+      localCommit: '',
+      remoteCommit: '',
     });
   }
 }
@@ -64,8 +130,19 @@ export async function POST() {
     const repoRoot = path.resolve(process.cwd(), '..');
     const gitExe = resolveGitExecutable();
 
-    // 1. Busca atualizações do GitHub (origin/main)
-    await execFileAsync(gitExe, ['fetch', 'origin', 'main'], {
+    let currentBranch = 'main';
+    try {
+      const { stdout: branchOut } = await execFileAsync(gitExe, ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: repoRoot,
+        timeout: 5_000,
+      });
+      currentBranch = branchOut.trim() || 'main';
+    } catch {
+      // fallback
+    }
+
+    // 1. Busca atualizações do GitHub na branch atual
+    await execFileAsync(gitExe, ['fetch', 'origin', currentBranch], {
       cwd: repoRoot,
       timeout: 30_000,
     });
@@ -73,7 +150,7 @@ export async function POST() {
     const { stdout: localHead } = await execFileAsync(gitExe, ['rev-parse', 'HEAD'], {
       cwd: repoRoot,
     });
-    const { stdout: remoteHead } = await execFileAsync(gitExe, ['rev-parse', 'origin/main'], {
+    const { stdout: remoteHead } = await execFileAsync(gitExe, ['rev-parse', `origin/${currentBranch}`], {
       cwd: repoRoot,
     });
 
@@ -101,22 +178,22 @@ export async function POST() {
       );
       commitSummary = logOut.trim();
 
-      // Tenta pull com --autostash; se houver qualquer conflito local em código, sincroniza exatamente com origin/main
+      // Tenta pull com --autostash na branch ativa
       try {
-        await execFileAsync(gitExe, ['pull', '--rebase', '--autostash', 'origin', 'main'], {
+        await execFileAsync(gitExe, ['pull', '--rebase', '--autostash', 'origin', currentBranch], {
           cwd: repoRoot,
           timeout: 45_000,
         });
       } catch {
         await execFileAsync(gitExe, ['rebase', '--abort'], { cwd: repoRoot }).catch(() => {});
         try {
-          await execFileAsync(gitExe, ['pull', '--no-rebase', '--autostash', 'origin', 'main'], {
+          await execFileAsync(gitExe, ['pull', '--no-rebase', '--autostash', 'origin', currentBranch], {
             cwd: repoRoot,
             timeout: 45_000,
           });
         } catch {
           await execFileAsync(gitExe, ['merge', '--abort'], { cwd: repoRoot }).catch(() => {});
-          await execFileAsync(gitExe, ['reset', '--hard', 'origin/main'], {
+          await execFileAsync(gitExe, ['reset', '--hard', `origin/${currentBranch}`], {
             cwd: repoRoot,
             timeout: 30_000,
           });
@@ -151,14 +228,13 @@ export async function POST() {
       });
     }
 
-    // 4. Reinicia o worker Python em segundo plano para carregar o código novo do backend imediatamente
+    // 4. Reinicia o worker Python em segundo plano para carregar o código novo
     const restartBackendPs = [
       'Start-Sleep -Milliseconds 400;',
       `$repoRoot = '${repoRoot.replace(/'/g, "''")}';`,
       "Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'agent\\.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue };",
-      "Get-CimInstance Win32_Process -Filter \"Name = 'cmd.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'JARVIS 1/2' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue };",
       'Start-Sleep -Milliseconds 500;',
-      "Start-Process -FilePath $env:ComSpec -ArgumentList @('/k', 'title [JARVIS 1/2] BACKEND (Python) && .\\.venv\\Scripts\\python.exe backend\\agent.py dev') -WorkingDirectory $repoRoot -WindowStyle Minimized | Out-Null;",
+      "Start-Process -FilePath \"$repoRoot\\.venv\\Scripts\\python.exe\" -ArgumentList @('backend\\agent.py', 'dev') -WorkingDirectory $repoRoot -WindowStyle Hidden | Out-Null;",
     ].join(' ');
 
     const child = spawn(
@@ -174,15 +250,30 @@ export async function POST() {
 
     const updated = localSha !== remoteSha;
 
+    // Recalcula build pós-atualização
+    let newBuildNumber = 90;
+    try {
+      const { stdout: newCountOut } = await execFileAsync(gitExe, ['rev-list', '--count', 'HEAD'], {
+        cwd: repoRoot,
+        timeout: 5_000,
+      });
+      const parsed = parseInt(newCountOut.trim(), 10);
+      if (!isNaN(parsed) && parsed > 0) newBuildNumber = parsed;
+    } catch {
+      // fallback
+    }
+
     return NextResponse.json({
       status: updated ? 'updated' : 'up_to_date',
       updated,
+      version: `v3.0.${newBuildNumber}`,
+      buildNumber: newBuildNumber,
       previousCommit: localSha.slice(0, 7),
       currentCommit: remoteSha.slice(0, 7),
       changedFilesCount: changedFiles.length,
       commitSummary,
       message: updated
-        ? `Atualizado com sucesso (${changedFiles.length} arquivo(s) atualizado(s))! Cérebro reiniciado.`
+        ? `Jarvis atualizado para v3.0.${newBuildNumber}! Cérebro reiniciado.`
         : 'Jarvis já está na versão mais recente! Cérebro recarregado.',
     });
   } catch (error) {
@@ -196,4 +287,3 @@ export async function POST() {
     );
   }
 }
-

@@ -1,24 +1,6 @@
-import { useState } from 'react';
-import { Check, Power, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowUpCircle, Check, Power, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
-function WelcomeImage() {
-  return (
-    <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
-    >
-      <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
 
 interface WelcomeViewProps {
   startButtonText: string;
@@ -38,8 +20,41 @@ export const WelcomeView = ({
       (typeof window !== 'undefined' &&
         Boolean((window as unknown as { __jarvisShutDown?: boolean }).__jarvisShutDown))
   );
+
+  const [version, setVersion] = useState<string>('v3.0.90');
+  const [remoteVersion, setRemoteVersion] = useState<string>('');
+  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
+  const [isChecking, setIsChecking] = useState<boolean>(false);
   const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  // Checagem silenciosa e automática em segundo plano
+  const checkUpdateSilently = useCallback(async () => {
+    setIsChecking(true);
+    try {
+      const res = await fetch('/api/update', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.version) {
+          setVersion(data.version);
+        }
+        if (data.updateAvailable) {
+          setUpdateAvailable(true);
+          setRemoteVersion(data.remoteVersion || '');
+        } else {
+          setUpdateAvailable(false);
+        }
+      }
+    } catch {
+      // Falha silenciosa sem interromper o usuário
+    } finally {
+      setIsChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkUpdateSilently();
+  }, [checkUpdateSilently]);
 
   const handleUpdateJarvis = async () => {
     if (updateState === 'updating') return;
@@ -55,16 +70,21 @@ export const WelcomeView = ({
       }
 
       setUpdateState('success');
+      if (data.version) setVersion(data.version);
+      setUpdateAvailable(false);
       setUpdateMessage(data.message || 'Jarvis atualizado com sucesso!');
 
       setTimeout(() => {
         window.location.reload();
-      }, 1500);
+      }, 1600);
     } catch (error) {
       setUpdateState('error');
       setUpdateMessage(
         error instanceof Error ? error.message : 'Erro ao buscar atualizações do Jarvis.'
       );
+      setTimeout(() => {
+        setUpdateState('idle');
+      }, 5000);
     }
   };
 
@@ -112,6 +132,7 @@ export const WelcomeView = ({
           </p>
         </div>
 
+        {/* Botão Principal de Iniciar */}
         <Button
           size="lg"
           onClick={onStartCall}
@@ -121,60 +142,79 @@ export const WelcomeView = ({
           {startButtonText === 'Iniciar Chamada' ? 'INICIAR NEURAL LINK' : startButtonText}
         </Button>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleUpdateJarvis}
-          disabled={updateState === 'updating'}
-          className="mt-3.5 w-72 rounded-2xl border-orange-500/30 bg-orange-500/10 font-mono text-[11px] font-semibold tracking-wider text-orange-300 uppercase hover:border-orange-500/50 hover:bg-orange-500/20 hover:text-orange-200 backdrop-blur-md"
-        >
+        {/* Indicador Discreto de Versão Progressiva e Status de Atualização */}
+        <div className="mt-3.5 flex flex-col items-center justify-center min-h-[30px]">
           {updateState === 'updating' ? (
-            <>
-              <RefreshCw className="mr-1.5 size-3.5 animate-spin text-[#ff5500]" />
-              Baixando Atualização...
-            </>
+            <div className="flex items-center justify-center gap-2 font-mono text-[11px] text-orange-300">
+              <RefreshCw className="size-3 animate-spin text-[#ff5500]" />
+              <span>Baixando atualização ({remoteVersion || 'nova versão'})...</span>
+            </div>
           ) : updateState === 'success' ? (
-            <>
-              <Check className="mr-1.5 size-3.5 text-emerald-400" />
-              Sistema Atualizado!
-            </>
+            <div className="flex items-center justify-center gap-1.5 font-mono text-[11px] text-emerald-400">
+              <Check className="size-3 text-emerald-400" />
+              <span>Sistema atualizado! Reiniciando...</span>
+            </div>
+          ) : updateAvailable ? (
+            <div className="flex items-center justify-center gap-1.5 font-mono text-[11px]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.2)]">
+                <span className="size-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="font-semibold text-white/90">{version}</span>
+                <span className="text-amber-400/60">→</span>
+                <span className="text-amber-200">{remoteVersion} disponível</span>
+                <button
+                  type="button"
+                  onClick={handleUpdateJarvis}
+                  className="ml-1 inline-flex items-center gap-1 rounded bg-amber-500/30 hover:bg-amber-500/50 px-2 py-0.5 text-[10px] font-bold text-amber-100 transition-colors cursor-pointer uppercase tracking-wider"
+                >
+                  <ArrowUpCircle className="size-3 text-amber-200" />
+                  Atualizar
+                </button>
+              </span>
+            </div>
           ) : (
-            <>
-              <RefreshCw className="mr-1.5 size-3.5" />
-              Checar Atualizações
-            </>
+            <div className="flex items-center justify-center gap-2 font-mono text-[11px] text-orange-200/60 select-none">
+              <span className="font-semibold text-orange-400/90">{version}</span>
+              <span className="text-orange-500/30">·</span>
+              <span className="inline-flex items-center gap-1.5 text-[10px] tracking-wider text-emerald-400/80">
+                <span className="size-1.5 rounded-full bg-emerald-400/90 shadow-[0_0_6px_#10b981]" />
+                SISTEMA ATUALIZADO
+              </span>
+              <button
+                type="button"
+                onClick={checkUpdateSilently}
+                title="Checar atualizações no GitHub"
+                disabled={isChecking}
+                className="text-orange-400/40 hover:text-orange-300 transition-colors p-0.5 cursor-pointer ml-0.5"
+              >
+                <RefreshCw className={`size-3 ${isChecking ? 'animate-spin text-orange-400' : ''}`} />
+              </button>
+            </div>
           )}
-        </Button>
 
+          {updateMessage && updateState === 'error' && (
+            <p className="mt-2 max-w-xs text-xs font-medium text-red-400">
+              {updateMessage}
+            </p>
+          )}
+        </div>
+
+        {/* Botão Secundário Sutil: Encerrar Sistemas */}
         <Button
           variant="outline"
           size="sm"
           onClick={handleShutdownSystem}
           disabled={updateState === 'updating'}
-          className="mt-3 w-72 rounded-2xl border-red-500/30 bg-red-500/10 font-mono text-[11px] font-semibold tracking-wider text-red-300 uppercase hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-200 backdrop-blur-md"
+          className="mt-4 w-72 rounded-2xl border-red-500/20 bg-red-500/5 font-mono text-[11px] font-semibold tracking-wider text-red-400/80 uppercase hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-200 transition-all backdrop-blur-md"
         >
           <Power className="mr-1.5 size-3.5" />
           Encerrar Sistemas
         </Button>
-
-        {updateMessage && (
-          <p
-            className={`mt-3 max-w-xs text-xs font-medium ${
-              updateState === 'error'
-                ? 'text-red-400'
-                : updateState === 'success'
-                  ? 'text-emerald-400'
-                  : 'text-orange-300'
-            }`}
-          >
-            {updateMessage}
-          </p>
-        )}
       </section>
 
+      {/* Rodapé Futurista */}
       <div className="fixed bottom-5 left-0 flex w-full items-center justify-center select-none pointer-events-none">
         <p className="font-mono text-[10px] tracking-[0.25em] text-orange-400/50 uppercase">
-          QUANTUM ENCRYPTED TUNNEL ACTIVE · JARVIS SYSTEM V3.0
+          QUANTUM ENCRYPTED TUNNEL ACTIVE · JARVIS SYSTEM {version.toUpperCase()}
         </p>
       </div>
     </div>
