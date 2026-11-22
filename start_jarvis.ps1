@@ -1,4 +1,5 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
+$env:ELECTRON_RUN_AS_NODE = $null
 
 $agentDirectory = $PSScriptRoot
 $backendDirectory = Join-Path $agentDirectory 'backend'
@@ -41,13 +42,8 @@ function Test-LiveKitServer {
 
 function Test-JarvisWeb {
     try {
-        $req = [System.Net.HttpWebRequest]::Create("http://localhost:3000")
-        $req.Timeout = 2000
-        $req.Method = "GET"
-        $resp = $req.GetResponse()
-        $status = [int]$resp.StatusCode
-        $resp.Close()
-        return ($status -ge 200 -and $status -lt 500)
+        $resp = Invoke-RestMethod -Uri "http://localhost:3000/api/connection-details" -Method Post -ContentType "application/json" -Body "{}" -TimeoutSec 2 -ErrorAction Stop
+        return ($null -ne $resp.serverUrl)
     } catch {
         return $false
     }
@@ -55,7 +51,7 @@ function Test-JarvisWeb {
 
 function Test-JarvisWebConfig {
     try {
-        $resp = Invoke-RestMethod -Uri "http://localhost:3000/api/connection-details" -Method Post -ContentType "application/json" -Body "{}" -TimeoutSec 3
+        $resp = Invoke-RestMethod -Uri "http://localhost:3000/api/connection-details" -Method Post -ContentType "application/json" -Body "{}" -TimeoutSec 3 -ErrorAction Stop
         return ($resp.serverUrl -eq "ws://127.0.0.1:7880")
     } catch {
         return $false
@@ -137,6 +133,16 @@ try {
         Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
             Where-Object { $_.CommandLine -match 'next' -or $_.CommandLine -match 'pnpm' } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+    }
+
+    # Garante que a porta 3000 esteja livre se ocupada por processo residual
+    $conn3000 = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
+    if ($conn3000 -and (-not (Test-JarvisWeb))) {
+        Write-Host "Liberando porta 3000 ocupada por processo residual..." -ForegroundColor Yellow
+        foreach ($c in $conn3000) {
+            Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+        }
         Start-Sleep -Seconds 1
     }
 
