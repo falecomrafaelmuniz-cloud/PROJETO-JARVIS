@@ -9318,19 +9318,20 @@ class Assistant(Agent):
             "categoria": cat_alvo or "Aplicativos",
         }
 
-    async def _abrir_dialogo_selecionar_pasta(self) -> str:
+    async def _abrir_dialogo_selecionar_pasta(self, caminho_inicial: str = "") -> str:
         """Abre a janela nativa do Windows (FolderBrowserDialog) para o usuário escolher uma pasta com o mouse."""
         script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browse_folder.ps1")
         if not os.path.isfile(script):
             return ""
-        cmd = f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{script}"'
+        arg_ini = f' -InitialPath "{caminho_inicial}"' if (caminho_inicial and os.path.isdir(caminho_inicial)) else ""
+        cmd = f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{script}"{arg_ini}'
         try:
             proc = await asyncio.create_subprocess_shell(
                 cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120.0)
             return stdout.decode("utf-8", errors="ignore").strip()
         except Exception as e:
             logger_memoria.warning("evento=abrir_dialogo_pasta_erro erro=%s", e)
@@ -9356,32 +9357,30 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Adiciona uma PASTA DO COMPUTADOR ao painel ATALHOS do Jarvis. "
-            "Se o usuário souber o nome da pasta (ex.: 'pasta Downloads', 'pasta Documentos', 'Área de Trabalho', 'C:\\Projetos'), adiciona diretamente. "
-            "Se o usuário disser 'quero escolher uma pasta', 'abra o explorador para escolher', 'selecionar pasta' ou não disser o caminho, "
-            "esta ferramenta ABRE A JANELA NATIVA DO EXPLORADOR DO WINDOWS para o usuário navegar e clicar na pasta desejada!"
+            "SEMPRE QUE O USUÁRIO PEDIR PARA SALVAR, ADICIONAR OU CRIAR UM ATALHO PARA UMA PASTA DO COMPUTADOR "
+            "(ex.: 'cria um atalho da pasta projeto', 'salva a pasta Projetos nos atalhos', 'adiciona a pasta tal aos atalhos'). "
+            "Esta ferramenta ABRE O EXPLORADOR DE ARQUIVOS DO WINDOWS NA TELA para o usuário conduzir até a pasta ou conferir se escolheu a pasta certa!"
         )
     )
     async def adicionar_pasta_favorita(self, nome_ou_caminho: str = "", categoria: str = "Pastas") -> str:
-        """Salva uma pasta do Windows no painel Atalhos do Jarvis (abrindo a janela seletora se necessário)."""
-        caminho_alvo = str(nome_ou_caminho or "").strip()
-        gatilhos_dialogo = ["escolher", "selecionar", "procurar", "buscar", "abrir explorador", "abrir janela", "janela", "qualquer", ""]
-        precisa_dialogo = not caminho_alvo or any(g in caminho_alvo.lower() for g in ["escolher", "selecionar", "procurar"])
-
-        if not precisa_dialogo and not os.path.isdir(caminho_alvo):
-            # Tenta resolver o caminho físico pelo nome da pasta (Dropbox, OneDrive, Projetos, etc.)
-            caminho_resolvido = await asyncio.to_thread(self.buscar_pasta, caminho_alvo)
-            if caminho_resolvido and os.path.isdir(caminho_resolvido):
-                caminho_alvo = caminho_resolvido
+        """Abre o seletor de pastas na tela do Windows para o usuário escolher ou confirmar a pasta exata."""
+        sugestao = str(nome_ou_caminho or "").strip()
+        caminho_inicial = ""
+        if sugestao:
+            if os.path.isdir(sugestao):
+                caminho_inicial = os.path.abspath(sugestao)
             else:
-                precisa_dialogo = True
+                caminho_encontrado = await asyncio.to_thread(self.buscar_pasta, sugestao)
+                if caminho_encontrado and os.path.isdir(caminho_encontrado):
+                    caminho_inicial = caminho_encontrado
 
-        if precisa_dialogo:
-            caminho_alvo = await self._abrir_dialogo_selecionar_pasta()
-            if not caminho_alvo:
-                return "Nenhuma pasta foi selecionada na janela do Windows."
+        # Abre SEMPRE a janela do Windows na tela com foco prioritário para o usuário escolher ou confirmar
+        caminho_escolhido = await self._abrir_dialogo_selecionar_pasta(caminho_inicial=caminho_inicial)
+        if not caminho_escolhido or not os.path.isdir(caminho_escolhido):
+            return "Nenhuma pasta foi selecionada na janela do Windows. A criação do atalho foi cancelada."
 
-        return await self.adicionar_favorito(item_ou_url=caminho_alvo, nome="", categoria=categoria or "Pastas", tipo="pasta")
+        nome_final = os.path.basename(os.path.normpath(caminho_escolhido)).upper()
+        return await self.adicionar_favorito(item_ou_url=caminho_escolhido, nome=nome_final, categoria="Pastas", tipo="pasta")
 
     @function_tool(
         description=(
