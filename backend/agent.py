@@ -914,6 +914,22 @@ class Assistant(Agent):
             .replace("a pasta ", "")
             .strip(" \"'/\\")
         )
+        if not nome_limpo:
+            return None
+
+        def _corresponde(alvo_candidato: str) -> bool:
+            c = alvo_candidato.strip().lower()
+            if not c:
+                return False
+            if c == nome_limpo or c == nome_pasta.lower():
+                return True
+            # Singular / Plural (ex: projeto vs projetos, download vs downloads)
+            if c.rstrip('s') == nome_limpo.rstrip('s'):
+                return True
+            if len(nome_limpo) >= 4 and (c.startswith(nome_limpo) or nome_limpo.startswith(c)):
+                return True
+            return False
+
         mapa_pastas_sistema = {
             "downloads": [os.path.join(pasta_usuario, "Downloads")],
             "download": [os.path.join(pasta_usuario, "Downloads")],
@@ -923,6 +939,7 @@ class Assistant(Agent):
             "area de trabalho": [os.path.join(pasta_usuario, "Desktop"), os.path.join(pasta_usuario, "Área de Trabalho")],
             "área de trabalho": [os.path.join(pasta_usuario, "Desktop"), os.path.join(pasta_usuario, "Área de Trabalho")],
             "documentos": [os.path.join(pasta_usuario, "Documents"), os.path.join(pasta_usuario, "Documentos")],
+            "documento": [os.path.join(pasta_usuario, "Documents"), os.path.join(pasta_usuario, "Documentos")],
             "documents": [os.path.join(pasta_usuario, "Documents"), os.path.join(pasta_usuario, "Documentos")],
             "imagens": [os.path.join(pasta_usuario, "Pictures"), os.path.join(pasta_usuario, "Imagens")],
             "pictures": [os.path.join(pasta_usuario, "Pictures"), os.path.join(pasta_usuario, "Imagens")],
@@ -932,12 +949,31 @@ class Assistant(Agent):
             "musicas": [os.path.join(pasta_usuario, "Music"), os.path.join(pasta_usuario, "Músicas")],
             "músicas": [os.path.join(pasta_usuario, "Music"), os.path.join(pasta_usuario, "Músicas")],
         }
-        if nome_limpo in mapa_pastas_sistema:
-            for cand in mapa_pastas_sistema[nome_limpo]:
-                if os.path.isdir(cand):
-                    return cand
+        for chave, rotas in mapa_pastas_sistema.items():
+            if _corresponde(chave):
+                for cand in rotas:
+                    if os.path.isdir(cand):
+                        return cand
 
-        # 1. Verifica se há janelas do Windows Explorer abertas no sistema
+        # 1. Checa Acesso Rápido (Quick Access) do Windows (onde o usuário fixa pastas como PROJETOS!)
+        try:
+            cmd_qa = (
+                'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
+                '"(New-Object -ComObject Shell.Application).Namespace(\'shell:::{679f85cb-0220-4080-b29b-5540cc05aab6}\').Items() '
+                '| ForEach-Object { try { if ($_.Path -and (Test-Path -Path $_.Path -PathType Container)) { $_.Path } } catch {} }"'
+            )
+            res_qa = subprocess.run(cmd_qa, shell=True, capture_output=True, text=True, timeout=2)
+            if res_qa.stdout:
+                for line in res_qa.stdout.splitlines():
+                    p = line.strip()
+                    if p and os.path.isdir(p):
+                        base_p = os.path.basename(os.path.normpath(p))
+                        if _corresponde(base_p):
+                            return p
+        except Exception:
+            pass
+
+        # 2. Verifica janelas do Windows Explorer abertas no sistema
         try:
             cmd_ps = (
                 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
@@ -948,17 +984,22 @@ class Assistant(Agent):
                 for line in res.stdout.splitlines():
                     p = line.strip()
                     if p and os.path.isdir(p):
-                        base_p = os.path.basename(os.path.normpath(p)).lower()
-                        if base_p in (nome_pasta.lower(), nome_limpo):
+                        base_p = os.path.basename(os.path.normpath(p))
+                        if _corresponde(base_p):
                             return p
         except Exception:
             pass
 
-        # 2. Varredura rápida em raízes prioritárias (Dropbox, OneDrive, Documentos, Desktop, C:\)
-        raizes_busca = [
-            os.path.join(pasta_usuario, "Dropbox"),
-            os.path.join(pasta_usuario, "OneDrive"),
-            os.path.join(pasta_usuario, "Google Drive"),
+        # 3. Varredura rápida em raízes prioritárias (Dropbox, OneDrive, Documentos, Desktop, C:\)
+        raizes_busca = []
+        dropbox_path = os.path.join(pasta_usuario, "Dropbox")
+        if os.path.isdir(dropbox_path):
+            raizes_busca.append(dropbox_path)
+        for env_var in ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]:
+            od = os.environ.get(env_var)
+            if od and os.path.isdir(od) and od not in raizes_busca:
+                raizes_busca.append(od)
+        raizes_busca.extend([
             os.path.join(pasta_usuario, "Desktop"),
             os.path.join(pasta_usuario, "Área de Trabalho"),
             os.path.join(pasta_usuario, "Documents"),
@@ -967,7 +1008,7 @@ class Assistant(Agent):
             pasta_usuario,
             "C:\\",
             "D:\\",
-        ]
+        ])
         skip_dirs = {
             'appdata', 'node_modules', '.git', '__pycache__', 'windows',
             'program files', 'program files (x86)', 'programdata', 'local settings',
@@ -985,7 +1026,7 @@ class Assistant(Agent):
                         dirs[:] = []
                         continue
                     for d in dirs:
-                        if d.lower() in (nome_pasta.lower(), nome_limpo):
+                        if _corresponde(d):
                             return os.path.join(root, d)
             except Exception:
                 continue
@@ -9502,13 +9543,13 @@ class Assistant(Agent):
         return msg
 
     @function_tool(
-        description="Abre a Barra de Favoritos na tela e lista todos os sites e aplicativos do computador salvos. Pode filtrar por 'categoria' se desejado."
+        description="Abre o painel Atalhos na tela e lista todos os atalhos (sites, programas, pastas, arquivos) salvos. Pode filtrar por 'categoria' se desejado."
     )
     async def listar_favoritos(self, categoria: str = "") -> str:
         lista = await asyncio.to_thread(self._carregar_favoritos)
         await self._publicar_favoritos_sync(lista, abrir_painel=True)
         if not lista:
-            return "A Barra de Favoritos está aberta na tela, mas ainda não há nenhum favorito salvo (sites ou aplicativos)."
+            return "O painel Atalhos está aberto na tela, mas ainda não há nenhum atalho salvo."
 
         filtro = str(categoria or "").strip().lower()
         if filtro:
@@ -9517,21 +9558,21 @@ class Assistant(Agent):
             filtrados = lista
 
         if not filtrados:
-            return f"Não encontrei favoritos na categoria '{categoria}'. Total de {len(lista)} sites salvos em outras categorias."
+            return f"Não encontrei atalhos na categoria '{categoria}'. Total de {len(lista)} atalhos salvos em outras categorias."
 
         linhas = []
         for idx, item in enumerate(filtrados, start=1):
             cat = f" [{item.get('categoria')}]" if item.get("categoria") else ""
             linhas.append(f"{idx:02d}. {item.get('nome')}{cat} - {item.get('url')}")
-        return "Barra de Favoritos:\n" + "\n".join(linhas)
+        return "Painel de Atalhos:\n" + "\n".join(linhas)
 
     @function_tool(
-        description="Abre um site ou aplicativo da Barra de Favoritos pelo nome (ex: 'YouTube', 'Calculadora', 'Excel', 'Cortecloud') ou número da lista."
+        description="Abre um atalho do painel Atalhos pelo nome (ex: 'YouTube', 'Calculadora', 'Projetos', 'Cortecloud') ou número da lista."
     )
     async def abrir_favorito(self, nome_ou_url: str) -> str:
         lista = await asyncio.to_thread(self._carregar_favoritos)
         if not lista:
-            return "Não há nenhum favorito cadastrado."
+            return "Não há nenhum atalho cadastrado."
 
         termo = str(nome_ou_url or "").strip().lower()
         encontrado = None
@@ -9551,7 +9592,7 @@ class Assistant(Agent):
                     break
 
         if not encontrado:
-            return f"Não encontrei nenhum site ou aplicativo correspondente a '{nome_ou_url}' nos favoritos."
+            return f"Não encontrei nenhum atalho correspondente a '{nome_ou_url}' no painel Atalhos."
 
         url_final = encontrado.get("url")
         nome_final = encontrado.get("nome")

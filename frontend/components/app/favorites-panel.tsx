@@ -388,7 +388,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
               Atalhos
             </h2>
             <p className="text-[11px] text-cyan-300/60 truncate">
-              {favorites.length} {favorites.length === 1 ? 'atalho salvo (sites e apps)' : 'atalhos salvos (sites e apps)'}
+              {favorites.length} {favorites.length === 1 ? 'atalho salvo' : 'atalhos salvos'}
             </p>
           </div>
         </div>
@@ -397,7 +397,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
           <button
             type="button"
             onClick={() => setShowAddForm((v) => !v)}
-            title={showAddForm ? 'Cancelar adição' : 'Adicionar novo site'}
+            title={showAddForm ? 'Cancelar' : 'Adicionar novo atalho'}
             className={cn(
               'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition cursor-pointer',
               showAddForm
