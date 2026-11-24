@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$InitialPath = ''
 )
 [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null

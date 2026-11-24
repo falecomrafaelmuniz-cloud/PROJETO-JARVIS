@@ -1,4 +1,4 @@
-﻿[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null
+[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null
 [System.Reflection.Assembly]::LoadWithPartialName('System.Drawing') | Out-Null
 [System.Windows.Forms.Application]::EnableVisualStyles()
 

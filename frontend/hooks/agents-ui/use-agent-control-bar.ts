@@ -66,7 +66,7 @@ export interface UseInputControlsReturn {
 }
 
 export function useInputControls({
-  saveUserChoices = true,
+  saveUserChoices = false,
   onDeviceError,
 }: UseInputControlsProps = {}): UseInputControlsReturn {
   const microphoneToggle = useTrackToggle({

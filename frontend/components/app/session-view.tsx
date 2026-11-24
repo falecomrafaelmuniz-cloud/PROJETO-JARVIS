@@ -894,6 +894,7 @@ export const SessionView = ({
             isChatOpen={chatOpen}
             messages={messages}
             isConnected={true}
+            saveUserChoices={false}
             onDisconnect={handleDisconnect}
             onIsChatOpenChange={setChatOpen}
             extraControls={
