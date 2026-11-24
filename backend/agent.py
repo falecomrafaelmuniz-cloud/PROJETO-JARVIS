@@ -9976,6 +9976,11 @@ def _handle_room_data(
             if payload.get("action") in ("open_url", "open") and (payload.get("url") or payload.get("nome")):
                 alvo = str(payload.get("url") or payload.get("nome") or "").strip()
                 tipo = str(payload.get("tipo") or "").lower()
+                agora = time.monotonic()
+                ultimo_alvo, ultimo_tempo = getattr(agent, "_ultimo_atalho_aberto", ("", 0.0))
+                if alvo == ultimo_alvo and (agora - ultimo_tempo) < 1.5:
+                    return
+                agent._ultimo_atalho_aberto = (alvo, agora)
                 if tipo == "pasta":
                     caminho_abrir = alvo
                     if not caminho_abrir or not os.path.isdir(caminho_abrir):

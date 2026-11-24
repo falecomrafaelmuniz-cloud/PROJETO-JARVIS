@@ -263,21 +263,35 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
     }
   };
 
+  const lastOpenTimeRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
+
   const handleAbrirUrl = (fav: FavoriteItem) => {
+    // Previne múltiplos cliques acidentais rápidos no mesmo item
+    const now = Date.now();
+    if (lastOpenTimeRef.current.id === fav.id && now - lastOpenTimeRef.current.time < 1500) {
+      return;
+    }
+    lastOpenTimeRef.current = { id: fav.id, time: now };
+
     const isPasta = fav.tipo === 'pasta' || fav.categoria?.toLowerCase() === 'pastas';
     const isWeb = !isPasta && (fav.tipo === 'site' || fav.url.startsWith('http://') || fav.url.startsWith('https://'));
     const tipoEfetivo = isPasta ? 'pasta' : fav.tipo;
 
-    if (room && room.localParticipant) {
+    // 1. Se a sessão do Jarvis (LiveKit) estiver conectada, despacha exclusivamente pelo backend para não duplicar aberturas
+    if (room && room.localParticipant && room.state === 'connected') {
       try {
         const payload = { action: 'open_url', url: fav.url, nome: fav.nome, tipo: tipoEfetivo };
         room.localParticipant.publishData(
           new TextEncoder().encode(JSON.stringify(payload)),
           { reliable: true, topic: FAVORITES_TOPIC }
         );
-      } catch {}
+        return;
+      } catch {
+        // Falha no envio pelo LiveKit: prossegue para o fallback local abaixo
+      }
     }
 
+    // 2. Fallback caso a sala do LiveKit não esteja conectada:
     if (!isWeb) {
       fetch('/api/favorites', {
         method: 'POST',
