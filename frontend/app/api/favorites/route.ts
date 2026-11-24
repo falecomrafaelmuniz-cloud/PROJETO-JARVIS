@@ -49,17 +49,28 @@ function readFavorites(): FavoriteItem[] {
     // Higieniza: nomes sempre em MAIÚSCULAS e limpa atalhos de apps que foram salvos com https://
     return parsed.map((item: FavoriteItem) => {
       let nomeUpper = String(item.nome || '').toUpperCase();
-      // Remove prefixos redundantes "PASTA " ou "A PASTA " para exibir apenas o nome real da pasta
-      if (item.tipo === 'pasta' && /^PASTA\s+/i.test(nomeUpper) && nomeUpper.length > 6) {
-        nomeUpper = nomeUpper.replace(/^PASTA\s+/i, '').trim();
+      let tipo = item.tipo || 'app';
+      let categoria = item.categoria || 'Aplicativos';
+
+      // Auto-correção: se a categoria for Pastas ou for tipo pasta, garante tipo='pasta'
+      const ehPasta = tipo === 'pasta' || categoria.toLowerCase() === 'pastas' || /^PASTA\s+/i.test(nomeUpper);
+      if (ehPasta) {
+        tipo = 'pasta';
+        categoria = 'Pastas';
+        if (/^PASTA\s+/i.test(nomeUpper) && nomeUpper.length > 6) {
+          nomeUpper = nomeUpper.replace(/^PASTA\s+/i, '').trim();
+        }
       }
+
       let urlSanitized = String(item.url || '');
-      if (item.tipo === 'app' && urlSanitized.toLowerCase().startsWith('http')) {
+      if (tipo === 'app' && urlSanitized.toLowerCase().startsWith('http')) {
         urlSanitized = urlSanitized.replace(/^https?:\/\//i, '').replace(/\/$/, '');
       }
       return {
         ...item,
         nome: nomeUpper,
+        tipo,
+        categoria,
         url: urlSanitized,
       };
     });

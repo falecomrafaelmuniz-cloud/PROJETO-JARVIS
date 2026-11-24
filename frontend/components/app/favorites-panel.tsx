@@ -264,11 +264,13 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
   };
 
   const handleAbrirUrl = (fav: FavoriteItem) => {
-    const isWeb = fav.tipo === 'site' || fav.url.startsWith('http://') || fav.url.startsWith('https://');
+    const isPasta = fav.tipo === 'pasta' || fav.categoria?.toLowerCase() === 'pastas';
+    const isWeb = !isPasta && (fav.tipo === 'site' || fav.url.startsWith('http://') || fav.url.startsWith('https://'));
+    const tipoEfetivo = isPasta ? 'pasta' : fav.tipo;
 
     if (room && room.localParticipant) {
       try {
-        const payload = { action: 'open_url', url: fav.url, nome: fav.nome, tipo: fav.tipo };
+        const payload = { action: 'open_url', url: fav.url, nome: fav.nome, tipo: tipoEfetivo };
         room.localParticipant.publishData(
           new TextEncoder().encode(JSON.stringify(payload)),
           { reliable: true, topic: FAVORITES_TOPIC }
@@ -280,7 +282,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
       fetch('/api/favorites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'open', url: fav.url, tipo: fav.tipo }),
+        body: JSON.stringify({ action: 'open', url: fav.url, tipo: tipoEfetivo }),
       }).catch(() => {});
       return;
     }
@@ -854,7 +856,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     >
                       {/* Ícone contextual conforme o tipo de atalho */}
                       <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/60 overflow-hidden shadow-xs">
-                        {fav.tipo === 'pasta' ? (
+                        {fav.tipo === 'pasta' || fav.categoria?.toLowerCase() === 'pastas' ? (
                           <Folder className="size-4 text-amber-300" />
                         ) : fav.tipo === 'arquivo' ? (
                           <FileText className="size-4 text-emerald-300" />
@@ -895,7 +897,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                             <span
                               className={cn(
                                 'shrink-0 rounded-full border px-1.5 py-0.2 text-[9px] font-medium uppercase',
-                                fav.tipo === 'pasta'
+                                fav.tipo === 'pasta' || fav.categoria?.toLowerCase() === 'pastas'
                                   ? 'border-amber-400/30 bg-amber-500/10 text-amber-300'
                                   : fav.tipo === 'arquivo'
                                   ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'

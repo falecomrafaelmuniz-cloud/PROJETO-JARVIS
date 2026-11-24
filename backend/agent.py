@@ -9000,8 +9000,31 @@ class Assistant(Agent):
                 # Higieniza: nomes sempre em MAIÚSCULAS e limpa eventual https:// de aplicativos
                 for item in dados:
                     if isinstance(item, dict):
-                        if item.get("nome"):
+                        cat_low = str(item.get("categoria") or "").lower()
+                        nome_orig = str(item.get("nome") or "")
+                        url_orig = str(item.get("url") or "")
+                        tipo_orig = str(item.get("tipo") or "")
+
+                        # Auto-correção: se a categoria for Pastas ou for pasta, garante tipo='pasta'
+                        eh_pasta = (
+                            tipo_orig == "pasta"
+                            or cat_low in ("pastas", "pasta")
+                            or nome_orig.lower().startswith("pasta ")
+                            or "pasta" in nome_orig.lower()
+                            or (url_orig and ("\\" in url_orig or "/" in url_orig) and not url_orig.lower().startswith("http") and not url_orig.lower().endswith(".exe"))
+                        )
+                        if eh_pasta:
+                            item["tipo"] = "pasta"
+                            item["categoria"] = "Pastas"
+                            item["nome"] = re.sub(r'^(a\s+)?pasta\s+', '', nome_orig, flags=re.I).strip().upper()
+                            # Se a url for apenas um nome (ex: "Projetos"), tenta recuperar o caminho real no disco
+                            if url_orig and not os.path.isdir(url_orig):
+                                achado = self.buscar_pasta(url_orig or nome_orig)
+                                if achado and os.path.isdir(achado):
+                                    item["url"] = achado
+                        elif item.get("nome"):
                             item["nome"] = str(item["nome"]).upper()
+
                         if item.get("tipo") == "app" and str(item.get("url", "")).lower().startswith("http"):
                             item["url"] = re.sub(r"^https?://", "", str(item["url"]), flags=re.I).rstrip("/")
                 return dados
@@ -9044,6 +9067,11 @@ class Assistant(Agent):
         alvo = str(item_ou_url or nome or "").strip()
         nome_alvo = str(nome or "").strip()
         cat_alvo = str(categoria or "").strip()
+
+        # Força detecção de pasta se a categoria for Pastas ou o nome indicar pasta
+        if cat_alvo.lower() in ("pastas", "pasta") or alvo.lower().startswith(("pasta ", "a pasta ")) or "pasta" in alvo.lower():
+            tipo = "pasta"
+            cat_alvo = "Pastas"
         tipo_alvo = str(tipo or "auto").strip().lower()
         alvo_low = alvo.lower()
 
@@ -9129,7 +9157,9 @@ class Assistant(Agent):
         # Checagem 2: Pasta
         eh_pasta_sugerida = (
             tipo_alvo in ("pasta", "folder", "diretorio", "diretório")
+            or cat_alvo.lower() in ("pastas", "pasta")
             or alvo_low.startswith(("pasta ", "a pasta ", "diretório ", "o diretorio "))
+            or "pasta" in alvo_low
             or alvo_sem_prefixo in mapa_pastas_padrao
             or os.path.isdir(alvo)
             or (alvo.endswith("\\") or alvo.endswith("/"))
@@ -9154,13 +9184,13 @@ class Assistant(Agent):
                     "nome": n_pasta_limpa.upper(),
                     "categoria": cat_alvo or "Pastas",
                 }
-            elif tipo_alvo in ("pasta", "folder", "diretorio", "diretório") or alvo_low.startswith(("pasta ", "a pasta ")):
+            elif tipo_alvo in ("pasta", "folder", "diretorio", "diretório") or cat_alvo.lower() in ("pastas", "pasta") or alvo_low.startswith(("pasta ", "a pasta ")) or "pasta" in alvo_low:
                 n_pasta_limpa = re.sub(r'^(a\s+)?pasta\s+', '', (nome_alvo or alvo_sem_prefixo).strip(), flags=re.IGNORECASE)
                 return {
                     "tipo": "pasta",
                     "url": alvo,
                     "nome": (n_pasta_limpa or alvo_sem_prefixo).upper(),
-                    "categoria": cat_alvo or "Pastas",
+                    "categoria": "Pastas",
                     "caminho_pendente": True,
                 }
 
@@ -9330,12 +9360,22 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Adiciona, favorita ou salva um APLICATIVO, PROGRAMA OU SOFTWARE DO COMPUTADOR (ex.: Calculadora, Excel, Bloco de Notas, Cortecloud, WhatsApp, Word, Spotify, Chrome, etc.) no painel ATALHOS do Jarvis (também chamado de favoritos do Jarvis; NÃO é a barra do Chrome/navegador). "
-            "USE ESTA FERRAMENTA SEMPRE que o usuário pedir para colocar, salvar ou adicionar qualquer aplicativo, programa ou software do PC nos atalhos ou favoritos."
+            "Adiciona, favorita ou salva APENAS UM APLICATIVO OU PROGRAMA EXECUTÁVEL (.exe) DO COMPUTADOR (ex.: Calculadora, Excel, Bloco de Notas, Cortecloud, WhatsApp, Word, Spotify, Chrome, etc.) no painel ATALHOS. "
+            "ATENÇÃO: NÃO USE ESTA FERRAMENTA PARA PASTAS! Se o usuário pedir atalho para qualquer PASTA ou DIRETÓRIO, use OBRIGATORIAMENTE 'adicionar_pasta_favorita'!"
         )
     )
     async def adicionar_aplicativo_favorito(self, nome_aplicativo: str, categoria: str = "Aplicativos") -> str:
         """Salva um aplicativo ou programa instalado no Windows no painel Atalhos do Jarvis."""
+        alvo_check = str(nome_aplicativo or "").strip().lower()
+        cat_check = str(categoria or "").strip().lower()
+        if (
+            cat_check in ("pastas", "pasta")
+            or alvo_check.startswith(("pasta ", "a pasta ", "diretório ", "o diretório ", "diretorio ", "o diretorio "))
+            or "pasta " in alvo_check
+            or os.path.isdir(nome_aplicativo)
+        ):
+            nome_limpo_pasta = re.sub(r'^(a\s+)?pasta\s+', '', str(nome_aplicativo or '').strip(), flags=re.I)
+            return await self.adicionar_pasta_favorita(nome_ou_caminho=nome_limpo_pasta, categoria="Pastas")
         return await self.adicionar_favorito(item_ou_url=nome_aplicativo, nome=nome_aplicativo, categoria=categoria or "Aplicativos", tipo="app")
 
     @function_tool(
@@ -9364,6 +9404,11 @@ class Assistant(Agent):
         alvo = str(item_ou_url or nome or "").strip()
         nome_alvo = str(nome or "").strip()
         cat_alvo = str(categoria or "").strip()
+
+        # Força detecção de pasta se a categoria for Pastas ou o nome indicar pasta
+        if cat_alvo.lower() in ("pastas", "pasta") or alvo.lower().startswith(("pasta ", "a pasta ")) or "pasta" in alvo.lower():
+            tipo = "pasta"
+            cat_alvo = "Pastas"
 
         # Se pediu o site atual ou não passou nada, tenta capturar aba do navegador
         if not alvo or any(termo in alvo.lower() for termo in ["este site", "site atual", "essa aba", "esta aba"]):
