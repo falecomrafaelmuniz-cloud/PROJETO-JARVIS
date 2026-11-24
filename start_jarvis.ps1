@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $env:ELECTRON_RUN_AS_NODE = $null
 
 $agentDirectory = $PSScriptRoot

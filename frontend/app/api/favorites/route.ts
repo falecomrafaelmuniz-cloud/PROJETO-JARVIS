@@ -9,7 +9,7 @@ export interface FavoriteItem {
   id: string;
   nome: string;
   url: string;
-  tipo?: 'site' | 'app';
+  tipo?: 'site' | 'app' | 'pasta' | 'arquivo' | 'sistema' | 'script';
   categoria?: string;
   criado_em?: string;
   atualizado_em?: string;
@@ -92,19 +92,55 @@ export async function POST(req: Request) {
       }
 
       const explicitTipo = body.tipo ? String(body.tipo).toLowerCase() : '';
-      const ehSite = explicitTipo === 'app' ? false : (
-        explicitTipo === 'site' ||
+      const rawTargetLower = rawTarget.toLowerCase();
+
+      // Extensões para classificação
+      const docExts = ['.pdf', '.xlsx', '.xls', '.docx', '.doc', '.pptx', '.txt', '.csv', '.jpg', '.png', '.mp4', '.zip'];
+      const scriptExts = ['.bat', '.cmd', '.ps1', '.py', '.vbs'];
+      const sistemaKeywords = ['control', 'ms-settings:', 'taskmgr', 'cleanmgr', 'cmd', 'powershell'];
+
+      let tipo: 'site' | 'app' | 'pasta' | 'arquivo' | 'sistema' | 'script' = 'app';
+      let url = rawTarget;
+      let defaultCat = 'Aplicativos';
+
+      if (explicitTipo && ['site', 'app', 'pasta', 'arquivo', 'sistema', 'script'].includes(explicitTipo)) {
+        tipo = explicitTipo as any;
+      } else if (
         rawTarget.startsWith('http://') ||
         rawTarget.startsWith('https://') ||
-        (rawTarget.includes('.') && !rawTarget.includes(' ') && !rawTarget.toLowerCase().endsWith('.exe'))
-      );
+        rawTarget.startsWith('www.') ||
+        (rawTarget.includes('.') && !rawTarget.includes(' ') && !rawTargetLower.endsWith('.exe'))
+      ) {
+        tipo = 'site';
+      } else if (rawTargetLower.startsWith('pasta ') || rawTarget.endsWith('\\') || rawTarget.endsWith('/')) {
+        tipo = 'pasta';
+      } else if (scriptExts.some((ext) => rawTargetLower.endsWith(ext))) {
+        tipo = 'script';
+      } else if (docExts.some((ext) => rawTargetLower.endsWith(ext))) {
+        tipo = 'arquivo';
+      } else if (sistemaKeywords.some((k) => rawTargetLower === k || rawTargetLower.includes(k))) {
+        tipo = 'sistema';
+      }
 
-      const url = ehSite ? normalizeUrl(rawTarget) : rawTarget.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-      const tipo: 'site' | 'app' = ehSite ? 'site' : 'app';
+      if (tipo === 'site') {
+        url = normalizeUrl(rawTarget);
+        defaultCat = 'Sites';
+      } else if (tipo === 'pasta') {
+        defaultCat = 'Pastas';
+      } else if (tipo === 'arquivo') {
+        defaultCat = 'Arquivos';
+      } else if (tipo === 'sistema') {
+        defaultCat = 'Sistema';
+      } else if (tipo === 'script') {
+        defaultCat = 'Scripts';
+      } else {
+        url = rawTarget.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+        defaultCat = 'Aplicativos';
+      }
 
       let nome = String(body.nome || '').trim();
       if (!nome) {
-        if (ehSite) {
+        if (tipo === 'site') {
           try {
             const parsed = new URL(url);
             const domain = parsed.hostname.replace(/^www\./, '');
@@ -118,7 +154,6 @@ export async function POST(req: Request) {
       }
       nome = nome.toUpperCase();
 
-      const defaultCat = ehSite ? 'Geral' : 'Aplicativos';
       const categoria = String(body.categoria || defaultCat).trim() || defaultCat;
       const existing = favorites.find(
         (f) =>
@@ -220,14 +255,21 @@ export async function POST(req: Request) {
 
     if (action === 'open') {
       const target = String(body.url || body.item || '').trim();
+      const tipo = String(body.tipo || '').toLowerCase();
       if (target) {
-        if (target.startsWith('http://') || target.startsWith('https://')) {
+        if (tipo === 'pasta') {
+          exec(`explorer.exe "${target}"`, { windowsHide: true }, () => {});
+        } else if (tipo === 'arquivo' || tipo === 'script') {
+          exec(`start "" "${target}"`, { windowsHide: true }, () => {});
+        } else if (tipo === 'sistema') {
+          exec(`start "" ${target}`, { windowsHide: true }, () => {});
+        } else if (tipo === 'site' || target.startsWith('http://') || target.startsWith('https://')) {
           exec(`start "" "${target}"`, { windowsHide: true }, () => {});
         } else {
           exec(`start "" "${target}"`, { windowsHide: true }, () => {});
         }
       }
-      return NextResponse.json({ status: 'ok', action: 'open', target });
+      return NextResponse.json({ status: 'ok', action: 'open', target, tipo });
     }
 
     return NextResponse.json(

@@ -8,11 +8,14 @@ import {
   Check,
   Edit2,
   ExternalLink,
+  FileText,
   Folder,
   Globe,
   Plus,
   Search,
+  Settings,
   Star,
+  Terminal,
   Trash2,
   X,
 } from 'lucide-react';
@@ -27,7 +30,7 @@ export interface FavoriteItem {
   id: string;
   nome: string;
   url: string;
-  tipo?: 'site' | 'app';
+  tipo?: 'site' | 'app' | 'pasta' | 'arquivo' | 'sistema' | 'script';
   categoria?: string;
   criado_em?: string;
   atualizado_em?: string;
@@ -58,7 +61,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
   const [showAddForm, setShowAddForm] = useState(false);
 
   // Form states para adicionar
-  const [novoTipo, setNovoTipo] = useState<'site' | 'app'>('site');
+  const [novoTipo, setNovoTipo] = useState<'site' | 'app' | 'pasta' | 'arquivo' | 'sistema' | 'script'>('site');
   const [novoNome, setNovoNome] = useState('');
   const [novaUrl, setNovaUrl] = useState('');
   const [novaCategoria, setNovaCategoria] = useState('Geral');
@@ -160,9 +163,16 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
     e.preventDefault();
     if (!novaUrl.trim()) return;
     setSaving(true);
-    const isApp = novoTipo === 'app';
-    const catFinal = novaCategoria.trim() || (isApp ? 'Aplicativos' : 'Geral');
-    const rawNome = novoNome.trim() || (isApp ? novaUrl.trim() : '');
+    const catDefaults: Record<string, string> = {
+      site: 'Sites',
+      app: 'Aplicativos',
+      pasta: 'Pastas',
+      arquivo: 'Arquivos',
+      sistema: 'Sistema',
+      script: 'Scripts',
+    };
+    const catFinal = novaCategoria.trim() || catDefaults[novoTipo] || 'Geral';
+    const rawNome = novoNome.trim() || novaUrl.trim();
     const nomeFinal = rawNome.toUpperCase();
     try {
       const res = await fetch('/api/favorites', {
@@ -183,7 +193,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
         }
         setNovoNome('');
         setNovaUrl('');
-        setNovaCategoria(isApp ? 'Aplicativos' : 'Geral');
+        setNovaCategoria(catDefaults[novoTipo] || 'Geral');
         setShowAddForm(false);
       }
     } catch {
@@ -197,7 +207,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
     setEditingItem(fav);
     setEditNome(fav.nome.toUpperCase());
     setEditUrl(fav.url);
-    setEditCategoria(fav.categoria || (fav.tipo === 'app' ? 'Aplicativos' : 'Geral'));
+    setEditCategoria(fav.categoria || 'Geral');
   };
 
   const handleSalvarEdicao = async (e: React.FormEvent) => {
@@ -212,8 +222,8 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
           action: 'update',
           id: editingItem.id,
           nome: editNome.trim().toUpperCase(),
-          url: editingItem.tipo === 'app' ? editingItem.url : editUrl.trim(),
-          categoria: editCategoria.trim() || (editingItem.tipo === 'app' ? 'Aplicativos' : 'Geral'),
+          url: editingItem.tipo === 'site' ? editUrl.trim() : editingItem.url,
+          categoria: editCategoria.trim() || 'Geral',
         }),
       });
       if (res.ok) {
@@ -249,36 +259,27 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
   };
 
   const handleAbrirUrl = (fav: FavoriteItem) => {
-    const isApp = fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://'));
-    if (isApp) {
-      if (room && room.localParticipant) {
-        try {
-          const payload = { action: 'open_url', url: fav.url, nome: fav.nome };
-          room.localParticipant.publishData(
-            new TextEncoder().encode(JSON.stringify(payload)),
-            { reliable: true, topic: FAVORITES_TOPIC }
-          );
-        } catch {}
-      }
-      fetch('/api/favorites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'open', url: fav.url }),
-      }).catch(() => {});
-      return;
-    }
+    const isWeb = fav.tipo === 'site' || fav.url.startsWith('http://') || fav.url.startsWith('https://');
 
     if (room && room.localParticipant) {
       try {
-        const payload = { action: 'open_url', url: fav.url, nome: fav.nome };
+        const payload = { action: 'open_url', url: fav.url, nome: fav.nome, tipo: fav.tipo };
         room.localParticipant.publishData(
           new TextEncoder().encode(JSON.stringify(payload)),
           { reliable: true, topic: FAVORITES_TOPIC }
         );
-      } catch {
-        // fallback
-      }
+      } catch {}
     }
+
+    if (!isWeb) {
+      fetch('/api/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'open', url: fav.url, tipo: fav.tipo }),
+      }).catch(() => {});
+      return;
+    }
+
     window.open(fav.url, '_blank', 'noopener,noreferrer');
   };
 
@@ -414,40 +415,88 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
               className="border-b border-cyan-400/20 bg-cyan-950/25 p-3 space-y-2.5 text-xs"
               data-no-drag="true"
             >
-              {/* Abas: Site Web vs Aplicativo do PC */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1 bg-black/60 p-0.5 rounded-lg border border-white/10 text-[11px]">
+              {/* Abas: Site, App, Pasta, Arquivo, Sistema */}
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar bg-black/60 p-0.5 rounded-lg border border-white/10 text-[10px]">
                   <button
                     type="button"
                     onClick={() => {
                       setNovoTipo('site');
-                      if (novaCategoria === 'Aplicativos') setNovaCategoria('Geral');
+                      setNovaCategoria('Sites');
                     }}
                     className={cn(
-                      'flex items-center gap-1 px-2.5 py-1 rounded-md transition font-medium cursor-pointer',
+                      'flex items-center gap-1 px-2 py-1 rounded-md transition font-medium cursor-pointer',
                       novoTipo === 'site'
                         ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/50'
                         : 'text-white/60 hover:text-white'
                     )}
                   >
                     <Globe className="size-3" />
-                    <span>Site Web</span>
+                    <span>Site</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setNovoTipo('app');
-                      if (novaCategoria === 'Geral') setNovaCategoria('Aplicativos');
+                      setNovaCategoria('Aplicativos');
                     }}
                     className={cn(
-                      'flex items-center gap-1 px-2.5 py-1 rounded-md transition font-medium cursor-pointer',
+                      'flex items-center gap-1 px-2 py-1 rounded-md transition font-medium cursor-pointer',
                       novoTipo === 'app'
-                        ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/50'
+                        ? 'bg-purple-500/30 text-purple-200 border border-purple-400/50'
                         : 'text-white/60 hover:text-white'
                     )}
                   >
                     <AppWindow className="size-3" />
-                    <span>Aplicativo / Programa</span>
+                    <span>App</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNovoTipo('pasta');
+                      setNovaCategoria('Pastas');
+                    }}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1 rounded-md transition font-medium cursor-pointer',
+                      novoTipo === 'pasta'
+                        ? 'bg-amber-500/30 text-amber-200 border border-amber-400/50'
+                        : 'text-white/60 hover:text-white'
+                    )}
+                  >
+                    <Folder className="size-3" />
+                    <span>Pasta</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNovoTipo('arquivo');
+                      setNovaCategoria('Arquivos');
+                    }}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1 rounded-md transition font-medium cursor-pointer',
+                      novoTipo === 'arquivo'
+                        ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/50'
+                        : 'text-white/60 hover:text-white'
+                    )}
+                  >
+                    <FileText className="size-3" />
+                    <span>Arquivo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNovoTipo('sistema');
+                      setNovaCategoria('Sistema');
+                    }}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1 rounded-md transition font-medium cursor-pointer',
+                      novoTipo === 'sistema'
+                        ? 'bg-orange-500/30 text-orange-200 border border-orange-400/50'
+                        : 'text-white/60 hover:text-white'
+                    )}
+                  >
+                    <Settings className="size-3" />
+                    <span>Sistema</span>
                   </button>
                 </div>
 
@@ -456,17 +505,17 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     type="button"
                     onClick={handleColarClipboard}
                     title="Colar link da área de transferência"
-                    className="text-cyan-400/80 hover:text-cyan-200 underline text-[10px] cursor-pointer"
+                    className="shrink-0 text-cyan-400/80 hover:text-cyan-200 underline text-[10px] cursor-pointer"
                   >
                     Colar Link
                   </button>
                 )}
               </div>
 
-              {/* Botões de Acesso Rápido para Aplicativos Comuns do Windows */}
+              {/* Botões de Acesso Rápido / Sugestões conforme o tipo */}
               {novoTipo === 'app' && (
                 <div className="space-y-1">
-                  <span className="text-[10px] text-cyan-300/70 font-medium">Programas sugeridos:</span>
+                  <span className="text-[10px] text-purple-300/70 font-medium">Programas sugeridos:</span>
                   <div className="flex flex-wrap gap-1">
                     {['Calculadora', 'Bloco de Notas', 'Excel', 'Word', 'Cortecloud', 'WhatsApp', 'Spotify'].map((appSug) => (
                       <button
@@ -477,9 +526,59 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                           setNovoNome(appSug);
                           setNovaCategoria('Aplicativos');
                         }}
-                        className="rounded-md border border-cyan-500/30 bg-cyan-950/40 px-2 py-0.5 text-[10px] text-cyan-200 hover:bg-cyan-500/20 hover:border-cyan-400 cursor-pointer"
+                        className="rounded-md border border-purple-500/30 bg-purple-950/40 px-2 py-0.5 text-[10px] text-purple-200 hover:bg-purple-500/20 hover:border-purple-400 cursor-pointer"
                       >
                         +{appSug}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {novoTipo === 'pasta' && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-amber-300/70 font-medium">Pastas comuns do Windows:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {['Downloads', 'Documentos', 'Área de Trabalho', 'Imagens', 'Vídeos'].map((pSug) => (
+                      <button
+                        key={pSug}
+                        type="button"
+                        onClick={() => {
+                          setNovaUrl(pSug);
+                          setNovoNome(`PASTA ${pSug.toUpperCase()}`);
+                          setNovaCategoria('Pastas');
+                        }}
+                        className="rounded-md border border-amber-500/30 bg-amber-950/40 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/20 hover:border-amber-400 cursor-pointer"
+                      >
+                        +{pSug}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {novoTipo === 'sistema' && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-orange-300/70 font-medium">Ferramentas do Sistema:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { l: 'Painel de Controle', c: 'control' },
+                      { l: 'Configurações', c: 'ms-settings:' },
+                      { l: 'Gerenciador de Tarefas', c: 'taskmgr' },
+                      { l: 'Prompt CMD', c: 'cmd' },
+                      { l: 'PowerShell', c: 'powershell' },
+                    ].map((sSug) => (
+                      <button
+                        key={sSug.l}
+                        type="button"
+                        onClick={() => {
+                          setNovaUrl(sSug.c);
+                          setNovoNome(sSug.l.toUpperCase());
+                          setNovaCategoria('Sistema');
+                        }}
+                        className="rounded-md border border-orange-500/30 bg-orange-950/40 px-2 py-0.5 text-[10px] text-orange-200 hover:bg-orange-500/20 hover:border-orange-400 cursor-pointer"
+                      >
+                        +{sSug.l}
                       </button>
                     ))}
                   </div>
@@ -494,9 +593,15 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     value={novaUrl}
                     onChange={(e) => setNovaUrl(e.target.value)}
                     placeholder={
-                      novoTipo === 'app'
-                        ? 'Nome do programa (ex: Calculadora, Excel, Cortecloud)'
-                        : 'URL do site (ex: https://youtube.com)'
+                      novoTipo === 'site'
+                        ? 'URL do site (ex: https://youtube.com)'
+                        : novoTipo === 'pasta'
+                        ? 'Nome ou caminho da pasta (ex: Downloads, C:\\Projetos)'
+                        : novoTipo === 'arquivo'
+                        ? 'Caminho do arquivo (ex: C:\\Documentos\\planilha.xlsx)'
+                        : novoTipo === 'sistema'
+                        ? 'Comando de sistema (ex: control, ms-settings:, taskmgr)'
+                        : 'Nome do programa (ex: Calculadora, Excel, Cortecloud)'
                     }
                     className="w-full rounded-md border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs text-white placeholder-white/40 focus:border-cyan-400 focus:outline-none"
                   />
@@ -506,14 +611,14 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     type="text"
                     value={novoNome}
                     onChange={(e) => setNovoNome(e.target.value)}
-                    placeholder={novoTipo === 'app' ? 'Nome de exibição' : 'Nome (opcional)'}
+                    placeholder="Nome de exibição (opcional)"
                     className="rounded-md border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs text-white placeholder-white/40 focus:border-cyan-400 focus:outline-none"
                   />
                   <input
                     type="text"
                     value={novaCategoria}
                     onChange={(e) => setNovaCategoria(e.target.value)}
-                    placeholder={novoTipo === 'app' ? 'Categoria: Aplicativos' : 'Categoria (ex: Geral)'}
+                    placeholder="Categoria"
                     className="rounded-md border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs text-white placeholder-white/40 focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
@@ -536,9 +641,15 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                   <span>
                     {saving
                       ? 'Salvando...'
-                      : novoTipo === 'app'
-                      ? 'Salvar Aplicativo'
-                      : 'Salvar Site'}
+                      : novoTipo === 'site'
+                      ? 'Salvar Site'
+                      : novoTipo === 'pasta'
+                      ? 'Salvar Pasta'
+                      : novoTipo === 'arquivo'
+                      ? 'Salvar Arquivo'
+                      : novoTipo === 'sistema'
+                      ? 'Salvar Ferramenta'
+                      : 'Salvar Aplicativo'}
                   </span>
                 </button>
               </div>
@@ -645,21 +756,35 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                     key={fav.id}
                     className="group relative flex items-center justify-between gap-2.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-2 transition hover:border-cyan-400/40 hover:bg-cyan-950/20"
                   >
-                    {/* Botão principal clicável para abrir o site ou aplicativo */}
+                    {/* Botão principal clicável para abrir o item (site, app, pasta, arquivo, sistema) */}
                     <button
                       type="button"
                       onClick={() => handleAbrirUrl(fav)}
                       className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                       title={
-                        fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://'))
+                        fav.tipo === 'pasta'
+                          ? `Abrir pasta ${nomeMaiusculo} no Explorador`
+                          : fav.tipo === 'arquivo'
+                          ? `Abrir arquivo ${nomeMaiusculo}`
+                          : fav.tipo === 'sistema'
+                          ? `Abrir ferramenta ${nomeMaiusculo}`
+                          : fav.tipo === 'app'
                           ? `Abrir aplicativo ${nomeMaiusculo}`
                           : `Abrir ${fav.url} no navegador`
                       }
                     >
-                      {/* Ícone ou Favicon */}
+                      {/* Ícone contextual conforme o tipo de atalho */}
                       <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/60 overflow-hidden shadow-xs">
-                        {fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://')) ? (
-                          <AppWindow className="size-4 text-cyan-300" />
+                        {fav.tipo === 'pasta' ? (
+                          <Folder className="size-4 text-amber-300" />
+                        ) : fav.tipo === 'arquivo' ? (
+                          <FileText className="size-4 text-emerald-300" />
+                        ) : fav.tipo === 'sistema' ? (
+                          <Settings className="size-4 text-orange-300" />
+                        ) : fav.tipo === 'script' ? (
+                          <Terminal className="size-4 text-pink-300" />
+                        ) : fav.tipo === 'app' || (!fav.url.startsWith('http://') && !fav.url.startsWith('https://')) ? (
+                          <AppWindow className="size-4 text-purple-300" />
                         ) : (
                           <>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -681,14 +806,29 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                         )}
                       </div>
 
-                      {/* Textos: Somente o Nome em MAIÚSCULAS e Categoria (sem a segunda linha) */}
+                      {/* Textos: Nome em MAIÚSCULAS e Categoria estilizada */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1.5 pr-1">
                           <span className="text-xs font-bold tracking-wide text-white truncate group-hover:text-cyan-200 uppercase">
                             {nomeMaiusculo}
                           </span>
-                          {fav.categoria && fav.categoria !== 'Geral' && (
-                            <span className="shrink-0 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-1.5 py-0.2 text-[9px] font-medium text-cyan-300 uppercase">
+                          {fav.categoria && (
+                            <span
+                              className={cn(
+                                'shrink-0 rounded-full border px-1.5 py-0.2 text-[9px] font-medium uppercase',
+                                fav.tipo === 'pasta'
+                                  ? 'border-amber-400/30 bg-amber-500/10 text-amber-300'
+                                  : fav.tipo === 'arquivo'
+                                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+                                  : fav.tipo === 'sistema'
+                                  ? 'border-orange-400/30 bg-orange-500/10 text-orange-300'
+                                  : fav.tipo === 'script'
+                                  ? 'border-pink-400/30 bg-pink-500/10 text-pink-300'
+                                  : fav.tipo === 'app'
+                                  ? 'border-purple-400/30 bg-purple-500/10 text-purple-300'
+                                  : 'border-cyan-400/20 bg-cyan-500/10 text-cyan-300'
+                              )}
+                            >
                               {fav.categoria}
                             </span>
                           )}

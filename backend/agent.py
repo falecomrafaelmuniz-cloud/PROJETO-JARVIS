@@ -9009,6 +9009,221 @@ class Assistant(Agent):
         except Exception as erro:
             logger_memoria.warning("evento=publicar_favoritos_sync erro=%s", erro)
 
+    def _classificar_e_resolver_atalho(self, item_ou_url: str, nome: str = "", categoria: str = "", tipo: str = "auto") -> dict:
+        alvo = str(item_ou_url or nome or "").strip()
+        nome_alvo = str(nome or "").strip()
+        cat_alvo = str(categoria or "").strip()
+        tipo_alvo = str(tipo or "auto").strip().lower()
+        alvo_low = alvo.lower()
+
+        pasta_usuario = os.path.expanduser("~")
+
+        # 1. Ferramentas de Sistema Windows
+        mapa_sistema = {
+            "painel de controle": ("control", "PAINEL DE CONTROLE", "Sistema"),
+            "painel de controles": ("control", "PAINEL DE CONTROLE", "Sistema"),
+            "control panel": ("control", "PAINEL DE CONTROLE", "Sistema"),
+            "configuracoes": ("ms-settings:", "CONFIGURAÇÕES DO WINDOWS", "Sistema"),
+            "configurações": ("ms-settings:", "CONFIGURAÇÕES DO WINDOWS", "Sistema"),
+            "configuracoes do windows": ("ms-settings:", "CONFIGURAÇÕES DO WINDOWS", "Sistema"),
+            "configurações do windows": ("ms-settings:", "CONFIGURAÇÕES DO WINDOWS", "Sistema"),
+            "settings": ("ms-settings:", "CONFIGURAÇÕES DO WINDOWS", "Sistema"),
+            "gerenciador de tarefas": ("taskmgr", "GERENCIADOR DE TAREFAS", "Sistema"),
+            "taskmgr": ("taskmgr", "GERENCIADOR DE TAREFAS", "Sistema"),
+            "task manager": ("taskmgr", "GERENCIADOR DE TAREFAS", "Sistema"),
+            "limpeza de disco": ("cleanmgr", "LIMPEZA DE DISCO", "Sistema"),
+            "cleanmgr": ("cleanmgr", "LIMPEZA DE DISCO", "Sistema"),
+            "prompt de comando": ("cmd", "PROMPT DE COMANDO", "Sistema"),
+            "prompt": ("cmd", "PROMPT DE COMANDO", "Sistema"),
+            "cmd": ("cmd", "PROMPT DE COMANDO", "Sistema"),
+            "powershell": ("powershell", "POWERSHELL", "Sistema"),
+            "servicos": ("services.msc", "SERVIÇOS DO WINDOWS", "Sistema"),
+            "serviços": ("services.msc", "SERVIÇOS DO WINDOWS", "Sistema"),
+            "gerenciador de dispositivos": ("devmgmt.msc", "GERENCIADOR DE DISPOSITIVOS", "Sistema"),
+            "conexoes de rede": ("ncpa.cpl", "CONEXÕES DE REDE", "Sistema"),
+            "explorador de arquivos": ("explorer", "EXPLORADOR DE ARQUIVOS", "Sistema"),
+            "meu computador": ("explorer", "MEU COMPUTADOR", "Sistema"),
+            "este computador": ("explorer", "ESTE COMPUTADOR", "Sistema"),
+        }
+
+        # 2. Pastas Padrão do Windows
+        mapa_pastas_padrao = {
+            "downloads": os.path.join(pasta_usuario, "Downloads"),
+            "download": os.path.join(pasta_usuario, "Downloads"),
+            "transferencias": os.path.join(pasta_usuario, "Downloads"),
+            "transferências": os.path.join(pasta_usuario, "Downloads"),
+            "documentos": os.path.join(pasta_usuario, "Documents"),
+            "documents": os.path.join(pasta_usuario, "Documents"),
+            "desktop": os.path.join(pasta_usuario, "Desktop"),
+            "area de trabalho": os.path.join(pasta_usuario, "Desktop"),
+            "área de trabalho": os.path.join(pasta_usuario, "Desktop"),
+            "imagens": os.path.join(pasta_usuario, "Pictures"),
+            "pictures": os.path.join(pasta_usuario, "Pictures"),
+            "fotos": os.path.join(pasta_usuario, "Pictures"),
+            "videos": os.path.join(pasta_usuario, "Videos"),
+            "vídeos": os.path.join(pasta_usuario, "Videos"),
+            "musicas": os.path.join(pasta_usuario, "Music"),
+            "músicas": os.path.join(pasta_usuario, "Music"),
+        }
+
+        exts_documentos = {
+            ".pdf", ".xlsx", ".xls", ".docx", ".doc", ".pptx", ".ppt",
+            ".txt", ".csv", ".json", ".xml", ".jpg", ".jpeg", ".png",
+            ".gif", ".bmp", ".webp", ".mp3", ".wav", ".mp4", ".mkv",
+            ".avi", ".zip", ".rar", ".7z", ".iso", ".epub"
+        }
+        exts_scripts = {".bat", ".cmd", ".ps1", ".py", ".vbs", ".sh"}
+
+        alvo_sem_prefixo = (
+            alvo_low.replace("abrir ", "")
+            .replace("o programa ", "")
+            .replace("o aplicativo ", "")
+            .replace("o site ", "")
+            .replace("a pasta ", "")
+            .replace("o arquivo ", "")
+            .replace("pasta ", "")
+            .strip()
+        )
+
+        # Checagem 1: Ferramenta do Sistema
+        if tipo_alvo == "sistema" or alvo_sem_prefixo in mapa_sistema or alvo_low in mapa_sistema:
+            cmd, n_sist, cat_sist = mapa_sistema.get(alvo_sem_prefixo, mapa_sistema.get(alvo_low, (alvo, nome_alvo or alvo, "Sistema")))
+            return {
+                "tipo": "sistema",
+                "url": cmd,
+                "nome": (nome_alvo or n_sist).upper(),
+                "categoria": cat_alvo or cat_sist,
+            }
+
+        # Checagem 2: Pasta
+        eh_pasta_sugerida = (
+            tipo_alvo in ("pasta", "folder", "diretorio", "diretório")
+            or alvo_low.startswith(("pasta ", "a pasta ", "diretório ", "o diretorio "))
+            or alvo_sem_prefixo in mapa_pastas_padrao
+            or os.path.isdir(alvo)
+            or (alvo.endswith("\\") or alvo.endswith("/"))
+        )
+        if eh_pasta_sugerida:
+            caminho_pasta = None
+            if alvo_sem_prefixo in mapa_pastas_padrao:
+                caminho_pasta = mapa_pastas_padrao[alvo_sem_prefixo]
+            elif os.path.isdir(alvo):
+                caminho_pasta = os.path.abspath(alvo)
+            else:
+                caminho_pasta = self.buscar_pasta(alvo_sem_prefixo or alvo)
+
+            if caminho_pasta and os.path.isdir(caminho_pasta):
+                n_pasta = nome_alvo or os.path.basename(os.path.normpath(caminho_pasta))
+                return {
+                    "tipo": "pasta",
+                    "url": caminho_pasta,
+                    "nome": n_pasta.upper(),
+                    "categoria": cat_alvo or "Pastas",
+                }
+
+        # Checagem 3: Arquivo / Documento ou Script
+        _, ext = os.path.splitext(alvo_low)
+        eh_script = tipo_alvo == "script" or ext in exts_scripts
+        eh_arquivo = tipo_alvo in ("arquivo", "documento", "file") or ext in exts_documentos or os.path.isfile(alvo)
+
+        if eh_script or eh_arquivo:
+            caminho_arq = None
+            if os.path.isfile(alvo):
+                caminho_arq = os.path.abspath(alvo)
+            else:
+                caminho_arq = self.buscar_arquivo_local(alvo)
+
+            if caminho_arq and os.path.isfile(caminho_arq):
+                n_arq = nome_alvo or os.path.basename(caminho_arq)
+                t_final = "script" if (eh_script or os.path.splitext(caminho_arq)[1].lower() in exts_scripts) else "arquivo"
+                cat_padrao = "Scripts" if t_final == "script" else "Arquivos"
+                return {
+                    "tipo": t_final,
+                    "url": caminho_arq,
+                    "nome": n_arq.upper(),
+                    "categoria": cat_alvo or cat_padrao,
+                }
+
+        # Checagem 4: Site / Link Web
+        mapa_sites_rapidos = {
+            "youtube": "https://www.youtube.com",
+            "google": "https://www.google.com",
+            "gmail": "https://mail.google.com/mail/u/0/#inbox",
+            "chatgpt": "https://chatgpt.com",
+            "canva": "https://www.canva.com",
+            "github": "https://github.com",
+            "mercadolivre": "https://www.mercadolivre.com.br",
+            "mercado livre": "https://www.mercadolivre.com.br",
+            "instagram": "https://www.instagram.com",
+            "tiktok": "https://www.tiktok.com",
+            "netflix": "https://www.netflix.com",
+            "whatsapp web": "https://web.whatsapp.com",
+            "whatsapp": "https://web.whatsapp.com",
+            "drive": "https://drive.google.com",
+            "google drive": "https://drive.google.com",
+        }
+
+        eh_site = (
+            tipo_alvo in ("site", "web", "url", "link")
+            or alvo.startswith(("http://", "https://"))
+            or ("." in alvo and " " not in alvo and not alvo_low.endswith(".exe"))
+            or "www." in alvo_low
+            or alvo_sem_prefixo in mapa_sites_rapidos
+        )
+
+        if eh_site:
+            url_site = alvo
+            if alvo_sem_prefixo in mapa_sites_rapidos:
+                url_site = mapa_sites_rapidos[alvo_sem_prefixo]
+            elif not url_site.startswith(("http://", "https://")):
+                url_site = f"https://{url_site}"
+
+            if not nome_alvo:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url_site)
+                    dominio = parsed.netloc.replace("www.", "")
+                    nome_alvo = dominio.split(".")[0].capitalize() if dominio else alvo
+                except Exception:
+                    nome_alvo = alvo
+
+            return {
+                "tipo": "site",
+                "url": url_site,
+                "nome": nome_alvo.upper(),
+                "categoria": cat_alvo or "Sites",
+            }
+
+        # Checagem 5: Aplicativo / Programa (Calculadora, Cortecloud, Excel, etc.)
+        alvo_app = re.sub(r"^https?://", "", alvo, flags=re.I).rstrip("/")
+        nome_app = (nome_alvo or alvo_app).upper()
+        return {
+            "tipo": "app",
+            "url": alvo_app,
+            "nome": nome_app,
+            "categoria": cat_alvo or "Aplicativos",
+        }
+
+    @function_tool(
+        description=(
+            "Adiciona, favorita ou salva uma PASTA DO COMPUTADOR (ex.: 'pasta Downloads', 'pasta Documentos', 'Área de Trabalho', 'pasta Projetos', ou caminho 'C:\\...') "
+            "no painel ATALHOS do Jarvis. Ao clicar ou pedir para abrir, a pasta abrirá no Explorador de Arquivos do Windows."
+        )
+    )
+    async def adicionar_pasta_favorita(self, nome_ou_caminho: str, categoria: str = "Pastas") -> str:
+        """Salva uma pasta do Windows no painel Atalhos do Jarvis."""
+        return await self.adicionar_favorito(item_ou_url=nome_ou_caminho, nome=nome_ou_caminho, categoria=categoria or "Pastas", tipo="pasta")
+
+    @function_tool(
+        description=(
+            "Adiciona, favorita ou salva um ARQUIVO OU DOCUMENTO DO COMPUTADOR (ex.: 'planilha.xlsx', 'relatório.pdf', 'contrato.docx', fotos, etc.) "
+            "no painel ATALHOS do Jarvis. Ao clicar ou pedir para abrir, o arquivo abrirá no programa padrão correspondente no Windows."
+        )
+    )
+    async def adicionar_arquivo_favorito(self, nome_ou_caminho: str, categoria: str = "Arquivos") -> str:
+        """Salva um arquivo ou documento no painel Atalhos do Jarvis."""
+        return await self.adicionar_favorito(item_ou_url=nome_ou_caminho, nome=nome_ou_caminho, categoria=categoria or "Arquivos", tipo="arquivo")
+
     @function_tool(
         description=(
             "Adiciona, favorita ou salva um APLICATIVO, PROGRAMA OU SOFTWARE DO COMPUTADOR (ex.: Calculadora, Excel, Bloco de Notas, Cortecloud, WhatsApp, Word, Spotify, Chrome, etc.) no painel ATALHOS do Jarvis (também chamado de favoritos do Jarvis; NÃO é a barra do Chrome/navegador). "
@@ -9017,7 +9232,7 @@ class Assistant(Agent):
     )
     async def adicionar_aplicativo_favorito(self, nome_aplicativo: str, categoria: str = "Aplicativos") -> str:
         """Salva um aplicativo ou programa instalado no Windows no painel Atalhos do Jarvis."""
-        return await self.adicionar_favorito(item_ou_url=nome_aplicativo, nome=nome_aplicativo, categoria=categoria or "Aplicativos")
+        return await self.adicionar_favorito(item_ou_url=nome_aplicativo, nome=nome_aplicativo, categoria=categoria or "Aplicativos", tipo="app")
 
     @function_tool(
         description=(
@@ -9027,97 +9242,93 @@ class Assistant(Agent):
     )
     async def adicionar_site_favorito(self, url_ou_site: str = "", nome: str = "", categoria: str = "Sites") -> str:
         """Salva um site ou link da web no painel Atalhos do Jarvis."""
-        return await self.adicionar_favorito(item_ou_url=url_ou_site, nome=nome, categoria=categoria or "Sites")
+        return await self.adicionar_favorito(item_ou_url=url_ou_site, nome=nome, categoria=categoria or "Sites", tipo="site")
 
     @function_tool(
         description=(
-            "Adiciona ou salva um SITE WEB ou um APLICATIVO/PROGRAMA DO COMPUTADOR no painel ATALHOS do Jarvis (antiga Barra de Favoritos do Jarvis — NÃO confunda com a barra de favoritos do Chrome/navegador). "
-            "Exemplos: 'adicione o YouTube aos atalhos', 'salve este site nos atalhos', 'coloque a Calculadora nos atalhos', 'adicione o aplicativo Cortecloud aos favoritos/atalhos'. "
-            "Aceita tanto sites/links quanto aplicativos ou programas instalados no computador. "
-            "Se o usuário pedir para 'salvar este site' ou estiver vendo uma página no navegador, captura automaticamente a aba ativa. "
-            "NUNCA diga que não possui painel de atalhos/favoritos nem confunda com o navegador; use esta ferramenta ou adicionar_aplicativo_favorito imediatamente."
+            "Adiciona QUALQUER TIPO DE ITEM ao painel ATALHOS do Jarvis. O Jarvis é EXPERT e reconhece automaticamente se o item é:\n"
+            "- APLICATIVO / PROGRAMA (ex: Calculadora, Excel, Cortecloud, Spotify)\n"
+            "- SITE / LINK WEB (ex: YouTube, Google, ChatGPT, portal da faculdade)\n"
+            "- PASTA DO COMPUTADOR (ex: pasta Downloads, pasta Documentos, Área de Trabalho, C:\\Projetos)\n"
+            "- ARQUIVO / DOCUMENTO (ex: planilha.xlsx, contrato.pdf, relatório.docx)\n"
+            "- FERRAMENTA DE SISTEMA (ex: Painel de Controle, Configurações do Windows, Gerenciador de Tarefas)\n"
+            "- SCRIPT / AUTOMAÇÃO (ex: arquivo .bat, .ps1, .py)\n"
+            "Se o usuário pedir 'salve este site' ou 'salve esta pasta', captura automaticamente a aba ou pasta ativa."
         )
     )
-    async def adicionar_favorito(self, item_ou_url: str = "", nome: str = "", categoria: str = "") -> str:
+    async def adicionar_favorito(self, item_ou_url: str = "", nome: str = "", categoria: str = "", tipo: str = "auto") -> str:
         alvo = str(item_ou_url or nome or "").strip()
         nome_alvo = str(nome or "").strip()
         cat_alvo = str(categoria or "").strip()
 
         # Se pediu o site atual ou não passou nada, tenta capturar aba do navegador
-        if not alvo or any(termo in alvo.lower() for termo in ["este", "atual", "essa", "esta", "aba"]):
+        if not alvo or any(termo in alvo.lower() for termo in ["este site", "site atual", "essa aba", "esta aba"]):
             aba = await asyncio.to_thread(self._obter_aba_ativa_navegador)
             if aba.get("url"):
                 alvo = aba["url"]
                 if not nome_alvo:
                     nome_alvo = aba.get("title") or ""
+                tipo = "site"
 
         if not alvo:
-            return "Não consegui identificar o site ou aplicativo para adicionar. Por favor, diga o nome ou link."
+            return "Não consegui identificar o item para adicionar aos Atalhos. Por favor, diga o nome, link ou caminho."
 
-        # Identifica se é site ou aplicativo
-        eh_site = (
-            alvo.startswith(("http://", "https://"))
-            or ("." in alvo and " " not in alvo and not alvo.lower().endswith(".exe"))
-            or "www." in alvo.lower()
+        # Usa o motor especialista para classificar e resolver caminho/tipo
+        classificado = self._classificar_e_resolver_atalho(
+            item_ou_url=alvo,
+            nome=nome_alvo,
+            categoria=cat_alvo,
+            tipo=tipo or "auto"
         )
 
-        tipo_item = "site" if eh_site else "app"
-
-        if eh_site:
-            if not alvo.startswith(("http://", "https://")):
-                alvo = f"https://{alvo}"
-            if not nome_alvo:
-                try:
-                    from urllib.parse import urlparse
-                    parsed = urlparse(alvo)
-                    dominio = parsed.netloc.replace("www.", "")
-                    nome_alvo = dominio.split(".")[0].capitalize() if dominio else alvo
-                except Exception:
-                    nome_alvo = alvo
-            if not cat_alvo:
-                cat_alvo = "Geral"
-        else:
-            alvo = re.sub(r"^https?://", "", alvo, flags=re.I).rstrip("/")
-            if not nome_alvo:
-                nome_alvo = alvo
-            if not cat_alvo:
-                cat_alvo = "Aplicativos"
-
-        nome_alvo = nome_alvo.upper()
+        alvo_final = classificado["url"]
+        nome_final = classificado["nome"]
+        tipo_final = classificado["tipo"]
+        cat_final = classificado["categoria"]
 
         lista = await asyncio.to_thread(self._carregar_favoritos)
 
-        # Evita duplicatas da mesma URL ou mesmo nome de app
+        # Evita duplicatas pelo mesmo identificador ou nome
         encontrado = None
         for item in lista:
-            url_existente = str(item.get("url") or "").rstrip("/").lower()
+            url_existente = str(item.get("url") or "").rstrip("/\\").lower()
             nome_existente = str(item.get("nome") or "").strip().lower()
-            if (eh_site and url_existente == alvo.rstrip("/").lower()) or (not eh_site and nome_existente == nome_alvo.lower()):
+            tipo_existente = str(item.get("tipo") or "").lower()
+            if (url_existente == alvo_final.rstrip("/\\").lower()) or (tipo_existente == tipo_final and nome_existente == nome_final.lower()):
                 encontrado = item
                 break
 
         hoje_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+        rotulos_tipo = {
+            "site": "Site",
+            "app": "Aplicativo",
+            "pasta": "Pasta",
+            "arquivo": "Arquivo",
+            "sistema": "Ferramenta de Sistema",
+            "script": "Script",
+        }
+        nome_tipo_legivel = rotulos_tipo.get(tipo_final, "Atalho")
+
         if encontrado:
-            encontrado["nome"] = nome_alvo
-            encontrado["url"] = alvo
-            encontrado["tipo"] = tipo_item
-            encontrado["categoria"] = cat_alvo
+            encontrado["nome"] = nome_final
+            encontrado["url"] = alvo_final
+            encontrado["tipo"] = tipo_final
+            encontrado["categoria"] = cat_final
             encontrado["atualizado_em"] = hoje_str
-            msg = f"Favorito '{nome_alvo}' atualizado na categoria '{cat_alvo}'!"
+            msg = f"{nome_tipo_legivel} '{nome_final}' atualizado nos Atalhos (categoria: '{cat_final}')!"
         else:
             novo_id = f"fav-{uuid.uuid4().hex[:8]}"
             novo_fav = {
                 "id": novo_id,
-                "nome": nome_alvo,
-                "url": alvo,
-                "tipo": tipo_item,
-                "categoria": cat_alvo,
+                "nome": nome_final,
+                "url": alvo_final,
+                "tipo": tipo_final,
+                "categoria": cat_final,
                 "criado_em": hoje_str,
                 "ordem": len(lista),
             }
             lista.append(novo_fav)
-            item_desc = "Site" if eh_site else "Aplicativo"
-            msg = f"{item_desc} '{nome_alvo}' adicionado com sucesso aos Favoritos (categoria: {cat_alvo})!"
+            msg = f"{nome_tipo_legivel} '{nome_final}' adicionado com sucesso aos Atalhos (categoria: {cat_final})!"
 
         await asyncio.to_thread(self._salvar_favoritos, lista)
         await self._publicar_favoritos_sync(lista, abrir_painel=True)
@@ -9177,9 +9388,21 @@ class Assistant(Agent):
 
         url_final = encontrado.get("url")
         nome_final = encontrado.get("nome")
-        tipo_final = encontrado.get("tipo", "site")
+        tipo_final = str(encontrado.get("tipo", "site")).lower()
 
-        if tipo_final == "app" or not str(url_final).startswith(("http://", "https://")):
+        if tipo_final == "pasta":
+            await self.abrir_pasta(nome_ou_caminho=url_final or nome_final)
+            return f"Abrindo pasta '{nome_final}' no computador."
+        elif tipo_final == "arquivo":
+            await asyncio.to_thread(self._spawn_on_interactive_desktop, f'cmd.exe /c start "" "{url_final}"', show_window=0)
+            return f"Abrindo arquivo '{nome_final}' no computador."
+        elif tipo_final == "sistema":
+            await asyncio.to_thread(self._spawn_on_interactive_desktop, f'cmd.exe /c start "" {url_final}', show_window=1)
+            return f"Abrindo ferramenta de sistema '{nome_final}'."
+        elif tipo_final == "script":
+            await asyncio.to_thread(self._spawn_on_interactive_desktop, f'cmd.exe /c start "" "{url_final}"', show_window=1)
+            return f"Executando script '{nome_final}'."
+        elif tipo_final == "app" or not str(url_final).startswith(("http://", "https://")):
             await self.abrir_programa(nome_programa=url_final or nome_final)
             return f"Abrindo aplicativo '{nome_final}' no computador."
         else:
@@ -9521,12 +9744,16 @@ def _handle_room_data(
             payload = json.loads(data_packet.data)
             if payload.get("action") in ("open_url", "open") and (payload.get("url") or payload.get("nome")):
                 alvo = str(payload.get("url") or payload.get("nome") or "").strip()
-                eh_site = (
-                    alvo.startswith(("http://", "https://"))
-                    or ("." in alvo and " " not in alvo and not alvo.lower().endswith(".exe"))
-                    or "www." in alvo.lower()
-                )
-                if eh_site:
+                tipo = str(payload.get("tipo") or "").lower()
+                if tipo == "pasta":
+                    asyncio.create_task(agent.abrir_pasta(alvo))
+                elif tipo == "arquivo":
+                    asyncio.create_task(asyncio.to_thread(agent._spawn_on_interactive_desktop, f'cmd.exe /c start "" "{alvo}"', show_window=0))
+                elif tipo == "sistema":
+                    asyncio.create_task(asyncio.to_thread(agent._spawn_on_interactive_desktop, f'cmd.exe /c start "" {alvo}', show_window=1))
+                elif tipo == "script":
+                    asyncio.create_task(asyncio.to_thread(agent._spawn_on_interactive_desktop, f'cmd.exe /c start "" "{alvo}"', show_window=1))
+                elif tipo == "site" or alvo.startswith(("http://", "https://")) or ("." in alvo and " " not in alvo and not alvo.lower().endswith(".exe")):
                     asyncio.create_task(agent.abrir_site(alvo, nome_site=payload.get("nome", "")))
                 else:
                     asyncio.create_task(agent.abrir_programa(alvo))
