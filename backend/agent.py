@@ -9318,42 +9318,48 @@ class Assistant(Agent):
             "categoria": cat_alvo or "Aplicativos",
         }
 
-    async def _abrir_dialogo_selecionar_pasta(self, caminho_inicial: str = "") -> str:
-        """Abre a janela nativa do Windows (FolderBrowserDialog) para o usuário escolher uma pasta com o mouse."""
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browse_folder.ps1")
+    def _executar_ps_dialog(self, script_nome: str, args: list[str] = None) -> str:
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), script_nome)
         if not os.path.isfile(script):
             return ""
-        arg_ini = f' -InitialPath "{caminho_inicial}"' if (caminho_inicial and os.path.isdir(caminho_inicial)) else ""
-        cmd = f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{script}"{arg_ini}'
+        cmd = [
+            "powershell.exe",
+            "-STA",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", script,
+        ]
+        if args:
+            cmd.extend(args)
         try:
-            proc = await asyncio.create_subprocess_shell(
+            startupinfo = None
+            if os.name == "nt":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 1  # SW_SHOWNORMAL (garante exibição visível e interativa na tela)
+
+            res = subprocess.run(
                 cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                startupinfo=startupinfo,
+                timeout=120
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120.0)
-            return stdout.decode("utf-8", errors="ignore").strip()
+            return (res.stdout or "").strip()
         except Exception as e:
-            logger_memoria.warning("evento=abrir_dialogo_pasta_erro erro=%s", e)
+            logger_memoria.warning("evento=executar_ps_dialog_erro script=%s erro=%s", script_nome, e)
             return ""
+
+    async def _abrir_dialogo_selecionar_pasta(self, caminho_inicial: str = "") -> str:
+        """Abre a janela nativa do Windows (FolderBrowserDialog) para o usuário escolher uma pasta com o mouse."""
+        args = ["-InitialPath", caminho_inicial] if (caminho_inicial and os.path.isdir(caminho_inicial)) else []
+        return await asyncio.to_thread(self._executar_ps_dialog, "browse_folder.ps1", args)
 
     async def _abrir_dialogo_selecionar_arquivo(self) -> str:
         """Abre a janela nativa do Windows (OpenFileDialog) para o usuário escolher um arquivo com o mouse."""
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browse_file.ps1")
-        if not os.path.isfile(script):
-            return ""
-        cmd = f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{script}"'
-        try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90.0)
-            return stdout.decode("utf-8", errors="ignore").strip()
-        except Exception as e:
-            logger_memoria.warning("evento=abrir_dialogo_arquivo_erro erro=%s", e)
-            return ""
+        return await asyncio.to_thread(self._executar_ps_dialog, "browse_file.ps1", [])
 
     @function_tool(
         description=(
@@ -9379,8 +9385,18 @@ class Assistant(Agent):
         if not caminho_escolhido or not os.path.isdir(caminho_escolhido):
             return "Nenhuma pasta foi selecionada na janela do Windows. A criação do atalho foi cancelada."
 
-        nome_final = os.path.basename(os.path.normpath(caminho_escolhido)).upper()
-        return await self.adicionar_favorito(item_ou_url=caminho_escolhido, nome=nome_final, categoria="Pastas", tipo="pasta")
+        nome_puro = os.path.basename(os.path.normpath(caminho_escolhido))
+        nome_final = re.sub(r'^(a\s+)?pasta\s+', '', nome_puro, flags=re.I).strip().upper()
+        if not nome_final:
+            nome_final = nome_puro.upper()
+
+        return await self.adicionar_favorito(
+            item_ou_url=caminho_escolhido,
+            nome=nome_final,
+            categoria="Pastas",
+            tipo="pasta",
+            pasta_confirmada=True
+        )
 
     @function_tool(
         description=(
@@ -9430,20 +9446,26 @@ class Assistant(Agent):
 
     @function_tool(
         description=(
-            "Adiciona QUALQUER TIPO DE ITEM ao painel ATALHOS do Jarvis. O Jarvis é EXPERT e reconhece automaticamente se o item é:\n"
-            "- APLICATIVO / PROGRAMA (ex: Calculadora, Excel, Cortecloud, Spotify)\n"
-            "- SITE / LINK WEB (ex: YouTube, Google, ChatGPT, portal da faculdade)\n"
-            "- PASTA DO COMPUTADOR (ex: pasta Downloads, pasta Documentos, Área de Trabalho, C:\\Projetos)\n"
-            "- ARQUIVO / DOCUMENTO (ex: planilha.xlsx, contrato.pdf, relatório.docx)\n"
-            "- FERRAMENTA DE SISTEMA (ex: Painel de Controle, Configurações do Windows, Gerenciador de Tarefas)\n"
-            "- SCRIPT / AUTOMAÇÃO (ex: arquivo .bat, .ps1, .py)\n"
-            "Se o usuário pedir 'salve este site' ou 'salve esta pasta', captura automaticamente a aba ou pasta ativa."
+            "Adiciona um item ao painel ATALHOS do Jarvis (Sites, Ferramentas de Sistema, Scripts, etc.). "
+            "ATENÇÃO: Se o usuário pedir atalho para QUALQUER PASTA DO COMPUTADOR, use OBRIGATORIAMENTE 'adicionar_pasta_favorita', que abre a janela na tela para escolher/confirmar com o mouse!\n"
+            "Se o usuário pedir atalho para um APLICATIVO OU PROGRAMA, use 'adicionar_aplicativo_favorito'."
         )
     )
-    async def adicionar_favorito(self, item_ou_url: str = "", nome: str = "", categoria: str = "", tipo: str = "auto") -> str:
+    async def adicionar_favorito(self, item_ou_url: str = "", nome: str = "", categoria: str = "", tipo: str = "auto", pasta_confirmada: bool = False) -> str:
         alvo = str(item_ou_url or nome or "").strip()
         nome_alvo = str(nome or "").strip()
         cat_alvo = str(categoria or "").strip()
+
+        # Se for pasta e ainda não foi confirmada pelo diálogo, encaminha SEMPRE para adicionar_pasta_favorita
+        eh_pasta = (
+            cat_alvo.lower() in ("pastas", "pasta")
+            or alvo.lower().startswith(("pasta ", "a pasta "))
+            or "pasta" in alvo.lower()
+            or tipo == "pasta"
+        )
+        if eh_pasta and not pasta_confirmada:
+            termo = re.sub(r'^(a\s+)?pasta\s+', '', alvo or nome_alvo, flags=re.I).strip()
+            return await self.adicionar_pasta_favorita(nome_ou_caminho=termo, categoria="Pastas")
 
         # Força detecção de pasta se a categoria for Pastas ou o nome indicar pasta
         if cat_alvo.lower() in ("pastas", "pasta") or alvo.lower().startswith(("pasta ", "a pasta ")) or "pasta" in alvo.lower():
@@ -9478,20 +9500,15 @@ class Assistant(Agent):
         # Proteção para Pastas: NUNCA salva atalho quebrado sem caminho físico no disco!
         if tipo_final == "pasta" or classificado.get("caminho_pendente"):
             if not os.path.isdir(alvo_final):
-                recup = await asyncio.to_thread(self.buscar_pasta, alvo or nome_final)
-                if recup and os.path.isdir(recup):
-                    alvo_final = recup
-                    nome_final = os.path.basename(os.path.normpath(recup)).upper()
+                escolhido = await self._abrir_dialogo_selecionar_pasta()
+                if escolhido and os.path.isdir(escolhido):
+                    alvo_final = escolhido
+                    nome_final = re.sub(r'^(a\s+)?pasta\s+', '', os.path.basename(os.path.normpath(escolhido)), flags=re.I).strip().upper()
                 else:
-                    escolhido = await self._abrir_dialogo_selecionar_pasta()
-                    if escolhido and os.path.isdir(escolhido):
-                        alvo_final = escolhido
-                        nome_final = os.path.basename(os.path.normpath(escolhido)).upper()
-                    else:
-                        return (
-                            f"Aviso: Não consegui localizar a pasta '{alvo}' no computador. "
-                            "Abri a janela para você selecionar, mas nenhuma pasta foi escolhida."
-                        )
+                    return (
+                        f"Aviso: Não consegui localizar a pasta '{alvo}' no computador. "
+                        "A janela para seleção de pasta foi aberta, mas nenhuma pasta foi escolhida."
+                    )
 
         lista = await asyncio.to_thread(self._carregar_favoritos)
 
