@@ -138,5 +138,14 @@
 
 --------------------------------------------------------------------------------
 
+🎵 [MAGENTA - 10. TikTok LIVE Co-Host & Transmissão ao Vivo]
+  🎵 10.1. conectar_tiktok_live: Conecta o Jarvis à transmissão ao vivo no TikTok pelo @usuario do streamer, iniciando a escuta do chat, perguntas, likes e presentes em tempo real.
+  🎵 10.2. desconectar_tiktok_live: Desconecta o Jarvis da transmissão ao vivo atual do TikTok.
+  🎵 10.3. obter_chat_tiktok_live: Lê as perguntas ou comentários mais recentes dos espectadores no chat da live, identificando o autor e marcando como lidas.
+  🎵 10.4. obter_status_tiktok_live: Consulta as métricas ao vivo da transmissão (tempo ativa, total de comentários, curtidas, presentes recebidos e perguntas pendentes).
+
+--------------------------------------------------------------------------------
+
+
 
 

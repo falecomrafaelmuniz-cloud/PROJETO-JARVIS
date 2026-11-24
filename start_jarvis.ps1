@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $env:ELECTRON_RUN_AS_NODE = $null
 
 $agentDirectory = $PSScriptRoot
@@ -13,7 +13,7 @@ function Get-JarvisWorkers {
     $allPy = @(Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
         Where-Object {
             $_.CommandLine -match 'agent\.py' -and
-            $_.CommandLine -match '\bdev\b'
+            $_.CommandLine -match '\b(dev|start)\b'
         })
     $pyIds = $allPy | ForEach-Object { $_.ProcessId }
     # Retorna apenas os processos-raiz (ignora o subprocesso filho criado pelo lançador do .venv no Windows)
@@ -63,6 +63,23 @@ try {
     Write-Host "         INICIANDO SISTEMAS DO JARVIS    " -ForegroundColor Cyan
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host ""
+
+    # 0. Verificação e Auto-Update Silencioso via Servidor Central (GitHub)
+    if (Test-Path -LiteralPath (Join-Path $agentDirectory '.git')) {
+        try {
+            Write-Host "[Update] Verificando atualizacoes no servidor central..." -ForegroundColor DarkCyan
+            & git -C $agentDirectory fetch origin main --quiet 2>$null
+            $localSha = (& git -C $agentDirectory rev-parse HEAD 2>$null)
+            $remoteSha = (& git -C $agentDirectory rev-parse origin/main 2>$null)
+            if ($localSha -and $remoteSha -and ($localSha.Trim() -ne $remoteSha.Trim())) {
+                Write-Host "[Update] Nova versao detectada! Atualizando o Jarvis automaticamente..." -ForegroundColor Green
+                & git -C $agentDirectory pull --autostash origin main --quiet 2>$null
+                Write-Host "[Update] Jarvis atualizado com sucesso para a versao mais recente!" -ForegroundColor Green
+            }
+        } catch {
+            # Continua sem interromper se estiver sem internet ou offline
+        }
+    }
 
     if (-not (Test-Path -LiteralPath $pythonExe -PathType Leaf)) {
         throw "Ambiente Python (.venv) não encontrado em: $pythonExe"

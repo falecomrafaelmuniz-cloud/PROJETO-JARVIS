@@ -501,17 +501,35 @@ class JarvisChrome:
         return False
 
     @classmethod
-    def _open_default_browser(cls, url, nova_aba=False):
+    def _open_default_browser(cls, url, nova_aba=True):
         try:
             candidatos_chrome = [
                 os.path.join(os.environ.get("PROGRAMFILES", r"C:\Program Files"), r"Google\Chrome\Application\chrome.exe"),
                 os.path.join(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"), r"Google\Chrome\Application\chrome.exe"),
                 os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Google\Chrome\Application\chrome.exe"),
             ]
-            chrome_exe = next((p for p in candidatos_chrome if p and os.path.isfile(p)), None)
+            candidatos_edge = [
+                os.path.join(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"), r"Microsoft\Edge\Application\msedge.exe"),
+                os.path.join(os.environ.get("PROGRAMFILES", r"C:\Program Files"), r"Microsoft\Edge\Application\msedge.exe"),
+            ]
+            browser_exe = next((p for p in candidatos_chrome if p and os.path.isfile(p)), None)
+            if not browser_exe:
+                browser_exe = next((p for p in candidatos_edge if p and os.path.isfile(p)), None)
+
             launched = False
-            if chrome_exe:
-                launched = cls._spawn_on_interactive_desktop(f'"{chrome_exe}" "{url}"', show_window=1)
+            flag_tab = " --new-tab" if nova_aba else ""
+            if browser_exe:
+                launched = cls._spawn_on_interactive_desktop(f'"{browser_exe}"{flag_tab} "{url}"', show_window=1)
+            if not launched:
+                try:
+                    import webbrowser
+                    if nova_aba:
+                        webbrowser.open_new_tab(url)
+                    else:
+                        webbrowser.open(url)
+                    launched = True
+                except Exception:
+                    pass
             if not launched:
                 launched = cls._spawn_on_interactive_desktop(
                     f'cmd.exe /c start "" "{url}"',

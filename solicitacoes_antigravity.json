@@ -20,5 +20,15 @@
     "prioridade": "baixa",
     "status": "pendente",
     "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 3,
+    "data_hora": "23/11/2026 00:09:32",
+    "titulo": "Preparação do Jarvis para Comercialização",
+    "descricao": "Implementar melhorias e ajustes necessários no código-fonte para viabilizar a venda e distribuição do Jarvis na internet.",
+    "arquivo_sugerido": "backend/agent.py",
+    "prioridade": "Alta",
+    "status": "pendente",
+    "origem": "Comando de voz do usuário via Jarvis"
   }
 ]

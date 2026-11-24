@@ -117,12 +117,8 @@ async function createWindow() {
     backgroundColor: '#08080a',
     icon: iconPath,
     autoHideMenuBar: true,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#08080a',
-      symbolColor: '#ff5500',
-      height: 38,
-    },
+    frame: true,
+    titleBarStyle: 'default',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

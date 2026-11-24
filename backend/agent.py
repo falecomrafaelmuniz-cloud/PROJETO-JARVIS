@@ -38,6 +38,7 @@ from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from urllib.parse import quote as url_quote
 from jarvis_antigravity import obter_antigravity_engine, AntigravityEngine
+from jarvis_tiktok_live import tiktok_manager
 
 from livekit import agents, rtc
 from livekit.agents import (
@@ -130,17 +131,18 @@ async def _robust_gemini_main_task(self) -> None:
             hint = lk_google_realtime._get_1008_error_hint(str(e))
             lk_google_realtime.logger.warning(f"Gemini Realtime API event/error: {e}")
 
-            # Se o handle de resumption expirou após tempo em silêncio/mute:
+            # Se o handle de resumption expirou ou houve colisão de sessão (1008):
             # limpa o handle antigo e reconecta instantaneamente criando uma sessão limpa!
             str_err = str(e).lower()
-            if "1008" in str_err and "session not found" in str_err:
+            if "1008" in str_err or "entity already exists" in str_err or "session not found" in str_err or "expired" in str_err:
                 lk_google_realtime.logger.info(
-                    "Sessão anterior do Gemini Live expirou por inatividade. "
-                    "Resetando handle de retomada para abrir nova sessão imediatamente..."
+                    f"Conflito ou expiração de sessão Gemini Live detectado ({e}). "
+                    "Resetando handle de retomada para abrir sessão limpa imediatamente..."
                 )
                 self._session_resumption_handle = None
+                self._num_retries = 0
                 self._emit_error(e, recoverable=True)
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.4)
                 continue
 
             if not self._msg_ch.closed:
@@ -153,13 +155,6 @@ async def _robust_gemini_main_task(self) -> None:
                     raise APIConnectionError(
                         message="Gemini Live session context exhausted (1007)"
                     ) from e
-
-                if not session or max_retries == 0:
-                    self._emit_error(e, recoverable=False)
-                    error_msg = "Failed to connect to Gemini Live"
-                    if hint:
-                        error_msg += hint
-                    raise APIConnectionError(message=error_msg) from e
 
                 if self._num_retries >= max_retries:
                     self._emit_error(e, recoverable=False)
@@ -211,6 +206,24 @@ if not logger_memoria.handlers:
     )
     handler_memoria.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger_memoria.addHandler(handler_memoria)
+
+# Diagnóstico persistente: grava avisos/erros do LiveKit e do Gemini Live em arquivo
+# (o agente roda oculto e antes esses erros se perdiam, impossibilitando descobrir paradas).
+_logger_livekit_diag = logging.getLogger("livekit")
+if not any(getattr(h, "_jarvis_diag", False) for h in _logger_livekit_diag.handlers):
+    try:
+        _handler_diag = logging.FileHandler(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_agente_diagnostico.log"),
+            encoding="utf-8",
+        )
+        _handler_diag.setLevel(logging.WARNING)
+        _handler_diag.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+        )
+        _handler_diag._jarvis_diag = True  # type: ignore[attr-defined]
+        _logger_livekit_diag.addHandler(_handler_diag)
+    except OSError:
+        pass
 
 # --- INÍCIO CONFIGURAÇÃO DA MEMÓRIA DE LONGO PRAZO ---
 CHAVE_API = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
@@ -3357,9 +3370,19 @@ class Assistant(Agent):
                 user32.ShowWindow(fg, SW_MINIMIZE)
                 return "Janela atual minimizada com sucesso."
 
-        # 3. Mapeamento de sinônimos de programas, pastas e sites
-        termos_busca = [alvo_limpo]
+        # 3. Se for especificamente a janela do próprio Jarvis:
+        eh_pedido_jarvis = any(
+            k in alvo_limpo for k in ("jarvis", "sua janela", "sua tela", "voce", "você", "seu app", "sua", "tela do jarvis", "sistema jarvis")
+        )
+
+        # 4. Mapeamento de sinônimos de programas, pastas e sites
+        if eh_pedido_jarvis:
+            termos_busca = ["jarvis system", "jarvis", "localhost:3000"]
+        else:
+            termos_busca = [alvo_limpo]
+
         mapa_sinonimos = {
+            "jarvis": ["jarvis system", "jarvis", "localhost:3000"],
             "calculadora": ["calculadora", "calculator", "calc"],
             "bloco de notas": ["bloco de notas", "notepad"],
             "notepad": ["bloco de notas", "notepad"],
@@ -3414,6 +3437,10 @@ class Assistant(Agent):
         user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
 
         if janelas_encontradas:
+            if eh_pedido_jarvis:
+                for hwnd, _ in janelas_encontradas:
+                    user32.ShowWindow(hwnd, SW_MINIMIZE)
+                return "Janela do Jarvis minimizada com sucesso."
             # Se for uma ABA específica em um navegador (ex: YouTube) e a extensão não destacou antes,
             # usa o atalho nativo do Chrome para destacar a aba em uma nova janela e minimizar SÓ ela!
             for hwnd, titulo in janelas_encontradas:
@@ -3496,8 +3523,16 @@ class Assistant(Agent):
                 user32.ShowWindow(fg, SW_SHOWMAXIMIZED)
                 return "Janela atual maximizada com sucesso."
 
-        termos_busca = [alvo_limpo]
+        eh_pedido_jarvis = any(
+            k in alvo_limpo for k in ("jarvis", "sua janela", "sua tela", "voce", "você", "seu app", "sua", "tela do jarvis", "sistema jarvis")
+        )
+        if eh_pedido_jarvis:
+            termos_busca = ["jarvis system", "jarvis", "localhost:3000"]
+        else:
+            termos_busca = [alvo_limpo]
+
         mapa_sinonimos = {
+            "jarvis": ["jarvis system", "jarvis", "localhost:3000"],
             "calculadora": ["calculadora", "calculator", "calc"],
             "bloco de notas": ["bloco de notas", "notepad"],
             "notepad": ["bloco de notas", "notepad"],
@@ -3520,7 +3555,6 @@ class Assistant(Agent):
             "excel": ["excel"],
             "powerpoint": ["powerpoint"],
             "terminal": ["powershell", "prompt de comando", "terminal", "cmd"],
-            "jarvis": ["jarvis - assistente", "localhost:3000"],
         }
         for chave, lista in mapa_sinonimos.items():
             if chave in alvo_limpo:
@@ -3548,6 +3582,14 @@ class Assistant(Agent):
         user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
 
         if janelas_encontradas:
+            if eh_pedido_jarvis:
+                for hwnd, _ in janelas_encontradas:
+                    if user32.IsIconic(hwnd):
+                        user32.ShowWindow(hwnd, SW_RESTORE)
+                    user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
+                    user32.SwitchToThisWindow(hwnd, True)
+                return "Janela do Jarvis restaurada e maximizada com sucesso."
+
             for hwnd, _ in janelas_encontradas:
                 if user32.IsIconic(hwnd):
                     user32.ShowWindow(hwnd, SW_RESTORE)
@@ -3608,6 +3650,13 @@ class Assistant(Agent):
         if "rascunho" in alvo_norm or ("janela" in alvo_norm and "email" in alvo_norm):
             return await self.fechar_rascunho_email()
 
+        # 1.5. Se for especificamente a janela do próprio Jarvis:
+        eh_pedido_jarvis = any(
+            k in alvo_norm for k in ("jarvis", "sua janela", "sua tela", "voce", "você", "seu app", "sua", "tela do jarvis", "sistema jarvis")
+        )
+        if eh_pedido_jarvis:
+            return await asyncio.to_thread(self._minimizar_windows_nativo, "jarvis")
+
         # 2. Se for um site ou aba específica aberta no Chrome, destaca e minimiza APENAS aquela aba (preservando as outras abas abertas!)
         eh_site_ou_aba = any(
             k in alvo_norm
@@ -3642,6 +3691,13 @@ class Assistant(Agent):
         # 1. Painéis internos do Jarvis
         if "rascunho" in alvo_norm or ("janela" in alvo_norm and "email" in alvo_norm):
             return await self.abrir_rascunho_email(reiniciar=False)
+
+        # 1.5. Se for especificamente a janela do próprio Jarvis:
+        eh_pedido_jarvis = any(
+            k in alvo_norm for k in ("jarvis", "sua janela", "sua tela", "voce", "você", "seu app", "sua", "tela do jarvis", "sistema jarvis")
+        )
+        if eh_pedido_jarvis:
+            return await asyncio.to_thread(self._maximizar_ou_restaurar_windows_nativo, "jarvis")
 
         # 2. Aba ou site no Chrome via extensão (restaura a janela se estiver minimizada, maximiza e foca na aba solicitada!)
         eh_site_ou_aba = any(
@@ -3759,8 +3815,16 @@ class Assistant(Agent):
                 _posicionar_hwnd_no_monitor(fg, maximizar_preferido=forcar_maximizar)
                 return f"Janela atual movida com sucesso para a {desc_monitor}."
 
-        termos_busca = [alvo_limpo]
+        eh_pedido_jarvis = any(
+            k in alvo_limpo for k in ("jarvis", "sua janela", "sua tela", "voce", "você", "seu app", "sua", "tela do jarvis", "sistema jarvis")
+        )
+        if eh_pedido_jarvis:
+            termos_busca = ["jarvis system", "jarvis", "localhost:3000"]
+        else:
+            termos_busca = [alvo_limpo]
+
         mapa_sinonimos = {
+            "jarvis": ["jarvis system", "jarvis", "localhost:3000"],
             "calculadora": ["calculadora", "calculator", "calc"],
             "bloco de notas": ["bloco de notas", "notepad"],
             "notepad": ["bloco de notas", "notepad"],
@@ -3838,6 +3902,23 @@ class Assistant(Agent):
         mon_x, mon_y, mon_w, mon_h, desc_monitor = await asyncio.to_thread(
             self._obter_retangulo_monitor_alvo, tela_destino
         )
+
+        # 0. Se for o próprio Jarvis ("move sua janela para o monitor 2", etc.)
+        eh_pedido_jarvis = any(
+            k in alvo_norm for k in ("jarvis", "sua janela", "sua tela", "voce", "você", "seu app", "sua", "tela do jarvis", "sistema jarvis")
+        )
+        if eh_pedido_jarvis:
+            res_win = await asyncio.to_thread(
+                self._mover_janela_windows_para_monitor,
+                "jarvis",
+                mon_x,
+                mon_y,
+                mon_w,
+                mon_h,
+                desc_monitor,
+                False,
+            )
+            return res_win or f"Janela do Jarvis movida para a {desc_monitor}."
 
         eh_site_ou_aba = (
             any(
@@ -9180,6 +9261,88 @@ class Assistant(Agent):
         await self._publicar_favoritos_sync(lista, abrir_painel=True)
         return f"Favorito '{removido.get('nome')}' removido com sucesso."
 
+    # --- TIKTOK LIVE CO-HOST & STREAMING ASSISTANT ---
+
+    @function_tool(
+        description=(
+            "Conecta o Jarvis a uma transmissão ao vivo no TikTok pelo @usuario do streamer. "
+            "Se o usuário pedir 'conecta na minha live', utilize o usuário padrão 'falecomrafaelmuniz'. "
+            "Permite ao Jarvis acompanhar o chat em tempo real, filtrar dúvidas, acompanhar "
+            "likes e presentes para atuar como co-host da transmissão."
+        )
+    )
+    async def conectar_tiktok_live(self, usuario: str = "falecomrafaelmuniz") -> str:
+        """Conecta o Jarvis a uma transmissão ao vivo no TikTok."""
+        if not usuario or usuario.strip().lower() in ("meu", "minha", "minha live", "padrao", "padrão", "live"):
+            usuario = "falecomrafaelmuniz"
+        logger_memoria.info("evento=tiktok_live_conectar usuario=%s", usuario)
+        res = await asyncio.to_thread(tiktok_manager.conectar, usuario)
+        if res.get("sucesso"):
+            return f"Conectado com sucesso à Live do TikTok de @{res.get('usuario')}. Jarvis já está escutando o chat e pronto para interagir."
+        return f"Não foi possível conectar à Live do TikTok: {res.get('erro', 'motivo desconhecido')}."
+
+    @function_tool(
+        description="Desconecta o Jarvis da transmissão ao vivo atual do TikTok."
+    )
+    async def desconectar_tiktok_live(self) -> str:
+        """Desconecta da live do TikTok."""
+        logger_memoria.info("evento=tiktok_live_desconectar")
+        res = await asyncio.to_thread(tiktok_manager.desconectar)
+        return res.get("mensagem", "Desconectado do TikTok Live.")
+
+    @function_tool(
+        description=(
+            "Lê as perguntas ou comentários mais recentes dos espectadores na Live do TikTok conectada. "
+            "Use sempre que o usuário perguntar o que o chat está falando, pedir para ler perguntas da live "
+            "ou pedir ajuda para responder o público."
+        )
+    )
+    async def obter_chat_tiktok_live(self, apenas_perguntas: bool = True, limite: int = 5) -> str:
+        """Obtém as perguntas ou comentários mais recentes dos espectadores."""
+        logger_memoria.info("evento=tiktok_obter_chat apenas_perguntas=%s limite=%s", apenas_perguntas, limite)
+        res = await asyncio.to_thread(tiktok_manager.obter_perguntas_e_comentarios, limite, apenas_perguntas, True)
+        if not res.get("conectado"):
+            return res.get("aviso", "Jarvis não está conectado a nenhuma live do TikTok no momento.")
+
+        mensagens = res.get("mensagens", [])
+        if not mensagens:
+            return "Nenhuma nova pergunta ou mensagem foi enviada no chat da live recentemente."
+
+        tipo = "perguntas" if apenas_perguntas else "comentários"
+        linhas = [f"Últimas {tipo} dos espectadores no TikTok (@{res.get('usuario_live')}):"]
+        for m in mensagens:
+            tempo = f"({m.get('tempo_atras_segundos', 0)}s atrás)"
+            linhas.append(f"- @{m.get('usuario')}: '{m.get('texto')}' {tempo}")
+
+        linhas.append("\nResponda diretamente com simpatia citando o nome do espectador e trazendo a resposta para a live.")
+        return "\n".join(linhas)
+
+    @function_tool(
+        description=(
+            "Consulta as métricas em tempo real da Live do TikTok atual: tempo ativo, total de comentários, "
+            "curtidas acumuladas, presentes recebidos e perguntas pendentes."
+        )
+    )
+    async def obter_status_tiktok_live(self) -> str:
+        """Consulta as estatísticas atuais da live no TikTok."""
+        logger_memoria.info("evento=tiktok_status_live")
+        res = await asyncio.to_thread(tiktok_manager.obter_status_live)
+        if not res.get("conectado"):
+            return "Jarvis não está conectado a nenhuma live do TikTok no momento."
+
+        tempo_min = res.get("tempo_ativo_segundos", 0) // 60
+        presentes = res.get("ultimos_presentes", [])
+        presentes_str = "; ".join(presentes) if presentes else "Nenhum presente recente"
+
+        return (
+            f"Métricas da Live de @{res.get('usuario_live')}:\n"
+            f"- Tempo de monitoramento: {tempo_min} minuto(s)\n"
+            f"- Total de comentários: {res.get('total_comentarios')}\n"
+            f"- Total de curtidas: {res.get('total_likes')}\n"
+            f"- Presentes recebidos: {res.get('total_presentes')} ({presentes_str})\n"
+            f"- Perguntas pendentes: {res.get('perguntas_pendentes')}"
+        )
+
     # --- FIM DAS FERRAMENTAS ---
 
 async def _destravar_thinking_watchdog(session: AgentSession, timeout: float = 2.5):
@@ -9198,9 +9361,12 @@ async def _publish_tool_activity(
     events: asyncio.Queue[ToolExecutionUpdatedEvent | None],
     session: AgentSession | None = None,
 ):
+    watchdog_pendente: asyncio.Task | None = None
     while True:
         event = await events.get()
         if event is None:
+            if watchdog_pendente and not watchdog_pendente.done():
+                watchdog_pendente.cancel()
             return
 
         update = event.update
@@ -9219,7 +9385,10 @@ async def _publish_tool_activity(
                 "status": update.status,
             }
             if session is not None:
-                asyncio.create_task(_destravar_thinking_watchdog(session))
+                # Mantém apenas UM watchdog ativo (antes acumulavam vários por ferramenta).
+                if watchdog_pendente and not watchdog_pendente.done():
+                    watchdog_pendente.cancel()
+                watchdog_pendente = asyncio.create_task(_destravar_thinking_watchdog(session))
         else:
             continue
 
@@ -9282,7 +9451,15 @@ async def _publish_system_metrics(room: rtc.Room):
                 "evento=metricas_sistema status=erro_publicacao tipo=%s",
                 type(error).__name__,
             )
-            return
+            # Só encerra se a sala caiu de vez; falha pontual não pode matar as métricas.
+            try:
+                if room.connection_state != rtc.ConnectionState.CONN_CONNECTED:
+                    return
+            except Exception:
+                return
+            previous_sample = None
+            await asyncio.sleep(3)
+            continue
 
         previous_sample = (sampled_at, network.bytes_sent, network.bytes_recv)
 
@@ -9606,6 +9783,52 @@ async def entrypoint(ctx: agents.JobContext):
     session.on("conversation_item_added", _on_item_added)
     session.on("tool_execution_updated", activity_events.put_nowait)
     session.on("close", _on_session_close)
+
+    # --- Diagnóstico e anti-travamento do estado do agente ---
+    thinking_guard: dict[str, asyncio.Task | None] = {"task": None}
+
+    async def _guarda_thinking_longo():
+        try:
+            await asyncio.sleep(20)
+            if session.agent_state == "thinking":
+                logger_memoria.warning("evento=watchdog_thinking_longo status=destravando_apos_20s")
+                session._update_agent_state("listening")
+        except asyncio.CancelledError:
+            pass
+        except Exception as erro:
+            logger_memoria.warning("evento=watchdog_thinking_longo status=erro motivo=%s", erro)
+
+    def _on_agent_state(ev):
+        novo = str(getattr(ev, "new_state", ""))
+        logger_memoria.info(
+            "evento=agent_state de=%s para=%s", getattr(ev, "old_state", ""), novo
+        )
+        tarefa = thinking_guard["task"]
+        if tarefa and not tarefa.done():
+            tarefa.cancel()
+        thinking_guard["task"] = (
+            asyncio.create_task(_guarda_thinking_longo()) if novo == "thinking" else None
+        )
+
+    def _on_user_state(ev):
+        logger_memoria.info(
+            "evento=user_state de=%s para=%s",
+            getattr(ev, "old_state", ""),
+            getattr(ev, "new_state", ""),
+        )
+
+    def _on_session_error(ev):
+        erro = getattr(ev, "error", ev)
+        logger_memoria.error(
+            "evento=session_error tipo=%s recuperavel=%s detalhe=%s",
+            type(erro).__name__,
+            getattr(erro, "recoverable", "?"),
+            str(erro)[:300],
+        )
+
+    session.on("agent_state_changed", _on_agent_state)
+    session.on("user_state_changed", _on_user_state)
+    session.on("error", _on_session_error)
     asyncio.create_task(_publish_tool_activity(ctx.room, activity_events, session))
 
     usar_bvc = (
@@ -9629,12 +9852,19 @@ async def entrypoint(ctx: agents.JobContext):
     automacoes_watch_task = asyncio.create_task(_monitorar_automacoes_agendadas(session, assistant))
     session.on("close", lambda _: (metrics_task.cancel(), email_watch_task.cancel(), automacoes_watch_task.cancel()))
 
-    await session.generate_reply(
-        instructions=(
-            SESSION_INSTRUCTION
-            + "\nDiga apenas uma saudação inicial curta e confiante em Português do Brasil (ex: 'Sistemas online, chefe.'), sem perguntar como pode ajudar e sem insistência."
+    # Aguarda o participante estar conectado com áudio pronto para garantir que a saudação seja ouvida
+    try:
+        if not ctx.room.remote_participants:
+            for _ in range(15):
+                await asyncio.sleep(0.2)
+                if ctx.room.remote_participants:
+                    break
+        await asyncio.sleep(0.4)
+        await session.generate_reply(
+            instructions="Fale imediatamente em voz alta em Português do Brasil a saudação de inicialização: 'Sistemas online, chefe.'"
         )
-    )
+    except Exception as erro_saudacao:
+        logger_memoria.warning("evento=saudacao_inicial status=erro motivo=%s", erro_saudacao)
 
 if __name__ == "__main__":
-    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint, num_idle_processes=1))
+    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint, num_idle_processes=0))
