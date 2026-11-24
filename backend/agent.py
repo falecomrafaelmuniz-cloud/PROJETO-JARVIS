@@ -9114,10 +9114,13 @@ class Assistant(Agent):
 
             if caminho_pasta and os.path.isdir(caminho_pasta):
                 n_pasta = nome_alvo or os.path.basename(os.path.normpath(caminho_pasta))
+                n_pasta_limpa = re.sub(r'^(a\s+)?pasta\s+', '', n_pasta.strip(), flags=re.IGNORECASE)
+                if not n_pasta_limpa:
+                    n_pasta_limpa = os.path.basename(os.path.normpath(caminho_pasta))
                 return {
                     "tipo": "pasta",
                     "url": caminho_pasta,
-                    "nome": n_pasta.upper(),
+                    "nome": n_pasta_limpa.upper(),
                     "categoria": cat_alvo or "Pastas",
                 }
 

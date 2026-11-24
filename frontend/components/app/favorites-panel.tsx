@@ -315,9 +315,8 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
         const json = await res.json();
         if (json.status === 'ok' && json.path) {
           setNovaUrl(json.path);
-          if (!novoNome) {
-            setNovoNome(json.name ? `PASTA ${json.name.toUpperCase()}` : 'PASTA');
-          }
+          const cleanName = String(json.name || '').replace(/^(a\s+)?pasta\s+/i, '').trim();
+          setNovoNome(cleanName ? cleanName.toUpperCase() : 'PASTA');
           setNovaCategoria('Pastas');
         }
       }
@@ -610,7 +609,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
                           type="button"
                           onClick={() => {
                             setNovaUrl(pSug);
-                            setNovoNome(`PASTA ${pSug.toUpperCase()}`);
+                            setNovoNome(pSug.toUpperCase());
                             setNovaCategoria('Pastas');
                           }}
                           className="rounded-md border border-amber-500/30 bg-amber-950/40 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/20 hover:border-amber-400 cursor-pointer"

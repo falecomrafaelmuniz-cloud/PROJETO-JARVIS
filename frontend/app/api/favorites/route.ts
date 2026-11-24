@@ -48,7 +48,11 @@ function readFavorites(): FavoriteItem[] {
     if (!Array.isArray(parsed)) return [];
     // Higieniza: nomes sempre em MAIÚSCULAS e limpa atalhos de apps que foram salvos com https://
     return parsed.map((item: FavoriteItem) => {
-      const nomeUpper = String(item.nome || '').toUpperCase();
+      let nomeUpper = String(item.nome || '').toUpperCase();
+      // Remove prefixos redundantes "PASTA " ou "A PASTA " para exibir apenas o nome real da pasta
+      if (item.tipo === 'pasta' && /^PASTA\s+/i.test(nomeUpper) && nomeUpper.length > 6) {
+        nomeUpper = nomeUpper.replace(/^PASTA\s+/i, '').trim();
+      }
       let urlSanitized = String(item.url || '');
       if (item.tipo === 'app' && urlSanitized.toLowerCase().startsWith('http')) {
         urlSanitized = urlSanitized.replace(/^https?:\/\//i, '').replace(/\/$/, '');
@@ -160,11 +164,21 @@ export async function POST(req: Request) {
           } catch {
             nome = url;
           }
+        } else if (tipo === 'pasta') {
+          const cleanPath = rawTarget.replace(/[\\/]+$/, '');
+          nome = path.basename(cleanPath) || rawTarget;
+        } else if (tipo === 'arquivo') {
+          nome = path.basename(rawTarget) || rawTarget;
         } else {
           nome = rawTarget;
         }
       }
-      nome = nome.toUpperCase();
+      if (tipo === 'pasta') {
+        nome = nome.replace(/^(a\s+)?pasta\s+/i, '').trim();
+      } else if (tipo === 'arquivo') {
+        nome = nome.replace(/^(o\s+)?arquivo\s+/i, '').trim();
+      }
+      nome = (nome || rawTarget).toUpperCase();
 
       const categoria = String(body.categoria || defaultCat).trim() || defaultCat;
       const isSite = tipo === 'site';
