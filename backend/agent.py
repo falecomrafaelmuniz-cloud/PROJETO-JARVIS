@@ -900,7 +900,12 @@ class Assistant(Agent):
         return {"tipo": "webpage", "url": url_limpa, "titulo": titulo}
 
     def buscar_pasta(self, nome_pasta: str):
+        if not nome_pasta:
+            return None
         pasta_usuario = os.path.expanduser("~")
+        if os.path.isdir(nome_pasta):
+            return os.path.abspath(nome_pasta)
+
         nome_limpo = (
             (nome_pasta or "")
             .strip()
@@ -932,32 +937,58 @@ class Assistant(Agent):
                 if os.path.isdir(cand):
                     return cand
 
-        locais_rapidos = [
-            os.path.join(pasta_usuario, "Downloads"),
+        # 1. Verifica se há janelas do Windows Explorer abertas no sistema
+        try:
+            cmd_ps = (
+                'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
+                '"(New-Object -ComObject Shell.Application).Windows() | ForEach-Object { try { $_.Document.Folder.Self.Path } catch {} }"'
+            )
+            res = subprocess.run(cmd_ps, shell=True, capture_output=True, text=True, timeout=2)
+            if res.stdout:
+                for line in res.stdout.splitlines():
+                    p = line.strip()
+                    if p and os.path.isdir(p):
+                        base_p = os.path.basename(os.path.normpath(p)).lower()
+                        if base_p in (nome_pasta.lower(), nome_limpo):
+                            return p
+        except Exception:
+            pass
+
+        # 2. Varredura rápida em raízes prioritárias (Dropbox, OneDrive, Documentos, Desktop, C:\)
+        raizes_busca = [
+            os.path.join(pasta_usuario, "Dropbox"),
+            os.path.join(pasta_usuario, "OneDrive"),
+            os.path.join(pasta_usuario, "Google Drive"),
             os.path.join(pasta_usuario, "Desktop"),
-            os.path.join(pasta_usuario, "Documents"),
             os.path.join(pasta_usuario, "Área de Trabalho"),
+            os.path.join(pasta_usuario, "Documents"),
             os.path.join(pasta_usuario, "Documentos"),
-            pasta_usuario
+            os.path.join(pasta_usuario, "Downloads"),
+            pasta_usuario,
+            "C:\\",
+            "D:\\",
         ]
-        
-        for local in locais_rapidos:
-            if not os.path.exists(local): continue
+        skip_dirs = {
+            'appdata', 'node_modules', '.git', '__pycache__', 'windows',
+            'program files', 'program files (x86)', 'programdata', 'local settings',
+            '.vscode', '.gemini', '.cache', 'temp', 'recovery', '$recycle.bin', 'system volume information'
+        }
+        for raiz in raizes_busca:
+            if not raiz or not os.path.isdir(raiz):
+                continue
             try:
-                for item in os.listdir(local):
-                    caminho_item = os.path.join(local, item)
-                    if os.path.isdir(caminho_item) and item.lower() in (nome_pasta.lower(), nome_limpo):
-                        return caminho_item
-            except OSError as e:
-                print(f"[AVISO] Não foi possível consultar '{local}': {e}")
-                
-        for root, dirs, files in os.walk(pasta_usuario):
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['AppData', 'Local Settings']]
-            dirs_low = [d.lower() for d in dirs]
-            for alvo_n in (nome_pasta.lower(), nome_limpo):
-                if alvo_n and alvo_n in dirs_low:
-                    idx = dirs_low.index(alvo_n)
-                    return os.path.join(root, dirs[idx])
+                for root, dirs, _ in os.walk(raiz):
+                    dirs[:] = [d for d in dirs if d.lower() not in skip_dirs and not d.startswith('.')]
+                    rel = os.path.relpath(root, raiz)
+                    depth = 0 if rel == '.' else len(rel.split(os.sep))
+                    if depth > 4:
+                        dirs[:] = []
+                        continue
+                    for d in dirs:
+                        if d.lower() in (nome_pasta.lower(), nome_limpo):
+                            return os.path.join(root, d)
+            except Exception:
+                continue
         return None
 
     def buscar_atalho_programa(self, nome_programa: str):
@@ -9123,6 +9154,15 @@ class Assistant(Agent):
                     "nome": n_pasta_limpa.upper(),
                     "categoria": cat_alvo or "Pastas",
                 }
+            elif tipo_alvo in ("pasta", "folder", "diretorio", "diretório") or alvo_low.startswith(("pasta ", "a pasta ")):
+                n_pasta_limpa = re.sub(r'^(a\s+)?pasta\s+', '', (nome_alvo or alvo_sem_prefixo).strip(), flags=re.IGNORECASE)
+                return {
+                    "tipo": "pasta",
+                    "url": alvo,
+                    "nome": (n_pasta_limpa or alvo_sem_prefixo).upper(),
+                    "categoria": cat_alvo or "Pastas",
+                    "caminho_pendente": True,
+                }
 
         # Checagem 3: Arquivo / Documento ou Script
         _, ext = os.path.splitext(alvo_low)
@@ -9255,8 +9295,17 @@ class Assistant(Agent):
         """Salva uma pasta do Windows no painel Atalhos do Jarvis (abrindo a janela seletora se necessário)."""
         caminho_alvo = str(nome_ou_caminho or "").strip()
         gatilhos_dialogo = ["escolher", "selecionar", "procurar", "buscar", "abrir explorador", "abrir janela", "janela", "qualquer", ""]
-        if not caminho_alvo or any(g == caminho_alvo.lower() or g in caminho_alvo.lower() for g in ["escolher", "selecionar", "procurar"]):
-            # Abre o seletor nativo do Windows
+        precisa_dialogo = not caminho_alvo or any(g in caminho_alvo.lower() for g in ["escolher", "selecionar", "procurar"])
+
+        if not precisa_dialogo and not os.path.isdir(caminho_alvo):
+            # Tenta resolver o caminho físico pelo nome da pasta (Dropbox, OneDrive, Projetos, etc.)
+            caminho_resolvido = await asyncio.to_thread(self.buscar_pasta, caminho_alvo)
+            if caminho_resolvido and os.path.isdir(caminho_resolvido):
+                caminho_alvo = caminho_resolvido
+            else:
+                precisa_dialogo = True
+
+        if precisa_dialogo:
             caminho_alvo = await self._abrir_dialogo_selecionar_pasta()
             if not caminho_alvo:
                 return "Nenhuma pasta foi selecionada na janela do Windows."
@@ -9340,6 +9389,24 @@ class Assistant(Agent):
         nome_final = classificado["nome"]
         tipo_final = classificado["tipo"]
         cat_final = classificado["categoria"]
+
+        # Proteção para Pastas: NUNCA salva atalho quebrado sem caminho físico no disco!
+        if tipo_final == "pasta" or classificado.get("caminho_pendente"):
+            if not os.path.isdir(alvo_final):
+                recup = await asyncio.to_thread(self.buscar_pasta, alvo or nome_final)
+                if recup and os.path.isdir(recup):
+                    alvo_final = recup
+                    nome_final = os.path.basename(os.path.normpath(recup)).upper()
+                else:
+                    escolhido = await self._abrir_dialogo_selecionar_pasta()
+                    if escolhido and os.path.isdir(escolhido):
+                        alvo_final = escolhido
+                        nome_final = os.path.basename(os.path.normpath(escolhido)).upper()
+                    else:
+                        return (
+                            f"Aviso: Não consegui localizar a pasta '{alvo}' no computador. "
+                            "Abri a janela para você selecionar, mas nenhuma pasta foi escolhida."
+                        )
 
         lista = await asyncio.to_thread(self._carregar_favoritos)
 
@@ -9446,7 +9513,14 @@ class Assistant(Agent):
         tipo_final = str(encontrado.get("tipo", "site")).lower()
 
         if tipo_final == "pasta":
-            await self.abrir_pasta(nome_ou_caminho=url_final or nome_final)
+            caminho_abrir = url_final
+            if not caminho_abrir or not os.path.isdir(caminho_abrir):
+                caminho_recup = await asyncio.to_thread(self.buscar_pasta, nome_final or url_final)
+                if caminho_recup and os.path.isdir(caminho_recup):
+                    caminho_abrir = caminho_recup
+                    encontrado["url"] = caminho_recup
+                    await asyncio.to_thread(self._salvar_favoritos, lista)
+            await self.abrir_pasta(nome_ou_caminho=caminho_abrir)
             return f"Abrindo pasta '{nome_final}' no computador."
         elif tipo_final == "arquivo":
             await asyncio.to_thread(self._spawn_on_interactive_desktop, f'cmd.exe /c start "" "{url_final}"', show_window=0)
@@ -9801,7 +9875,21 @@ def _handle_room_data(
                 alvo = str(payload.get("url") or payload.get("nome") or "").strip()
                 tipo = str(payload.get("tipo") or "").lower()
                 if tipo == "pasta":
-                    asyncio.create_task(agent.abrir_pasta(alvo))
+                    caminho_abrir = alvo
+                    if not caminho_abrir or not os.path.isdir(caminho_abrir):
+                        caminho_recup = agent.buscar_pasta(payload.get("nome") or alvo)
+                        if caminho_recup and os.path.isdir(caminho_recup):
+                            caminho_abrir = caminho_recup
+                            try:
+                                lista_fav = agent._carregar_favoritos()
+                                for it in lista_fav:
+                                    if it.get("url") == alvo or it.get("nome") == payload.get("nome"):
+                                        it["url"] = caminho_recup
+                                        break
+                                agent._salvar_favoritos(lista_fav)
+                            except Exception:
+                                pass
+                    asyncio.create_task(agent.abrir_pasta(caminho_abrir))
                 elif tipo == "arquivo":
                     asyncio.create_task(asyncio.to_thread(agent._spawn_on_interactive_desktop, f'cmd.exe /c start "" "{alvo}"', show_window=0))
                 elif tipo == "sistema":
