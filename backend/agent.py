@@ -88,6 +88,9 @@ async def _robust_gemini_main_task(self) -> None:
                         exclude_config_update=True,
                     ).to_provider_format(format="google", inject_dummy_user_message=False)
                     turns = [lk_google_realtime.types.Content.model_validate(turn) for turn in turns_dict]
+                    # Mantém apenas os últimos 8 turnos na reconexão para evitar estourar quota (1011 Resource Exhausted)
+                    if len(turns) > 8:
+                        turns = turns[-8:]
                     if turns:
                         await session.send_client_content(
                             turns=turns,
@@ -131,18 +134,26 @@ async def _robust_gemini_main_task(self) -> None:
             hint = lk_google_realtime._get_1008_error_hint(str(e))
             lk_google_realtime.logger.warning(f"Gemini Realtime API event/error: {e}")
 
-            # Se o handle de resumption expirou ou houve colisão de sessão (1008):
+            # Se o handle de resumption expirou ou houve colisão de sessão (1008) ou esgotamento de recurso (1011):
             # limpa o handle antigo e reconecta instantaneamente criando uma sessão limpa!
             str_err = str(e).lower()
-            if "1008" in str_err or "entity already exists" in str_err or "session not found" in str_err or "expired" in str_err:
+            if (
+                "1008" in str_err
+                or "1011" in str_err
+                or "quota" in str_err
+                or "resource has been exhausted" in str_err
+                or "entity already exists" in str_err
+                or "session not found" in str_err
+                or "expired" in str_err
+            ):
                 lk_google_realtime.logger.info(
-                    f"Conflito ou expiração de sessão Gemini Live detectado ({e}). "
+                    f"Conflito, expiração ou cota Gemini Live detectado ({e}). "
                     "Resetando handle de retomada para abrir sessão limpa imediatamente..."
                 )
                 self._session_resumption_handle = None
                 self._num_retries = 0
                 self._emit_error(e, recoverable=True)
-                await asyncio.sleep(0.4)
+                await asyncio.sleep(0.5)
                 continue
 
             if not self._msg_ch.closed:
@@ -371,9 +382,9 @@ class Assistant(Agent):
             realtime_input_config=genai_types.RealtimeInputConfig(
                 automatic_activity_detection=genai_types.AutomaticActivityDetection(
                     start_of_speech_sensitivity=genai_types.StartSensitivity.START_SENSITIVITY_HIGH,
-                    end_of_speech_sensitivity=genai_types.EndSensitivity.END_SENSITIVITY_HIGH,
-                    prefix_padding_ms=100,
-                    silence_duration_ms=500,
+                    end_of_speech_sensitivity=genai_types.EndSensitivity.END_SENSITIVITY_LOW,
+                    prefix_padding_ms=200,
+                    silence_duration_ms=1000,
                 )
             ),
             context_window_compression=genai_types.ContextWindowCompressionConfig(
@@ -9799,7 +9810,7 @@ class Assistant(Agent):
 
     # --- FIM DAS FERRAMENTAS ---
 
-async def _destravar_thinking_watchdog(session: AgentSession, timeout: float = 2.5):
+async def _destravar_thinking_watchdog(session: AgentSession, timeout: float = 6.0):
     """Garante que o agente nunca fique travado no estado 'thinking' após executar uma ferramenta."""
     try:
         await asyncio.sleep(timeout)
@@ -10255,6 +10266,14 @@ async def entrypoint(ctx: agents.JobContext):
     @ctx.room.on("track_published")
     def _on_track_pub(publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
         logger_memoria.info("evento=track_published source=%s muted=%s part=%s", publication.source, publication.muted, participant.identity)
+
+    @ctx.room.on("track_muted")
+    def _on_track_muted(publication: rtc.TrackPublication, participant: rtc.Participant):
+        logger_memoria.warning("evento=track_muted source=%s part=%s", publication.source, participant.identity)
+
+    @ctx.room.on("track_unmuted")
+    def _on_track_unmuted(publication: rtc.TrackPublication, participant: rtc.Participant):
+        logger_memoria.info("evento=track_unmuted source=%s part=%s", publication.source, participant.identity)
 
     session.on("user_input_transcribed", _on_user_transcribed)
     session.on("conversation_item_added", _on_item_added)
