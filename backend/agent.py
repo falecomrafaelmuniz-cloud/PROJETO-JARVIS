@@ -9204,25 +9204,77 @@ class Assistant(Agent):
             "categoria": cat_alvo or "Aplicativos",
         }
 
-    @function_tool(
-        description=(
-            "Adiciona, favorita ou salva uma PASTA DO COMPUTADOR (ex.: 'pasta Downloads', 'pasta Documentos', 'Área de Trabalho', 'pasta Projetos', ou caminho 'C:\\...') "
-            "no painel ATALHOS do Jarvis. Ao clicar ou pedir para abrir, a pasta abrirá no Explorador de Arquivos do Windows."
-        )
-    )
-    async def adicionar_pasta_favorita(self, nome_ou_caminho: str, categoria: str = "Pastas") -> str:
-        """Salva uma pasta do Windows no painel Atalhos do Jarvis."""
-        return await self.adicionar_favorito(item_ou_url=nome_ou_caminho, nome=nome_ou_caminho, categoria=categoria or "Pastas", tipo="pasta")
+    async def _abrir_dialogo_selecionar_pasta(self) -> str:
+        """Abre a janela nativa do Windows (FolderBrowserDialog) para o usuário escolher uma pasta com o mouse."""
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browse_folder.ps1")
+        if not os.path.isfile(script):
+            return ""
+        cmd = f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{script}"'
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+            return stdout.decode("utf-8", errors="ignore").strip()
+        except Exception as e:
+            logger_memoria.warning("evento=abrir_dialogo_pasta_erro erro=%s", e)
+            return ""
+
+    async def _abrir_dialogo_selecionar_arquivo(self) -> str:
+        """Abre a janela nativa do Windows (OpenFileDialog) para o usuário escolher um arquivo com o mouse."""
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browse_file.ps1")
+        if not os.path.isfile(script):
+            return ""
+        cmd = f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{script}"'
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+            return stdout.decode("utf-8", errors="ignore").strip()
+        except Exception as e:
+            logger_memoria.warning("evento=abrir_dialogo_arquivo_erro erro=%s", e)
+            return ""
 
     @function_tool(
         description=(
-            "Adiciona, favorita ou salva um ARQUIVO OU DOCUMENTO DO COMPUTADOR (ex.: 'planilha.xlsx', 'relatório.pdf', 'contrato.docx', fotos, etc.) "
-            "no painel ATALHOS do Jarvis. Ao clicar ou pedir para abrir, o arquivo abrirá no programa padrão correspondente no Windows."
+            "Adiciona uma PASTA DO COMPUTADOR ao painel ATALHOS do Jarvis. "
+            "Se o usuário souber o nome da pasta (ex.: 'pasta Downloads', 'pasta Documentos', 'Área de Trabalho', 'C:\\Projetos'), adiciona diretamente. "
+            "Se o usuário disser 'quero escolher uma pasta', 'abra o explorador para escolher', 'selecionar pasta' ou não disser o caminho, "
+            "esta ferramenta ABRE A JANELA NATIVA DO EXPLORADOR DO WINDOWS para o usuário navegar e clicar na pasta desejada!"
         )
     )
-    async def adicionar_arquivo_favorito(self, nome_ou_caminho: str, categoria: str = "Arquivos") -> str:
-        """Salva um arquivo ou documento no painel Atalhos do Jarvis."""
-        return await self.adicionar_favorito(item_ou_url=nome_ou_caminho, nome=nome_ou_caminho, categoria=categoria or "Arquivos", tipo="arquivo")
+    async def adicionar_pasta_favorita(self, nome_ou_caminho: str = "", categoria: str = "Pastas") -> str:
+        """Salva uma pasta do Windows no painel Atalhos do Jarvis (abrindo a janela seletora se necessário)."""
+        caminho_alvo = str(nome_ou_caminho or "").strip()
+        gatilhos_dialogo = ["escolher", "selecionar", "procurar", "buscar", "abrir explorador", "abrir janela", "janela", "qualquer", ""]
+        if not caminho_alvo or any(g == caminho_alvo.lower() or g in caminho_alvo.lower() for g in ["escolher", "selecionar", "procurar"]):
+            # Abre o seletor nativo do Windows
+            caminho_alvo = await self._abrir_dialogo_selecionar_pasta()
+            if not caminho_alvo:
+                return "Nenhuma pasta foi selecionada na janela do Windows."
+
+        return await self.adicionar_favorito(item_ou_url=caminho_alvo, nome="", categoria=categoria or "Pastas", tipo="pasta")
+
+    @function_tool(
+        description=(
+            "Adiciona um ARQUIVO OU DOCUMENTO DO COMPUTADOR (ex.: 'planilha.xlsx', 'relatório.pdf', 'contrato.docx', fotos, etc.) "
+            "no painel ATALHOS do Jarvis. Se o usuário pedir para 'escolher um arquivo', abre a janela do Windows para selecionar o arquivo!"
+        )
+    )
+    async def adicionar_arquivo_favorito(self, nome_ou_caminho: str = "", categoria: str = "Arquivos") -> str:
+        """Salva um arquivo ou documento no painel Atalhos do Jarvis (abrindo a janela seletora se necessário)."""
+        caminho_alvo = str(nome_ou_caminho or "").strip()
+        if not caminho_alvo or any(g in caminho_alvo.lower() for g in ["escolher", "selecionar", "procurar"]):
+            caminho_alvo = await self._abrir_dialogo_selecionar_arquivo()
+            if not caminho_alvo:
+                return "Nenhum arquivo foi selecionado na janela do Windows."
+
+        return await self.adicionar_favorito(item_ou_url=caminho_alvo, nome="", categoria=categoria or "Arquivos", tipo="arquivo")
 
     @function_tool(
         description=(

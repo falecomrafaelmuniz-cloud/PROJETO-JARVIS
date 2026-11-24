@@ -66,6 +66,7 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
   const [novaUrl, setNovaUrl] = useState('');
   const [novaCategoria, setNovaCategoria] = useState('Geral');
   const [saving, setSaving] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
 
   // Edit states para renomear/editar
   const [editingItem, setEditingItem] = useState<FavoriteItem | null>(null);
@@ -295,6 +296,56 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
       }
     } catch {
       // ignore
+    }
+  };
+
+  const handleBrowseFolder = async () => {
+    setBrowsing(true);
+    try {
+      const res = await fetch('/api/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'browse_folder' }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.status === 'ok' && json.path) {
+          setNovaUrl(json.path);
+          if (!novoNome) {
+            setNovoNome(json.name ? `PASTA ${json.name.toUpperCase()}` : 'PASTA');
+          }
+          setNovaCategoria('Pastas');
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setBrowsing(false);
+    }
+  };
+
+  const handleBrowseFile = async () => {
+    setBrowsing(true);
+    try {
+      const res = await fetch('/api/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'browse_file' }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.status === 'ok' && json.path) {
+          setNovaUrl(json.path);
+          if (!novoNome) {
+            setNovoNome(json.name ? json.name.toUpperCase() : 'ARQUIVO');
+          }
+          setNovaCategoria('Arquivos');
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setBrowsing(false);
     }
   };
 
@@ -536,24 +587,49 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
               )}
 
               {novoTipo === 'pasta' && (
-                <div className="space-y-1">
-                  <span className="text-[10px] text-amber-300/70 font-medium">Pastas comuns do Windows:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {['Downloads', 'Documentos', 'Área de Trabalho', 'Imagens', 'Vídeos'].map((pSug) => (
-                      <button
-                        key={pSug}
-                        type="button"
-                        onClick={() => {
-                          setNovaUrl(pSug);
-                          setNovoNome(`PASTA ${pSug.toUpperCase()}`);
-                          setNovaCategoria('Pastas');
-                        }}
-                        className="rounded-md border border-amber-500/30 bg-amber-950/40 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/20 hover:border-amber-400 cursor-pointer"
-                      >
-                        +{pSug}
-                      </button>
-                    ))}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleBrowseFolder}
+                    disabled={browsing}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg border border-amber-400/50 bg-amber-500/20 hover:bg-amber-500/30 py-2 px-3 text-amber-200 font-semibold text-xs transition cursor-pointer shadow-xs active:scale-[0.98]"
+                  >
+                    <Folder className="size-4 text-amber-300" />
+                    <span>{browsing ? 'Selecione a pasta na janela aberta...' : '📁 Escolher Pasta no Explorador de Arquivos...'}</span>
+                  </button>
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-amber-300/70 font-medium">Ou escolha uma pasta comum:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {['Downloads', 'Documentos', 'Área de Trabalho', 'Imagens', 'Vídeos'].map((pSug) => (
+                        <button
+                          key={pSug}
+                          type="button"
+                          onClick={() => {
+                            setNovaUrl(pSug);
+                            setNovoNome(`PASTA ${pSug.toUpperCase()}`);
+                            setNovaCategoria('Pastas');
+                          }}
+                          className="rounded-md border border-amber-500/30 bg-amber-950/40 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/20 hover:border-amber-400 cursor-pointer"
+                        >
+                          +{pSug}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                </div>
+              )}
+
+              {novoTipo === 'arquivo' && (
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={handleBrowseFile}
+                    disabled={browsing}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg border border-emerald-400/50 bg-emerald-500/20 hover:bg-emerald-500/30 py-2 px-3 text-emerald-200 font-semibold text-xs transition cursor-pointer shadow-xs active:scale-[0.98]"
+                  >
+                    <FileText className="size-4 text-emerald-300" />
+                    <span>{browsing ? 'Selecione o arquivo na janela aberta...' : '📄 Escolher Arquivo no Computador...'}</span>
+                  </button>
                 </div>
               )}
 

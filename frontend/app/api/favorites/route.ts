@@ -253,6 +253,44 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'ok', action: 'reorder', favorites });
     }
 
+    if (action === 'browse_folder') {
+      const scriptPath = path.resolve(process.cwd(), '..', 'backend', 'browse_folder.ps1');
+      return new Promise<Response>((resolve) => {
+        exec(
+          `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
+          { timeout: 90000, maxBuffer: 1024 * 1024 },
+          (err, stdout) => {
+            const selectedPath = (stdout || '').trim();
+            if (selectedPath) {
+              const folderName = path.basename(selectedPath);
+              resolve(NextResponse.json({ status: 'ok', path: selectedPath, name: folderName }));
+            } else {
+              resolve(NextResponse.json({ status: 'cancelled' }));
+            }
+          }
+        );
+      });
+    }
+
+    if (action === 'browse_file') {
+      const scriptPath = path.resolve(process.cwd(), '..', 'backend', 'browse_file.ps1');
+      return new Promise<Response>((resolve) => {
+        exec(
+          `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
+          { timeout: 90000, maxBuffer: 1024 * 1024 },
+          (err, stdout) => {
+            const selectedPath = (stdout || '').trim();
+            if (selectedPath) {
+              const fileName = path.basename(selectedPath);
+              resolve(NextResponse.json({ status: 'ok', path: selectedPath, name: fileName }));
+            } else {
+              resolve(NextResponse.json({ status: 'cancelled' }));
+            }
+          }
+        );
+      });
+    }
+
     if (action === 'open') {
       const target = String(body.url || body.item || '').trim();
       const tipo = String(body.tipo || '').toLowerCase();
