@@ -17,7 +17,19 @@ export interface FavoriteItem {
 }
 
 function getFavoritesFilePath(): string {
+  const directPath = path.resolve(process.cwd(), 'backend', 'favoritos_jarvis.json');
+  if (fs.existsSync(path.resolve(process.cwd(), 'backend'))) {
+    return directPath;
+  }
   return path.resolve(process.cwd(), '..', 'backend', 'favoritos_jarvis.json');
+}
+
+function getBackendScriptPath(scriptName: string): string {
+  const directPath = path.resolve(process.cwd(), 'backend', scriptName);
+  if (fs.existsSync(directPath)) {
+    return directPath;
+  }
+  return path.resolve(process.cwd(), '..', 'backend', scriptName);
 }
 
 function readFavorites(): FavoriteItem[] {
@@ -155,11 +167,14 @@ export async function POST(req: Request) {
       nome = nome.toUpperCase();
 
       const categoria = String(body.categoria || defaultCat).trim() || defaultCat;
-      const existing = favorites.find(
-        (f) =>
-          f.url.replace(/\/$/, '').toLowerCase() === url.replace(/\/$/, '').toLowerCase() ||
-          (!ehSite && f.nome.toLowerCase() === nome.toLowerCase())
-      );
+      const isSite = tipo === 'site';
+      const normUrl = url.trim().toLowerCase().replace(/[\\/]+$/, '');
+      const existing = favorites.find((f) => {
+        const itemUrl = (f.url || '').trim().toLowerCase().replace(/[\\/]+$/, '');
+        if (itemUrl && itemUrl === normUrl) return true;
+        if (!isSite && f.nome && f.nome.trim().toLowerCase() === nome.toLowerCase()) return true;
+        return false;
+      });
 
       const nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
@@ -254,7 +269,7 @@ export async function POST(req: Request) {
     }
 
     if (action === 'browse_folder') {
-      const scriptPath = path.resolve(process.cwd(), '..', 'backend', 'browse_folder.ps1');
+      const scriptPath = getBackendScriptPath('browse_folder.ps1');
       return new Promise<Response>((resolve) => {
         exec(
           `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
@@ -273,7 +288,7 @@ export async function POST(req: Request) {
     }
 
     if (action === 'browse_file') {
-      const scriptPath = path.resolve(process.cwd(), '..', 'backend', 'browse_file.ps1');
+      const scriptPath = getBackendScriptPath('browse_file.ps1');
       return new Promise<Response>((resolve) => {
         exec(
           `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,

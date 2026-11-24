@@ -196,9 +196,13 @@ export function FavoritesPanel({ isOpen, onClose, onOpenRequest }: FavoritesPane
         setNovaUrl('');
         setNovaCategoria(catDefaults[novoTipo] || 'Geral');
         setShowAddForm(false);
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        alert(errJson.message || 'Não foi possível salvar o atalho. Tente novamente.');
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Erro ao salvar:', err);
+      alert('Falha na comunicação com o servidor ao salvar.');
     } finally {
       setSaving(false);
     }
