@@ -797,7 +797,9 @@ export const SessionView = ({
       onClick={handleBackgroundClick}
       className={cn(
         "relative flex h-svh w-svw flex-col",
-        isOrbMode ? "bg-transparent select-none pointer-events-none" : "bg-transparent pointer-events-auto overflow-hidden"
+        isOrbMode
+          ? "hud-orb-mode bg-transparent select-none pointer-events-none"
+          : "hud-full-mode bg-black pointer-events-auto overflow-hidden"
       )}
       {...props}
     >

@@ -119,7 +119,7 @@ export const WelcomeView = ({
 
   return (
     <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
+      <section className="bg-black flex h-svh w-svw flex-col items-center justify-center text-center">
         <div className="mb-6 flex flex-col items-center">
           <div className="relative mb-3 flex size-20 items-center justify-center rounded-3xl border border-[#ff5500]/40 bg-[#ff5500]/10 shadow-[0_0_35px_rgba(255,85,0,0.35)] backdrop-blur-xl">
             <span className="size-4 rounded-full bg-[#ff5500] animate-pulse shadow-[0_0_15px_#ff5500]" />

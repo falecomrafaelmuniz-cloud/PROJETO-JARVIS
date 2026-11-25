@@ -114,7 +114,19 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-html, body, #__next, main, section {
+html, body, #__next, main {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Modo Completo tem fundo preto sólido e imersivo */
+section.hud-full-mode {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+/* Modo Orb: 100% transparente para flutuar sobre a tela */
+section.hud-orb-mode {
   background: transparent !important;
   background-color: transparent !important;
 }
