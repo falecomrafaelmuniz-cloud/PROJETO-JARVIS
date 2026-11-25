@@ -986,7 +986,7 @@ export const SessionView = ({
                         ...(isElectron ? {} : orbDragStyle),
                         width: '5cm',
                         height: '5cm',
-                        opacity: 0.50,
+                        opacity: 0.85,
                       } as React.CSSProperties)
                     : orbDragStyle
                 }
