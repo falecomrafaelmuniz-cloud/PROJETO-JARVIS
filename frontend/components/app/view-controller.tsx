@@ -41,6 +41,19 @@ export function ViewController({ appConfig }: ViewControllerProps) {
     if (isConnected) setIsActive(true);
   }, [isConnected]);
 
+  // Se estiver no Electron Desktop, inicia a conexão automaticamente sem exigir clique manual
+  useEffect(() => {
+    const isElectron =
+      typeof window !== 'undefined' &&
+      Boolean((window as unknown as { jarvisDesktop?: unknown }).jarvisDesktop);
+    if (isElectron && !isActive && !isConnected) {
+      const timer = setTimeout(() => {
+        handleStart();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, isConnected]);
+
   const handleStart = async () => {
     setIsActive(true);
     await start();

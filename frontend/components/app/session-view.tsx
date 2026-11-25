@@ -327,21 +327,13 @@ export const SessionView = ({
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('jarvis-orb-style-v1');
-      if (saved === 'quantum' || saved === 'vanta') {
-        setOrbStyle(saved);
-      }
+      localStorage.setItem('jarvis-orb-style-v1', 'quantum');
+      setOrbStyle('quantum');
     } catch {}
   }, []);
 
   const toggleOrbStyle = useCallback(() => {
-    setOrbStyle((prev) => {
-      const next = prev === 'vanta' ? 'quantum' : 'vanta';
-      try {
-        localStorage.setItem('jarvis-orb-style-v1', next);
-      } catch {}
-      return next;
-    });
+    setOrbStyle('quantum');
   }, []);
 
   const [isOrbMode, setIsOrbMode] = useState(false);
@@ -901,11 +893,11 @@ export const SessionView = ({
                     : orbDragStyle
                 }
                 {...(isOrbMode && isElectron ? {} : orbDragHandlers)}
-                onDoubleClick={isOrbMode ? toggleOrbMode : toggleOrbStyle}
+                onDoubleClick={toggleOrbMode}
                 title={
                   isOrbMode
                     ? "Arraste para qualquer lugar da tela · Clique duas vezes para expandir o Jarvis"
-                    : "Arraste pelo centro · Duplo clique para alternar estilo"
+                    : "Arraste pelo centro · Duplo clique para alternar para Modo Orb"
                 }
                 className={cn(
                   'pointer-events-auto relative flex touch-none items-center justify-center transition-all duration-300 select-none',
