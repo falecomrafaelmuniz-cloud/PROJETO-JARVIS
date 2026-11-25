@@ -53,6 +53,7 @@ import {
   saveJarvisThemeHex,
 } from '@/lib/jarvis-theme';
 import { cn } from '@/lib/shadcn/utils';
+import { Maximize2 } from 'lucide-react';
 import { Shimmer } from '../ai-elements/shimmer';
 
 const MotionBottom = motion.create('div');
@@ -343,6 +344,27 @@ export const SessionView = ({
     });
   }, []);
 
+  const [isCompactMode, setIsCompactMode] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jarvis-hud-compact-v1');
+      if (saved === 'true') {
+        setIsCompactMode(true);
+      }
+    } catch {}
+  }, []);
+
+  const toggleCompactMode = useCallback(() => {
+    setIsCompactMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('jarvis-hud-compact-v1', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
   // Escuta comandos de voz para abrir/fechar/alternar painéis do HUD em tempo real
   useEffect(() => {
     if (!room) return;
@@ -355,6 +377,17 @@ export const SessionView = ({
       if (topic !== 'jarvis.hud' && topic !== 'jarvis.workspace') return;
       try {
         const packet = JSON.parse(new TextDecoder().decode(payload));
+        if (packet?.type === 'jarvis_hud_compact_mode') {
+          const force = packet.compact;
+          setIsCompactMode((prev) => {
+            const next = typeof force === 'boolean' ? force : !prev;
+            try {
+              localStorage.setItem('jarvis-hud-compact-v1', String(next));
+            } catch {}
+            return next;
+          });
+          return;
+        }
         if (packet?.type === 'jarvis_switch_notebook') {
           setPanelOpen('files', true);
           return;
@@ -425,6 +458,15 @@ export const SessionView = ({
               } catch {}
               return next;
             });
+            return;
+          }
+
+          if (['compacto', 'dock', 'mini', 'flutuante'].includes(target)) {
+            const nextVal = action === 'open' ? true : action === 'close' ? false : !isCompactMode;
+            setIsCompactMode(nextVal);
+            try {
+              localStorage.setItem('jarvis-hud-compact-v1', String(nextVal));
+            } catch {}
             return;
           }
 
@@ -751,32 +793,32 @@ export const SessionView = ({
       {...props}
     >
       <VantaController vantaRef={vantaEffectRef} />
-      <ActivityPanel isOpen={hudPanels.activity} onClose={handleCloseActivity} />
-      <SystemDashboard isOpen={hudPanels.system} onClose={handleCloseSystem} />
-      <ClockWidget isOpen={hudPanels.clock} onClose={handleCloseClock} />
+      <ActivityPanel isOpen={!isCompactMode && hudPanels.activity} onClose={handleCloseActivity} />
+      <SystemDashboard isOpen={!isCompactMode && hudPanels.system} onClose={handleCloseSystem} />
+      <ClockWidget isOpen={!isCompactMode && hudPanels.clock} onClose={handleCloseClock} />
       <LocationSharing />
       <NeuralNetworkVisualizer
-        isOpen={hudPanels.neural}
+        isOpen={!isCompactMode && hudPanels.neural}
         configOpenSignal={neuralConfigSignal}
       />
       <EmailComposer
-        isOpen={hudPanels.email}
+        isOpen={!isCompactMode && hudPanels.email}
         onClose={handleCloseEmail}
         onOpenRequest={handleOpenEmail}
       />
-      {hudPanels.trader && (
+      {!isCompactMode && hudPanels.trader && (
         <QuantPanel isOpen={hudPanels.trader} onClose={handleCloseTrader} />
       )}
-      {hudPanels.videos && (
+      {!isCompactMode && hudPanels.videos && (
         <VideoStudioPanel isOpen={hudPanels.videos} onClose={handleCloseVideos} />
       )}
       <AutomationsPanel
-        isOpen={hudPanels.automations}
+        isOpen={!isCompactMode && hudPanels.automations}
         onClose={handleCloseAutomations}
         onOpenRequest={handleOpenAutomations}
       />
       <RemindersPanel
-        isOpen={hudPanels.reminders}
+        isOpen={!isCompactMode && hudPanels.reminders}
         onClose={handleCloseReminders}
         onOpenRequest={handleOpenReminders}
       />
@@ -786,15 +828,61 @@ export const SessionView = ({
         onOpenRequest={handleOpenFavorites}
       />
       <WorkspaceFilesPanel
-        isOpen={hudPanels.files}
+        isOpen={!isCompactMode && hudPanels.files}
         onClose={handleCloseFiles}
         onOpenEmailComposer={handleOpenEmail}
       />
       <AntigravityPanel
-        isOpen={hudPanels.antigravity}
+        isOpen={!isCompactMode && hudPanels.antigravity}
         onClose={handleCloseAntigravity}
         onOpenRequest={handleOpenAntigravity}
       />
+
+      {/* Pill indicador do Modo Compacto / Dock Flutuante */}
+      <AnimatePresence>
+        {isCompactMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="jarvis-mini-dock pointer-events-auto fixed top-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full px-4 py-2 text-xs shadow-2xl transition"
+          >
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
+              </span>
+              <span className="font-mono text-[11px] font-semibold tracking-wider text-cyan-200 uppercase">
+                Modo Flutuante
+              </span>
+            </div>
+
+            <div className="h-3 w-px bg-white/20" />
+
+            <button
+              type="button"
+              onClick={() => toggleHudPanel('favorites')}
+              className={cn(
+                'rounded-md px-2 py-0.5 font-medium transition',
+                hudPanels.favorites
+                  ? 'bg-cyan-500/30 text-cyan-200'
+                  : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+              )}
+            >
+              Atalhos
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleCompactMode}
+              className="flex items-center gap-1 rounded-md border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-0.5 text-cyan-200 transition hover:bg-cyan-500/30"
+            >
+              <Maximize2 className="h-3 w-3" />
+              <span>Expandir</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
@@ -909,6 +997,8 @@ export const SessionView = ({
                 onToggleOrbStyle={toggleOrbStyle}
                 themeHex={themeHex}
                 onChangeThemeHex={handleChangeThemeHex}
+                compactMode={isCompactMode}
+                onToggleCompactMode={toggleCompactMode}
               />
             }
           />

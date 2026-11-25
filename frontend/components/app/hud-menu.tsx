@@ -13,6 +13,8 @@ import {
   Hand,
   LayoutGrid,
   Mail,
+  Maximize2,
+  Minimize2,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
@@ -69,6 +71,8 @@ interface HudMenuProps {
   themeHex?: string;
   onChangeThemeHex?: (hex: string) => void;
   docked?: boolean;
+  compactMode?: boolean;
+  onToggleCompactMode?: () => void;
 }
 
 interface MenuItemDef {
@@ -103,6 +107,8 @@ export function HudMenu({
   themeHex = DEFAULT_JARVIS_THEME_HEX,
   onChangeThemeHex,
   docked = false,
+  compactMode = false,
+  onToggleCompactMode,
 }: HudMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -217,6 +223,22 @@ export function HudMenu({
               </p>
             </div>
             <div className="flex items-center gap-1.5">
+              {onToggleCompactMode && (
+                <button
+                  type="button"
+                  onClick={onToggleCompactMode}
+                  title={compactMode ? "Expandir para ver todos os painéis" : "Recolher painéis para o modo compacto flutuante"}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition",
+                    compactMode
+                      ? "border-amber-400/60 bg-amber-500/20 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+                      : "border-cyan-300/25 bg-cyan-400/10 text-cyan-200 hover:border-cyan-300/50 hover:bg-cyan-400/20"
+                  )}
+                >
+                  {compactMode ? <Maximize2 className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />}
+                  {compactMode ? "Expandir" : "Compacto"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

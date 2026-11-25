@@ -122,3 +122,66 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ==========================================================================
+   ESTÉTICA HOLOGRÁFICA SCI-FI - GLASSMORPHISM PREMIUM (ESTILO JARVIS)
+   ========================================================================== */
+
+/* Todos os painéis flutuantes do HUD recebem vidro holográfico translúcido */
+[data-hud-panel] {
+  background: radial-gradient(135% 100% at 50% 0%, rgba(20, 26, 38, 0.55) 0%, rgba(7, 9, 15, 0.72) 100%) !important;
+  backdrop-filter: blur(28px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.8),
+              0 0 0 1px rgba(0, 240, 255, 0.12),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.22) !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease !important;
+}
+
+[data-hud-panel]:hover {
+  border-color: rgba(0, 240, 255, 0.38) !important;
+  box-shadow: 0 24px 60px -10px rgba(0, 0, 0, 0.9),
+              0 0 28px rgba(0, 240, 255, 0.16),
+              inset 0 1px 2px 0 rgba(255, 255, 255, 0.32) !important;
+}
+
+/* Barra de controle inferior (AgentControlBar) com efeito de vidro curvado */
+[data-control-bar="true"],
+.agent-control-bar {
+  background: radial-gradient(130% 100% at 50% 0%, rgba(18, 24, 36, 0.50) 0%, rgba(6, 8, 14, 0.70) 100%) !important;
+  backdrop-filter: blur(30px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.8),
+              0 0 0 1px rgba(0, 240, 255, 0.16),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Dock Flutuante do Modo Compacto */
+.jarvis-mini-dock {
+  background: radial-gradient(130% 100% at 50% 0%, rgba(24, 32, 48, 0.75) 0%, rgba(8, 11, 18, 0.88) 100%) !important;
+  backdrop-filter: blur(32px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
+  border: 1px solid rgba(0, 240, 255, 0.35) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8),
+              0 0 25px rgba(0, 240, 255, 0.2),
+              inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Scrollbars finas e elegantes estilo HUD */
+[data-hud-panel] ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+[data-hud-panel] ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 9999px;
+}
+[data-hud-panel] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.25);
+  border-radius: 9999px;
+}
+[data-hud-panel] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.45);
+}

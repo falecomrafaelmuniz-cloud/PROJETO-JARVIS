@@ -5379,18 +5379,56 @@ class Assistant(Agent):
             "Use OBRIGATORIAMENTE sempre que o usuário pedir: 'abra o painel X', 'mostra os lembretes', "
             "'fecha o painel de arquivos', 'abra a central de arquivos', 'abre o painel de sistema', "
             "'mostre o relógio', 'abre o trader', 'fecha todos os painéis', 'mostra as automações', "
-            "'abre as atividades', 'abre o compositor de e-mail'. "
+            "'abre as atividades', 'abre o compositor de e-mail', 'modo compacto', 'recolhe os painéis', 'expandir tela'. "
             "`painel`: nome do painel a controlar: 'arquivos' (Central de Arquivos / Notebooks), 'lembretes' (Painel de Lembretes), "
             "'automacoes' (Painel de Automações Gmail/Drive), 'email' (Compositor de E-mails), 'sistema' (Dashboard de CPU/RAM/Rede), "
             "'atividades' (Painel de Ações e Tarefas em Andamento), 'trader' (Painel Quant / Cripto / Mercado), "
             "'atalhos' (Painel de Atalhos do Jarvis para sites e apps — NÃO é o navegador), "
-            "'relogio' (Relógio HUD), 'neural' (Visualizador da Rede Neural) ou 'todos' (para abrir ou fechar todos de uma vez). "
+            "'relogio' (Relógio HUD), 'neural' (Visualizador da Rede Neural), 'compacto' (Modo Compacto / Dock Flutuante), "
+            "'expandir' (Modo Completo / Restaurar painéis) ou 'todos' (para abrir ou fechar todos de uma vez). "
             "`acao`: 'abrir' (padrão, para exibir o painel na tela), 'fechar' (para ocultar da tela) ou 'alternar'."
         )
     )
     async def controlar_painel_hud(self, painel: str, acao: str = "abrir") -> str:
         p_raw = (painel or "").lower().strip()
         a_raw = (acao or "abrir").lower().strip()
+
+        # Suporte a Modo Compacto / Dock Flutuante
+        if any(w in p_raw for w in ["compacto", "dock", "mini", "flutuante", "recolher"]):
+            acao_compact = True if not any(w in a_raw for w in ["fechar", "desativar", "expandir", "normal", "completo"]) else False
+            if "alternar" in a_raw or "toggle" in a_raw:
+                acao_compact = None
+            payload_compact = {
+                "type": "jarvis_hud_compact_mode",
+                "compact": acao_compact,
+            }
+            try:
+                if self.board_room and self.board_room.local_participant:
+                    await self.board_room.local_participant.publish_data(
+                        json.dumps(payload_compact, ensure_ascii=False).encode("utf-8"),
+                        reliable=True,
+                        topic="jarvis.hud",
+                    )
+            except Exception as e:
+                logger_memoria.error("evento=compact_hud erro=%s", e)
+            status_txt = "ativado" if acao_compact else "desativado" if acao_compact is False else "alternado"
+            return f"Modo compacto flutuante {status_txt}, chefe."
+
+        if any(w in p_raw for w in ["expandir", "completo", "normal"]) and not any(w in p_raw for w in ["arquivo", "trader", "lembrete"]):
+            payload_compact = {
+                "type": "jarvis_hud_compact_mode",
+                "compact": False,
+            }
+            try:
+                if self.board_room and self.board_room.local_participant:
+                    await self.board_room.local_participant.publish_data(
+                        json.dumps(payload_compact, ensure_ascii=False).encode("utf-8"),
+                        reliable=True,
+                        topic="jarvis.hud",
+                    )
+            except Exception as e:
+                logger_memoria.error("evento=expand_hud erro=%s", e)
+            return "Modo completo restaurado na tela, chefe."
 
         # Verifica primeiro se o comando é para abrir um caderno específico pelo nome (ex.: 'caderno do porto panorama', 'porto panorama')
         resolvido_nb = self._resolver_caderno_por_nome(p_raw)
