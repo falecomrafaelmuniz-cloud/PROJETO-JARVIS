@@ -169,3 +169,16 @@ html, body, #__next, main {
 [data-hud-panel] ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 240, 255, 0.45);
 }
+
+/* Ocultar Next.js dev indicator badge (círculo preto com "N" no canto inferior) */
+nextjs-portal,
+[data-nextjs-dev-overlay],
+[data-nextjs-toast],
+div[data-nextjs-dialog-overlay],
+#nextjs-dev-overlay,
+#__next-build-watcher {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}

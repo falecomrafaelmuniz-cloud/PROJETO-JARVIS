@@ -53,7 +53,7 @@ import {
   saveJarvisThemeHex,
 } from '@/lib/jarvis-theme';
 import { cn } from '@/lib/shadcn/utils';
-import { Maximize2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Shimmer } from '../ai-elements/shimmer';
 
 const MotionBottom = motion.create('div');
@@ -946,22 +946,6 @@ export const SessionView = ({
                     </div>
                   )}
                 </div>
-
-                {/* Botão sutil de expandir com 1 clique no Modo Orb */}
-                {isOrbMode && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleOrbMode();
-                    }}
-                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                    title="Clique para expandir o Jarvis"
-                    className="absolute -top-1 -right-1 z-30 flex size-5 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-300 opacity-60 hover:opacity-100 hover:scale-110 transition-all cursor-pointer shadow-[0_0_8px_rgba(0,240,255,0.4)]"
-                  >
-                    <Maximize2 className="h-3 w-3" />
-                  </button>
-                )}
               </div>
             </motion.div>
           </AnimatePresence>
