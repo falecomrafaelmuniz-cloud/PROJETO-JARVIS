@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $env:ELECTRON_RUN_AS_NODE = $null
 
 $agentDirectory = $PSScriptRoot
@@ -191,6 +191,7 @@ try {
 
     # 3. Abre na Janela Desktop Nativa do Jarvis
     Write-Host "[3/3] Abrindo a Janela Desktop do Jarvis..." -ForegroundColor Cyan
+    Get-Process -Name 'electron' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
     Push-Location $webDirectory
     try {

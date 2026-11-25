@@ -114,11 +114,17 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+html, body, #__next, main {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 @layer base {
   * {
     @apply border-foreground/20 outline-ring/50;
   }
   html, body {
+    background: transparent !important;
     background-color: transparent !important;
     @apply text-foreground;
   }

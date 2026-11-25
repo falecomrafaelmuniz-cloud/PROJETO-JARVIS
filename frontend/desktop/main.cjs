@@ -116,12 +116,11 @@ async function createWindow() {
     minWidth: 100,
     minHeight: 100,
     title: 'JARVIS SYSTEM V3.0',
-    backgroundColor: '#00000000',
     transparent: true,
     frame: false,
     icon: iconPath,
     autoHideMenuBar: true,
-    hasShadow: true,
+    hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -141,8 +140,10 @@ async function createWindow() {
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
       mainWindow.setMinimumSize(100, 100);
       mainWindow.setSize(200, 200, true);
+      mainWindow.setIgnoreMouseEvents(true, { forward: true });
     } else {
       mainWindow.setAlwaysOnTop(false);
+      mainWindow.setIgnoreMouseEvents(false);
       mainWindow.setMinimumSize(960, 640);
       if (savedBounds && savedBounds.width && savedBounds.width > 300) {
         mainWindow.setBounds(savedBounds, true);
@@ -151,6 +152,12 @@ async function createWindow() {
         mainWindow.center();
       }
     }
+  });
+
+  ipcMain.removeAllListeners('jarvis:set-ignore-mouse');
+  ipcMain.on('jarvis:set-ignore-mouse', (event, ignore) => {
+    if (!mainWindow) return;
+    mainWindow.setIgnoreMouseEvents(ignore, { forward: true });
   });
 
   ipcMain.removeAllListeners('jarvis:close-window');

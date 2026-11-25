@@ -803,7 +803,7 @@ export const SessionView = ({
       onClick={handleBackgroundClick}
       className={cn(
         "relative flex h-svh w-svw flex-col overflow-hidden transition-colors duration-300",
-        isOrbMode ? "bg-transparent select-none" : "bg-black"
+        isOrbMode ? "bg-transparent select-none pointer-events-none" : "bg-black pointer-events-auto"
       )}
       {...props}
     >
@@ -884,32 +884,43 @@ export const SessionView = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 1.5, ease: 'easeInOut' }}
-              className="p5-canvas-container absolute inset-0 flex items-center justify-center"
+              className={cn("absolute inset-0 flex items-center justify-center", !isOrbMode && "p5-canvas-container")}
             >
               <div
                 style={
                   isOrbMode
                     ? ({
+                        ...orbDragStyle,
                         width: '5cm',
                         height: '5cm',
-                        WebkitAppRegion: 'drag',
+                        opacity: 0.39,
                       } as React.CSSProperties)
                     : orbDragStyle
                 }
-                {...(isOrbMode ? {} : orbDragHandlers)}
+                {...orbDragHandlers}
                 onDoubleClick={isOrbMode ? toggleOrbMode : toggleOrbStyle}
+                onMouseEnter={() => {
+                  if (isOrbMode && typeof window !== 'undefined') {
+                    (window as unknown as { jarvisDesktop?: { setIgnoreMouse: (b: boolean) => void } }).jarvisDesktop?.setIgnoreMouse(false);
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (isOrbMode && !isOrbDragging && typeof window !== 'undefined') {
+                    (window as unknown as { jarvisDesktop?: { setIgnoreMouse: (b: boolean) => void } }).jarvisDesktop?.setIgnoreMouse(true);
+                  }
+                }}
                 title={
                   isOrbMode
-                    ? "Arraste pela tela para mover · Clique duas vezes para expandir o Jarvis"
+                    ? "Arraste para qualquer lado da tela · Clique duas vezes para expandir o Jarvis"
                     : "Arraste pelo centro · Duplo clique para alternar estilo"
                 }
                 className={cn(
-                  'pointer-events-auto relative flex touch-none items-center justify-center rounded-full transition-all duration-300 select-none',
+                  'pointer-events-auto relative flex touch-none items-center justify-center transition-all duration-300 select-none',
                   isOrbMode
-                    ? 'opacity-50 hover:opacity-100 shadow-[0_0_35px_rgba(0,240,255,0.45)] ring-1 ring-cyan-400/40 bg-black/40 backdrop-blur-xs cursor-move'
-                    : 'size-[360px] transition-shadow cursor-grab',
+                    ? 'cursor-grab active:cursor-grabbing hover:opacity-100'
+                    : 'size-[360px] rounded-full transition-shadow cursor-grab',
                   !isOrbMode && isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
-                  !isOrbMode && isOrbDragging ? 'cursor-grabbing' : ''
+                  isOrbDragging ? 'cursor-grabbing' : ''
                 )}
               >
                 <div
@@ -951,9 +962,8 @@ export const SessionView = ({
                       e.stopPropagation();
                       toggleOrbMode();
                     }}
-                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     title="Clique para expandir o Jarvis"
-                    className="absolute top-1 right-1 z-30 flex size-6 items-center justify-center rounded-full border border-cyan-400/60 bg-black/75 text-cyan-200 opacity-60 hover:opacity-100 hover:scale-110 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,240,255,0.5)]"
+                    className="absolute -top-1 -right-1 z-30 flex size-5 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-300 opacity-60 hover:opacity-100 hover:scale-110 transition-all cursor-pointer shadow-[0_0_8px_rgba(0,240,255,0.4)]"
                   >
                     <Maximize2 className="h-3 w-3" />
                   </button>
