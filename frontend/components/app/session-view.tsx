@@ -733,6 +733,88 @@ export const SessionView = ({
     dragHandlers: orbDragHandlers,
   } = useDraggableFloating('jarvis-pos-vanta-orb-v1', { circular: true });
 
+  // Refs e Handlers para arrasto e duplo clique infalível no Modo Orb no Desktop
+  const orbDragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const orbInitialWinPosRef = useRef<{ x: number; y: number } | null>(null);
+  const orbHasDraggedRef = useRef<boolean>(false);
+  const orbLastClickTimeRef = useRef<number>(0);
+
+  const handleOrbPointerDown = async (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isOrbMode) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+    orbHasDraggedRef.current = false;
+    orbDragStartPosRef.current = { x: e.screenX, y: e.screenY };
+
+    if (
+      typeof window !== 'undefined' &&
+      (window as unknown as { jarvisDesktop?: { getWindowPos?: () => Promise<[number, number]> } }).jarvisDesktop
+        ?.getWindowPos
+    ) {
+      try {
+        const [wx, wy] = await (
+          window as unknown as { jarvisDesktop: { getWindowPos: () => Promise<[number, number]> } }
+        ).jarvisDesktop.getWindowPos();
+        orbInitialWinPosRef.current = { x: wx, y: wy };
+      } catch {}
+    }
+  };
+
+  const handleOrbPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isOrbMode || !orbDragStartPosRef.current) return;
+    const dx = e.screenX - orbDragStartPosRef.current.x;
+    const dy = e.screenY - orbDragStartPosRef.current.y;
+    if (!orbHasDraggedRef.current && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      orbHasDraggedRef.current = true;
+    }
+    if (orbHasDraggedRef.current && orbInitialWinPosRef.current) {
+      if (
+        typeof window !== 'undefined' &&
+        (window as unknown as { jarvisDesktop?: { moveWindow?: (x: number, y: number) => void } }).jarvisDesktop
+          ?.moveWindow
+      ) {
+        (
+          window as unknown as { jarvisDesktop: { moveWindow: (x: number, y: number) => void } }
+        ).jarvisDesktop.moveWindow(
+          orbInitialWinPosRef.current.x + dx,
+          orbInitialWinPosRef.current.y + dy
+        );
+      }
+    }
+  };
+
+  const handleOrbPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isOrbMode) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+    const wasDragging = orbHasDraggedRef.current;
+    orbDragStartPosRef.current = null;
+    orbInitialWinPosRef.current = null;
+
+    if (!wasDragging) {
+      const now = Date.now();
+      if (now - orbLastClickTimeRef.current < 450) {
+        toggleOrbMode();
+        orbLastClickTimeRef.current = 0;
+      } else {
+        orbLastClickTimeRef.current = now;
+      }
+    }
+  };
+
+  const handleOrbClick = () => {
+    if (!isOrbMode) return;
+    const now = Date.now();
+    if (now - orbLastClickTimeRef.current < 450) {
+      toggleOrbMode();
+      orbLastClickTimeRef.current = 0;
+    } else {
+      orbLastClickTimeRef.current = now;
+    }
+  };
+
   // Monitora participantes para detectar Persona (Alice/Járvis)
   const participants = useRemoteParticipants();
   const agentParticipant = participants.find((p) => !p.isLocal);
@@ -905,21 +987,24 @@ export const SessionView = ({
                         width: '5cm',
                         height: '5cm',
                         opacity: 0.50,
-                        WebkitAppRegion: isElectron ? 'drag' : undefined,
                       } as React.CSSProperties)
                     : orbDragStyle
                 }
                 {...(isOrbMode && isElectron ? {} : orbDragHandlers)}
+                onPointerDown={isOrbMode && isElectron ? handleOrbPointerDown : undefined}
+                onPointerMove={isOrbMode && isElectron ? handleOrbPointerMove : undefined}
+                onPointerUp={isOrbMode && isElectron ? handleOrbPointerUp : undefined}
+                onClick={isOrbMode ? handleOrbClick : undefined}
                 onDoubleClick={toggleOrbMode}
                 title={
                   isOrbMode
-                    ? "Arraste para qualquer lugar da tela · Clique duas vezes para expandir o Jarvis"
+                    ? "Arraste para mover · Clique duas vezes para voltar ao modo normal"
                     : "Arraste pelo centro · Duplo clique para alternar para Modo Orb"
                 }
                 className={cn(
-                  'pointer-events-auto relative flex touch-none items-center justify-center transition-all duration-300 select-none',
+                  'pointer-events-auto relative flex touch-none items-center justify-center transition-all duration-300 select-none cursor-pointer',
                   isOrbMode
-                    ? 'cursor-grab active:cursor-grabbing hover:opacity-100'
+                    ? 'active:scale-95 hover:opacity-100'
                     : 'size-[360px] rounded-full transition-shadow cursor-grab',
                   !isOrbMode && isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
                   isOrbDragging ? 'cursor-grabbing' : ''

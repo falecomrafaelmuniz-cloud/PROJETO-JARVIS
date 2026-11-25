@@ -135,6 +135,18 @@ async function createWindow() {
     mainWindow.webContents.send('jarvis:toggle-orb-mode');
   });
 
+  ipcMain.removeHandler('jarvis:get-window-pos');
+  ipcMain.handle('jarvis:get-window-pos', () => {
+    if (!mainWindow) return [0, 0];
+    return mainWindow.getPosition();
+  });
+
+  ipcMain.removeAllListeners('jarvis:move-window');
+  ipcMain.on('jarvis:move-window', (event, { x, y }) => {
+    if (!mainWindow) return;
+    mainWindow.setPosition(Math.round(x), Math.round(y));
+  });
+
   // Listener para alternar entre Modo Orb (200x200 flutuante) e Modo Completo
   ipcMain.removeAllListeners('jarvis:set-orb-mode');
   ipcMain.on('jarvis:set-orb-mode', (event, isOrb) => {
