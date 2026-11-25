@@ -351,6 +351,9 @@ export const SessionView = ({
       const saved = localStorage.getItem('jarvis-orb-mode-v1') ?? localStorage.getItem('jarvis-hud-compact-v1');
       if (saved === 'true') {
         setIsOrbMode(true);
+        if (typeof window !== 'undefined' && (window as unknown as { jarvisDesktop?: { setOrbMode: (b: boolean) => void } }).jarvisDesktop) {
+          (window as unknown as { jarvisDesktop: { setOrbMode: (b: boolean) => void } }).jarvisDesktop.setOrbMode(true);
+        }
       }
     } catch {}
   }, []);
@@ -360,6 +363,9 @@ export const SessionView = ({
       const next = !prev;
       try {
         localStorage.setItem('jarvis-orb-mode-v1', String(next));
+        if (typeof window !== 'undefined' && (window as unknown as { jarvisDesktop?: { setOrbMode: (b: boolean) => void } }).jarvisDesktop) {
+          (window as unknown as { jarvisDesktop: { setOrbMode: (b: boolean) => void } }).jarvisDesktop.setOrbMode(next);
+        }
       } catch {}
       return next;
     });
@@ -383,6 +389,9 @@ export const SessionView = ({
             const next = typeof force === 'boolean' ? force : !prev;
             try {
               localStorage.setItem('jarvis-orb-mode-v1', String(next));
+              if (typeof window !== 'undefined' && (window as unknown as { jarvisDesktop?: { setOrbMode: (b: boolean) => void } }).jarvisDesktop) {
+                (window as unknown as { jarvisDesktop: { setOrbMode: (b: boolean) => void } }).jarvisDesktop.setOrbMode(next);
+              }
             } catch {}
             return next;
           });
@@ -466,6 +475,9 @@ export const SessionView = ({
             setIsOrbMode(nextVal);
             try {
               localStorage.setItem('jarvis-orb-mode-v1', String(nextVal));
+              if (typeof window !== 'undefined' && (window as unknown as { jarvisDesktop?: { setOrbMode: (b: boolean) => void } }).jarvisDesktop) {
+                (window as unknown as { jarvisDesktop: { setOrbMode: (b: boolean) => void } }).jarvisDesktop.setOrbMode(nextVal);
+              }
             } catch {}
             return;
           }
@@ -790,12 +802,12 @@ export const SessionView = ({
     <section
       onClick={handleBackgroundClick}
       className={cn(
-        "relative flex h-svh w-svw flex-col overflow-hidden transition-colors duration-500",
-        isOrbMode ? "bg-black/50" : "bg-black"
+        "relative flex h-svh w-svw flex-col overflow-hidden transition-colors duration-300",
+        isOrbMode ? "bg-transparent select-none" : "bg-black"
       )}
       {...props}
     >
-      <VantaController vantaRef={vantaEffectRef} />
+      {!isOrbMode && <VantaController vantaRef={vantaEffectRef} />}
 
       {/* Controles Nativos de Janela Frameless (apenas fora do Modo Orb) */}
       {!isOrbMode && (
@@ -803,7 +815,11 @@ export const SessionView = ({
           <button
             type="button"
             onClick={() => {
-              try { window.close(); } catch {}
+              if (typeof window !== 'undefined' && (window as unknown as { jarvisDesktop?: { closeWindow: () => void } }).jarvisDesktop?.closeWindow) {
+                (window as unknown as { jarvisDesktop: { closeWindow: () => void } }).jarvisDesktop.closeWindow();
+              } else {
+                try { window.close(); } catch {}
+              }
             }}
             title="Fechar Jarvis"
             className="rounded-full p-1.5 text-zinc-400 hover:bg-red-500/20 hover:text-red-200 transition"
@@ -871,18 +887,29 @@ export const SessionView = ({
               className="p5-canvas-container absolute inset-0 flex items-center justify-center"
             >
               <div
-                style={isOrbMode ? { width: '5cm', height: '5cm' } : orbDragStyle}
-                {...(isOrbMode ? {} : orbDragHandlers)}
-                onClick={isOrbMode ? toggleOrbMode : undefined}
-                onDoubleClick={isOrbMode ? undefined : toggleOrbStyle}
-                title={isOrbMode ? "Modo Orb (5x5 cm) · Clique para expandir o Jarvis" : "Arraste pelo centro · Duplo clique para alternar estilo"}
-                className={cn(
-                  'pointer-events-auto relative flex touch-none items-center justify-center rounded-full transition-all duration-500 select-none cursor-pointer',
+                style={
                   isOrbMode
-                    ? 'opacity-50 hover:opacity-100 hover:scale-105 shadow-[0_0_35px_rgba(0,240,255,0.45)] ring-1 ring-cyan-400/40'
-                    : 'size-[360px] transition-shadow',
+                    ? ({
+                        width: '5cm',
+                        height: '5cm',
+                        WebkitAppRegion: 'drag',
+                      } as React.CSSProperties)
+                    : orbDragStyle
+                }
+                {...(isOrbMode ? {} : orbDragHandlers)}
+                onDoubleClick={isOrbMode ? toggleOrbMode : toggleOrbStyle}
+                title={
+                  isOrbMode
+                    ? "Arraste pela tela para mover · Clique duas vezes para expandir o Jarvis"
+                    : "Arraste pelo centro · Duplo clique para alternar estilo"
+                }
+                className={cn(
+                  'pointer-events-auto relative flex touch-none items-center justify-center rounded-full transition-all duration-300 select-none',
+                  isOrbMode
+                    ? 'opacity-50 hover:opacity-100 shadow-[0_0_35px_rgba(0,240,255,0.45)] ring-1 ring-cyan-400/40 bg-black/40 backdrop-blur-xs cursor-move'
+                    : 'size-[360px] transition-shadow cursor-grab',
                   !isOrbMode && isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
-                  !isOrbMode && isOrbDragging ? 'cursor-grabbing' : !isOrbMode ? 'cursor-grab' : ''
+                  !isOrbMode && isOrbDragging ? 'cursor-grabbing' : ''
                 )}
               >
                 <div
@@ -916,11 +943,20 @@ export const SessionView = ({
                   )}
                 </div>
 
-                {/* Overlay com ícone sutil de expandir ao passar o mouse no Modo Orb */}
+                {/* Botão sutil de expandir com 1 clique no Modo Orb */}
                 {isOrbMode && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-xs">
-                    <Maximize2 className="h-5 w-5 text-cyan-300 drop-shadow-[0_0_8px_rgba(0,240,255,0.8)]" />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleOrbMode();
+                    }}
+                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                    title="Clique para expandir o Jarvis"
+                    className="absolute top-1 right-1 z-30 flex size-6 items-center justify-center rounded-full border border-cyan-400/60 bg-black/75 text-cyan-200 opacity-60 hover:opacity-100 hover:scale-110 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,240,255,0.5)]"
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                  </button>
                 )}
               </div>
             </motion.div>

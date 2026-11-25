@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 const { spawn, exec } = require('child_process');
 const http = require('http');
@@ -107,12 +107,14 @@ function cleanupProcesses() {
   } catch {}
 }
 
+let savedBounds = null;
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 840,
-    minWidth: 960,
-    minHeight: 640,
+    minWidth: 100,
+    minHeight: 100,
     title: 'JARVIS SYSTEM V3.0',
     backgroundColor: '#00000000',
     transparent: true,
@@ -123,8 +125,37 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
       devTools: false,
     },
+  });
+
+  // Listener para alternar entre Modo Orb (200x200 flutuante) e Modo Completo
+  ipcMain.removeAllListeners('jarvis:set-orb-mode');
+  ipcMain.on('jarvis:set-orb-mode', (event, isOrb) => {
+    if (!mainWindow) return;
+    if (isOrb) {
+      if (mainWindow.getSize()[0] > 300) {
+        savedBounds = mainWindow.getBounds();
+      }
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.setMinimumSize(100, 100);
+      mainWindow.setSize(200, 200, true);
+    } else {
+      mainWindow.setAlwaysOnTop(false);
+      mainWindow.setMinimumSize(960, 640);
+      if (savedBounds && savedBounds.width && savedBounds.width > 300) {
+        mainWindow.setBounds(savedBounds, true);
+      } else {
+        mainWindow.setSize(1320, 840, true);
+        mainWindow.center();
+      }
+    }
+  });
+
+  ipcMain.removeAllListeners('jarvis:close-window');
+  ipcMain.on('jarvis:close-window', () => {
+    if (mainWindow) mainWindow.close();
   });
 
   // Abre links externos no navegador padrão do usuário
