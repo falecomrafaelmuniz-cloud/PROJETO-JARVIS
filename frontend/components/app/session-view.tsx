@@ -53,7 +53,7 @@ import {
   saveJarvisThemeHex,
 } from '@/lib/jarvis-theme';
 import { cn } from '@/lib/shadcn/utils';
-import { Maximize2 } from 'lucide-react';
+import { Maximize2, X } from 'lucide-react';
 import { Shimmer } from '../ai-elements/shimmer';
 
 const MotionBottom = motion.create('div');
@@ -344,22 +344,22 @@ export const SessionView = ({
     });
   }, []);
 
-  const [isCompactMode, setIsCompactMode] = useState(false);
+  const [isOrbMode, setIsOrbMode] = useState(false);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('jarvis-hud-compact-v1');
+      const saved = localStorage.getItem('jarvis-orb-mode-v1') ?? localStorage.getItem('jarvis-hud-compact-v1');
       if (saved === 'true') {
-        setIsCompactMode(true);
+        setIsOrbMode(true);
       }
     } catch {}
   }, []);
 
-  const toggleCompactMode = useCallback(() => {
-    setIsCompactMode((prev) => {
+  const toggleOrbMode = useCallback(() => {
+    setIsOrbMode((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('jarvis-hud-compact-v1', String(next));
+        localStorage.setItem('jarvis-orb-mode-v1', String(next));
       } catch {}
       return next;
     });
@@ -377,12 +377,12 @@ export const SessionView = ({
       if (topic !== 'jarvis.hud' && topic !== 'jarvis.workspace') return;
       try {
         const packet = JSON.parse(new TextDecoder().decode(payload));
-        if (packet?.type === 'jarvis_hud_compact_mode') {
-          const force = packet.compact;
-          setIsCompactMode((prev) => {
+        if (packet?.type === 'jarvis_hud_orb_mode' || packet?.type === 'jarvis_hud_compact_mode') {
+          const force = packet.orbMode !== undefined ? packet.orbMode : packet.compact;
+          setIsOrbMode((prev) => {
             const next = typeof force === 'boolean' ? force : !prev;
             try {
-              localStorage.setItem('jarvis-hud-compact-v1', String(next));
+              localStorage.setItem('jarvis-orb-mode-v1', String(next));
             } catch {}
             return next;
           });
@@ -461,11 +461,11 @@ export const SessionView = ({
             return;
           }
 
-          if (['compacto', 'dock', 'mini', 'flutuante'].includes(target)) {
-            const nextVal = action === 'open' ? true : action === 'close' ? false : !isCompactMode;
-            setIsCompactMode(nextVal);
+          if (['orb', 'modo_orb', 'compacto', 'dock', 'mini', 'flutuante'].includes(target)) {
+            const nextVal = action === 'open' ? true : action === 'close' ? false : !isOrbMode;
+            setIsOrbMode(nextVal);
             try {
-              localStorage.setItem('jarvis-hud-compact-v1', String(nextVal));
+              localStorage.setItem('jarvis-orb-mode-v1', String(nextVal));
             } catch {}
             return;
           }
@@ -789,100 +789,75 @@ export const SessionView = ({
   return (
     <section
       onClick={handleBackgroundClick}
-      className="relative flex h-svh w-svw flex-col overflow-hidden bg-black"
+      className={cn(
+        "relative flex h-svh w-svw flex-col overflow-hidden transition-colors duration-500",
+        isOrbMode ? "bg-black/50" : "bg-black"
+      )}
       {...props}
     >
       <VantaController vantaRef={vantaEffectRef} />
-      <ActivityPanel isOpen={!isCompactMode && hudPanels.activity} onClose={handleCloseActivity} />
-      <SystemDashboard isOpen={!isCompactMode && hudPanels.system} onClose={handleCloseSystem} />
-      <ClockWidget isOpen={!isCompactMode && hudPanels.clock} onClose={handleCloseClock} />
+
+      {/* Controles Nativos de Janela Frameless (apenas fora do Modo Orb) */}
+      {!isOrbMode && (
+        <div className="pointer-events-auto absolute top-3 right-4 z-50 flex items-center gap-2 opacity-35 hover:opacity-100 transition-opacity">
+          <button
+            type="button"
+            onClick={() => {
+              try { window.close(); } catch {}
+            }}
+            title="Fechar Jarvis"
+            className="rounded-full p-1.5 text-zinc-400 hover:bg-red-500/20 hover:text-red-200 transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Painéis Visuais do HUD (ocultos no Modo Orb) */}
+      <ActivityPanel isOpen={!isOrbMode && hudPanels.activity} onClose={handleCloseActivity} />
+      <SystemDashboard isOpen={!isOrbMode && hudPanels.system} onClose={handleCloseSystem} />
+      <ClockWidget isOpen={!isOrbMode && hudPanels.clock} onClose={handleCloseClock} />
       <LocationSharing />
       <NeuralNetworkVisualizer
-        isOpen={!isCompactMode && hudPanels.neural}
+        isOpen={!isOrbMode && hudPanels.neural}
         configOpenSignal={neuralConfigSignal}
       />
       <EmailComposer
-        isOpen={!isCompactMode && hudPanels.email}
+        isOpen={!isOrbMode && hudPanels.email}
         onClose={handleCloseEmail}
         onOpenRequest={handleOpenEmail}
       />
-      {!isCompactMode && hudPanels.trader && (
+      {!isOrbMode && hudPanels.trader && (
         <QuantPanel isOpen={hudPanels.trader} onClose={handleCloseTrader} />
       )}
-      {!isCompactMode && hudPanels.videos && (
+      {!isOrbMode && hudPanels.videos && (
         <VideoStudioPanel isOpen={hudPanels.videos} onClose={handleCloseVideos} />
       )}
       <AutomationsPanel
-        isOpen={!isCompactMode && hudPanels.automations}
+        isOpen={!isOrbMode && hudPanels.automations}
         onClose={handleCloseAutomations}
         onOpenRequest={handleOpenAutomations}
       />
       <RemindersPanel
-        isOpen={!isCompactMode && hudPanels.reminders}
+        isOpen={!isOrbMode && hudPanels.reminders}
         onClose={handleCloseReminders}
         onOpenRequest={handleOpenReminders}
       />
       <FavoritesPanel
-        isOpen={hudPanels.favorites}
+        isOpen={!isOrbMode && hudPanels.favorites}
         onClose={handleCloseFavorites}
         onOpenRequest={handleOpenFavorites}
       />
       <WorkspaceFilesPanel
-        isOpen={!isCompactMode && hudPanels.files}
+        isOpen={!isOrbMode && hudPanels.files}
         onClose={handleCloseFiles}
         onOpenEmailComposer={handleOpenEmail}
       />
       <AntigravityPanel
-        isOpen={!isCompactMode && hudPanels.antigravity}
+        isOpen={!isOrbMode && hudPanels.antigravity}
         onClose={handleCloseAntigravity}
         onOpenRequest={handleOpenAntigravity}
       />
-
-      {/* Pill indicador do Modo Compacto / Dock Flutuante */}
-      <AnimatePresence>
-        {isCompactMode && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="jarvis-mini-dock pointer-events-auto fixed top-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full px-4 py-2 text-xs shadow-2xl transition"
-          >
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
-              </span>
-              <span className="font-mono text-[11px] font-semibold tracking-wider text-cyan-200 uppercase">
-                Modo Flutuante
-              </span>
-            </div>
-
-            <div className="h-3 w-px bg-white/20" />
-
-            <button
-              type="button"
-              onClick={() => toggleHudPanel('favorites')}
-              className={cn(
-                'rounded-md px-2 py-0.5 font-medium transition',
-                hudPanels.favorites
-                  ? 'bg-cyan-500/30 text-cyan-200'
-                  : 'text-zinc-300 hover:bg-white/10 hover:text-white'
-              )}
-            >
-              Atalhos
-            </button>
-
-            <button
-              type="button"
-              onClick={toggleCompactMode}
-              className="flex items-center gap-1 rounded-md border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-0.5 text-cyan-200 transition hover:bg-cyan-500/30"
-            >
-              <Maximize2 className="h-3 w-3" />
-              <span>Expandir</span>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
@@ -896,38 +871,57 @@ export const SessionView = ({
               className="p5-canvas-container absolute inset-0 flex items-center justify-center"
             >
               <div
-                style={orbDragStyle}
-                {...orbDragHandlers}
-                onDoubleClick={toggleOrbStyle}
+                style={isOrbMode ? { width: '5cm', height: '5cm' } : orbDragStyle}
+                {...(isOrbMode ? {} : orbDragHandlers)}
+                onClick={isOrbMode ? toggleOrbMode : undefined}
+                onDoubleClick={isOrbMode ? undefined : toggleOrbStyle}
+                title={isOrbMode ? "Modo Orb (5x5 cm) · Clique para expandir o Jarvis" : "Arraste pelo centro · Duplo clique para alternar estilo"}
                 className={cn(
-                  'pointer-events-auto relative flex size-[360px] touch-none items-center justify-center rounded-full transition-shadow select-none',
-                  isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
-                  isOrbDragging ? 'cursor-grabbing' : 'cursor-grab'
+                  'pointer-events-auto relative flex touch-none items-center justify-center rounded-full transition-all duration-500 select-none cursor-pointer',
+                  isOrbMode
+                    ? 'opacity-50 hover:opacity-100 hover:scale-105 shadow-[0_0_35px_rgba(0,240,255,0.45)] ring-1 ring-cyan-400/40'
+                    : 'size-[360px] transition-shadow',
+                  !isOrbMode && isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
+                  !isOrbMode && isOrbDragging ? 'cursor-grabbing' : !isOrbMode ? 'cursor-grab' : ''
                 )}
               >
-                <div className="pointer-events-none flex flex-col items-center justify-center">
+                <div
+                  className={cn(
+                    "pointer-events-none flex flex-col items-center justify-center transition-transform duration-500",
+                    isOrbMode && "scale-[0.45]"
+                  )}
+                >
                   {orbStyle === 'quantum' ? (
                     <QuantumParticleOrb key={`q-${currentColor}`} color={currentColor} />
                   ) : (
                     <VantaOrb key={`v-${currentColor}`} color={currentColor} vantaRef={vantaEffectRef} />
                   )}
-                  {/* Status Cyberpunk Neural */}
-                  <div className="mt-1 flex flex-col items-center justify-center text-center pointer-events-none select-none">
-                    <div className="flex items-center gap-2 text-[10px] font-mono tracking-[0.25em] uppercase text-cyan-400 font-semibold drop-shadow-[0_0_8px_rgba(255,85,0,0.6)]">
-                      <span className="inline-block size-1.5 rounded-xs bg-cyan-500 animate-pulse" />
-                      {agentState === 'thinking' ? 'PROCESSANDO REDE NEURAL' : session.isConnected ? 'NEURAL LINK ACTIVE' : 'SISTEMA EM ESPERA'}
+                  {/* Status Cyberpunk Neural - visível apenas no modo completo */}
+                  {!isOrbMode && (
+                    <div className="mt-1 flex flex-col items-center justify-center text-center pointer-events-none select-none">
+                      <div className="flex items-center gap-2 text-[10px] font-mono tracking-[0.25em] uppercase text-cyan-400 font-semibold drop-shadow-[0_0_8px_rgba(255,85,0,0.6)]">
+                        <span className="inline-block size-1.5 rounded-xs bg-cyan-500 animate-pulse" />
+                        {agentState === 'thinking' ? 'PROCESSANDO REDE NEURAL' : session.isConnected ? 'NEURAL LINK ACTIVE' : 'SISTEMA EM ESPERA'}
+                      </div>
+                      <p className="mt-0.5 font-serif italic text-xs tracking-wider text-cyan-200/75 drop-shadow-[0_0_6px_rgba(255,85,0,0.3)]">
+                        {agentState === 'thinking'
+                          ? '"Sintetizando pensamentos..."'
+                          : agentState === 'speaking'
+                            ? '"Transmitindo resposta..."'
+                            : session.isConnected
+                              ? '"Ouvindo seus pensamentos..."'
+                              : '"Aguardando conexão..."'}
+                      </p>
                     </div>
-                    <p className="mt-0.5 font-serif italic text-xs tracking-wider text-cyan-200/75 drop-shadow-[0_0_6px_rgba(255,85,0,0.3)]">
-                      {agentState === 'thinking'
-                        ? '"Sintetizando pensamentos..."'
-                        : agentState === 'speaking'
-                          ? '"Transmitindo resposta..."'
-                          : session.isConnected
-                            ? '"Ouvindo seus pensamentos..."'
-                            : '"Aguardando conexão..."'}
-                    </p>
-                  </div>
+                  )}
                 </div>
+
+                {/* Overlay com ícone sutil de expandir ao passar o mouse no Modo Orb */}
+                {isOrbMode && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-xs">
+                    <Maximize2 className="h-5 w-5 text-cyan-300 drop-shadow-[0_0_8px_rgba(0,240,255,0.8)]" />
+                  </div>
+                )}
               </div>
             </motion.div>
           </AnimatePresence>
@@ -940,70 +934,74 @@ export const SessionView = ({
 
       <div className="pointer-events-none flex-1" />
 
-      <MotionBottom
-        {...BOTTOM_VIEW_MOTION_PROPS}
-        className="relative z-10 mx-auto mb-4 w-full max-w-3xl px-3 pb-3 md:pb-12"
-      >
-        {appConfig.isPreConnectBufferEnabled && (
-          <AnimatePresence>
-            {messages.length === 0 && (
-              <MotionMessage
-                key="pre-connect-message"
-                duration={2}
-                aria-hidden={messages.length > 0}
-                {...SHIMMER_MOTION_PROPS}
-                className="pointer-events-none mx-auto block w-full max-w-2xl pb-8 text-center text-sm font-semibold"
-              >
-                O Jarvis está ouvindo, pode falar...
-              </MotionMessage>
-            )}
-          </AnimatePresence>
-        )}
-
-        <div
-          style={controlBarDragStyle}
-          {...controlBarDragHandlers}
-          onClickCapture={(event) => {
-            if (wasControlBarDragged()) {
-              event.stopPropagation();
-              event.preventDefault();
-            }
-          }}
-          title="Arraste pelo centro para mover · Arraste pela borda para aumentar ou diminuir"
-          className={cn(
-            'relative mx-auto w-full max-w-2xl touch-none rounded-[31px] bg-transparent transition-shadow select-none',
-            isControlBarDragging || isControlBarResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
-            isControlBarDragging ? 'cursor-grabbing' : 'cursor-grab'
-          )}
+      {!isOrbMode && (
+        <MotionBottom
+          {...BOTTOM_VIEW_MOTION_PROPS}
+          className="relative z-10 mx-auto mb-4 w-full max-w-3xl px-3 pb-3 md:pb-12"
         >
-          <AgentControlBar
-            variant="livekit"
-            controls={controls}
-            isChatOpen={chatOpen}
-            messages={messages}
-            isConnected={true}
-            saveUserChoices={false}
-            onDisconnect={handleDisconnect}
-            onIsChatOpenChange={setChatOpen}
-            extraControls={
-              <HudMenu
-                docked
-                panels={hudPanels}
-                onTogglePanel={toggleHudPanel}
-                onOpenNeuralConfig={handleOpenNeuralConfig}
-                onResetLayout={handleResetHudLayout}
-                onOrganizeLayout={handleOrganizeHudLayout}
-                orbStyle={orbStyle}
-                onToggleOrbStyle={toggleOrbStyle}
-                themeHex={themeHex}
-                onChangeThemeHex={handleChangeThemeHex}
-                compactMode={isCompactMode}
-                onToggleCompactMode={toggleCompactMode}
-              />
-            }
-          />
-        </div>
-      </MotionBottom>
+          {appConfig.isPreConnectBufferEnabled && (
+            <AnimatePresence>
+              {messages.length === 0 && (
+                <MotionMessage
+                  key="pre-connect-message"
+                  duration={2}
+                  aria-hidden={messages.length > 0}
+                  {...SHIMMER_MOTION_PROPS}
+                  className="pointer-events-none mx-auto block w-full max-w-2xl pb-8 text-center text-sm font-semibold"
+                >
+                  O Jarvis está ouvindo, pode falar...
+                </MotionMessage>
+              )}
+            </AnimatePresence>
+          )}
+
+          <div
+            style={controlBarDragStyle}
+            {...controlBarDragHandlers}
+            onClickCapture={(event) => {
+              if (wasControlBarDragged()) {
+                event.stopPropagation();
+                event.preventDefault();
+              }
+            }}
+            title="Arraste pelo centro para mover · Arraste pela borda para aumentar ou diminuir"
+            className={cn(
+              'relative mx-auto w-full max-w-2xl touch-none rounded-[31px] bg-transparent transition-shadow select-none',
+              isControlBarDragging || isControlBarResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
+              isControlBarDragging ? 'cursor-grabbing' : 'cursor-grab'
+            )}
+          >
+            <AgentControlBar
+              variant="livekit"
+              controls={controls}
+              isChatOpen={chatOpen}
+              messages={messages}
+              isConnected={true}
+              saveUserChoices={false}
+              onDisconnect={handleDisconnect}
+              onIsChatOpenChange={setChatOpen}
+              extraControls={
+                <HudMenu
+                  docked
+                  panels={hudPanels}
+                  onTogglePanel={toggleHudPanel}
+                  onOpenNeuralConfig={handleOpenNeuralConfig}
+                  onResetLayout={handleResetHudLayout}
+                  onOrganizeLayout={handleOrganizeHudLayout}
+                  orbStyle={orbStyle}
+                  onToggleOrbStyle={toggleOrbStyle}
+                  themeHex={themeHex}
+                  onChangeThemeHex={handleChangeThemeHex}
+                  orbMode={isOrbMode}
+                  onToggleOrbMode={toggleOrbMode}
+                  compactMode={isOrbMode}
+                  onToggleCompactMode={toggleOrbMode}
+                />
+              }
+            />
+          </div>
+        </MotionBottom>
+      )}
     </section>
   );
 };

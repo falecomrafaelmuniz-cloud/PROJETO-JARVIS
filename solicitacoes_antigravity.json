@@ -30,5 +30,15 @@
     "prioridade": "Alta",
     "status": "pendente",
     "origem": "Comando de voz do usuário via Jarvis"
+  },
+  {
+    "id": 4,
+    "data_hora": "25/11/2026 16:56:53",
+    "titulo": "Implementação do Modo Orb da Interface",
+    "descricao": "Implementar o Modo Orb, onde a interface do Jarvis é reduzida apenas ao Orbe em uma proporção de 5x5 cm na tela. O botão para ativar este modo deve ser chamado de Modo Orb.",
+    "arquivo_sugerido": "backend/agent.py",
+    "prioridade": "alta",
+    "status": "concluida",
+    "origem": "Comando de voz do usuário via Jarvis"
   }
 ]

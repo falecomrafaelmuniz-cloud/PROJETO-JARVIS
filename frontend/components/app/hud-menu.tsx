@@ -71,6 +71,9 @@ interface HudMenuProps {
   themeHex?: string;
   onChangeThemeHex?: (hex: string) => void;
   docked?: boolean;
+  orbMode?: boolean;
+  onToggleOrbMode?: () => void;
+  // retrocompatibilidade
   compactMode?: boolean;
   onToggleCompactMode?: () => void;
 }
@@ -107,7 +110,9 @@ export function HudMenu({
   themeHex = DEFAULT_JARVIS_THEME_HEX,
   onChangeThemeHex,
   docked = false,
-  compactMode = false,
+  orbMode = false,
+  onToggleOrbMode,
+  compactMode,
   onToggleCompactMode,
 }: HudMenuProps) {
   const [open, setOpen] = useState(false);
@@ -223,20 +228,20 @@ export function HudMenu({
               </p>
             </div>
             <div className="flex items-center gap-1.5">
-              {onToggleCompactMode && (
+              {(onToggleOrbMode || onToggleCompactMode) && (
                 <button
                   type="button"
-                  onClick={onToggleCompactMode}
-                  title={compactMode ? "Expandir para ver todos os painéis" : "Recolher painéis para o modo compacto flutuante"}
+                  onClick={onToggleOrbMode || onToggleCompactMode}
+                  title={orbMode || compactMode ? "Expandir para ver o Jarvis completo" : "Ativar Modo Orb (apenas o Orb flutuante 5x5 cm)"}
                   className={cn(
                     "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition",
-                    compactMode
+                    (orbMode || compactMode)
                       ? "border-amber-400/60 bg-amber-500/20 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
                       : "border-cyan-300/25 bg-cyan-400/10 text-cyan-200 hover:border-cyan-300/50 hover:bg-cyan-400/20"
                   )}
                 >
-                  {compactMode ? <Maximize2 className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />}
-                  {compactMode ? "Expandir" : "Compacto"}
+                  <Sparkles className="h-3 w-3" />
+                  {(orbMode || compactMode) ? "Expandir" : "Modo Orb"}
                 </button>
               )}
               <button
