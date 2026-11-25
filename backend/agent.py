@@ -3655,6 +3655,15 @@ class Assistant(Agent):
         if alvo_limpo in {"atual", "ativa", "esta", "essa", "isso", "janela", "janela atual"}:
             fg = user32.GetForegroundWindow()
             if fg:
+                length = user32.GetWindowTextLengthW(fg)
+                buff = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(fg, buff, length + 1)
+                titulo_fg = buff.value.lower()
+                if any(k in titulo_fg for k in ("jarvis", "localhost:3000")):
+                    if user32.IsIconic(fg) or user32.IsZoomed(fg):
+                        user32.ShowWindow(fg, SW_RESTORE)
+                    asyncio.create_task(self.controlar_painel_hud("expandir", "abrir"))
+                    return "Interface do Jarvis expandida para o modo completo com transparência ativa."
                 user32.ShowWindow(fg, SW_SHOWMAXIMIZED)
                 return "Janela atual maximizada com sucesso."
 
@@ -3719,11 +3728,10 @@ class Assistant(Agent):
         if janelas_encontradas:
             if eh_pedido_jarvis:
                 for hwnd, _ in janelas_encontradas:
-                    if user32.IsIconic(hwnd):
-                        user32.ShowWindow(hwnd, SW_RESTORE)
-                    user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
+                    user32.ShowWindow(hwnd, SW_RESTORE)
                     user32.SwitchToThisWindow(hwnd, True)
-                return "Janela do Jarvis restaurada e maximizada com sucesso."
+                asyncio.create_task(self.controlar_painel_hud("expandir", "abrir"))
+                return "Interface do Jarvis restaurada e expandida no modo completo."
 
             for hwnd, _ in janelas_encontradas:
                 if user32.IsIconic(hwnd):
@@ -3923,7 +3931,11 @@ class Assistant(Agent):
                 user32.ShowWindow(hwnd, SW_RESTORE)
                 time.sleep(0.06)
 
-            if estava_maximizada or maximizar_preferido or forcar_maximizar:
+            buff_chk = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, buff_chk, 512)
+            eh_jarvis_hwnd = any(k in buff_chk.value.lower() for k in ("jarvis", "localhost:3000"))
+
+            if (estava_maximizada or maximizar_preferido or forcar_maximizar) and not eh_jarvis_hwnd:
                 larg_nova = min(max(850, int(mon_w * 0.78)), mon_w - 60)
                 alt_nova = min(max(620, int(mon_h * 0.78)), mon_h - 60)
                 novo_x = mon_x + (mon_w - larg_nova) // 2
@@ -3937,6 +3949,8 @@ class Assistant(Agent):
                 novo_x = mon_x + (mon_w - larg_nova) // 2
                 novo_y = mon_y + (mon_h - alt_nova) // 2
                 user32.MoveWindow(hwnd, int(novo_x), int(novo_y), int(larg_nova), int(alt_nova), True)
+                if eh_jarvis_hwnd:
+                    user32.ShowWindow(hwnd, SW_RESTORE)
 
             try:
                 user32.SetForegroundWindow(hwnd)

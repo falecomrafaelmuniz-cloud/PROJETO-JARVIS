@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const path = require('path');
 const { spawn, exec } = require('child_process');
 const http = require('http');
@@ -121,6 +121,7 @@ async function createWindow() {
     icon: iconPath,
     autoHideMenuBar: true,
     hasShadow: false,
+    maximizable: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -129,10 +130,19 @@ async function createWindow() {
     },
   });
 
+  mainWindow.on('maximize', () => {
+    mainWindow.unmaximize();
+    const primaryDisplay = screen.getPrimaryDisplay();
+    mainWindow.setBounds(primaryDisplay.workArea);
+  });
+
   // Listener para alternar entre Modo Orb (200x200 flutuante) e Modo Completo
   ipcMain.removeAllListeners('jarvis:set-orb-mode');
   ipcMain.on('jarvis:set-orb-mode', (event, isOrb) => {
     if (!mainWindow) return;
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    }
     if (isOrb) {
       const current = mainWindow.getBounds();
       if (current.width > 300) {

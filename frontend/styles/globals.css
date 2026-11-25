@@ -114,7 +114,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-html, body, #__next, main {
+html, body, #__next, main, section {
   background: transparent !important;
   background-color: transparent !important;
 }
