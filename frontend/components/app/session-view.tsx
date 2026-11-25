@@ -1058,7 +1058,7 @@ export const SessionView = ({
                         ...(isElectron ? {} : orbDragStyle),
                         width: '5cm',
                         height: '5cm',
-                        opacity: 0.95,
+                        opacity: 1,
                       } as React.CSSProperties)
                     : orbDragStyle
                 }
@@ -1076,7 +1076,7 @@ export const SessionView = ({
                 className={cn(
                   'pointer-events-auto relative flex touch-none items-center justify-center transition-all duration-300 select-none cursor-pointer',
                   isOrbMode
-                    ? 'active:scale-95 hover:opacity-100'
+                    ? 'active:scale-95'
                     : 'size-[360px] rounded-full transition-shadow cursor-grab',
                   !isOrbMode && isOrbResizingEdge ? 'ring-1 ring-cyan-300/60' : '',
                   isOrbDragging ? 'cursor-grabbing' : ''
