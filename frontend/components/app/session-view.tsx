@@ -798,12 +798,14 @@ export const SessionView = ({
     [wasControlBarDragged, wasOrbDragged]
   );
 
+  const isElectron = typeof window !== 'undefined' && Boolean((window as unknown as { jarvisDesktop?: unknown }).jarvisDesktop);
+
   return (
     <section
       onClick={handleBackgroundClick}
       className={cn(
-        "relative flex h-svh w-svw flex-col overflow-hidden transition-colors duration-300",
-        isOrbMode ? "bg-transparent select-none pointer-events-none" : "bg-black pointer-events-auto"
+        "relative flex h-svh w-svw flex-col transition-colors duration-300",
+        isOrbMode ? "bg-transparent select-none pointer-events-none" : "bg-black pointer-events-auto overflow-hidden"
       )}
       {...props}
     >
@@ -876,7 +878,7 @@ export const SessionView = ({
       />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+        <div className={cn("absolute inset-0 flex items-center justify-center", !isOrbMode && "overflow-hidden")}>
           <AnimatePresence mode="wait">
             <motion.div
               key={session.isConnected ? `vanta-${agentPersona}` : 'vanta-disconnected'}
@@ -890,28 +892,19 @@ export const SessionView = ({
                 style={
                   isOrbMode
                     ? ({
-                        ...orbDragStyle,
+                        ...(isElectron ? {} : orbDragStyle),
                         width: '5cm',
                         height: '5cm',
                         opacity: 0.39,
+                        WebkitAppRegion: isElectron ? 'drag' : undefined,
                       } as React.CSSProperties)
                     : orbDragStyle
                 }
-                {...orbDragHandlers}
+                {...(isOrbMode && isElectron ? {} : orbDragHandlers)}
                 onDoubleClick={isOrbMode ? toggleOrbMode : toggleOrbStyle}
-                onMouseEnter={() => {
-                  if (isOrbMode && typeof window !== 'undefined') {
-                    (window as unknown as { jarvisDesktop?: { setIgnoreMouse: (b: boolean) => void } }).jarvisDesktop?.setIgnoreMouse(false);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (isOrbMode && !isOrbDragging && typeof window !== 'undefined') {
-                    (window as unknown as { jarvisDesktop?: { setIgnoreMouse: (b: boolean) => void } }).jarvisDesktop?.setIgnoreMouse(true);
-                  }
-                }}
                 title={
                   isOrbMode
-                    ? "Arraste para qualquer lado da tela · Clique duas vezes para expandir o Jarvis"
+                    ? "Arraste para qualquer lugar da tela · Clique duas vezes para expandir o Jarvis"
                     : "Arraste pelo centro · Duplo clique para alternar estilo"
                 }
                 className={cn(
@@ -962,6 +955,7 @@ export const SessionView = ({
                       e.stopPropagation();
                       toggleOrbMode();
                     }}
+                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     title="Clique para expandir o Jarvis"
                     className="absolute -top-1 -right-1 z-30 flex size-5 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-300 opacity-60 hover:opacity-100 hover:scale-110 transition-all cursor-pointer shadow-[0_0_8px_rgba(0,240,255,0.4)]"
                   >
@@ -973,9 +967,11 @@ export const SessionView = ({
           </AnimatePresence>
         </div>
 
-        <div className="relative z-10">
-          <TileLayout chatOpen={chatOpen} />
-        </div>
+        {!isOrbMode && (
+          <div className="relative z-10">
+            <TileLayout chatOpen={chatOpen} />
+          </div>
+        )}
       </div>
 
       <div className="pointer-events-none flex-1" />

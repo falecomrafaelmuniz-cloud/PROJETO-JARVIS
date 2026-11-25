@@ -134,21 +134,24 @@ async function createWindow() {
   ipcMain.on('jarvis:set-orb-mode', (event, isOrb) => {
     if (!mainWindow) return;
     if (isOrb) {
-      if (mainWindow.getSize()[0] > 300) {
-        savedBounds = mainWindow.getBounds();
+      const current = mainWindow.getBounds();
+      if (current.width > 300) {
+        savedBounds = current;
       }
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
       mainWindow.setMinimumSize(100, 100);
-      mainWindow.setSize(200, 200, true);
-      mainWindow.setIgnoreMouseEvents(true, { forward: true });
+      const targetSize = 200;
+      const origin = savedBounds || current;
+      const x = Math.max(10, Math.round(origin.x + (origin.width - targetSize) / 2));
+      const y = Math.max(10, Math.round(origin.y + (origin.height - targetSize) / 2));
+      mainWindow.setBounds({ x, y, width: targetSize, height: targetSize });
     } else {
       mainWindow.setAlwaysOnTop(false);
-      mainWindow.setIgnoreMouseEvents(false);
       mainWindow.setMinimumSize(960, 640);
-      if (savedBounds && savedBounds.width && savedBounds.width > 300) {
-        mainWindow.setBounds(savedBounds, true);
+      if (savedBounds && savedBounds.width > 300) {
+        mainWindow.setBounds(savedBounds);
       } else {
-        mainWindow.setSize(1320, 840, true);
+        mainWindow.setSize(1320, 840);
         mainWindow.center();
       }
     }
