@@ -363,6 +363,21 @@ export const SessionView = ({
     });
   }, []);
 
+  useEffect(() => {
+    if (
+      typeof window !== 'undefined' &&
+      (window as unknown as { jarvisDesktop?: { onToggleOrbMode?: (cb: () => void) => () => void } }).jarvisDesktop
+        ?.onToggleOrbMode
+    ) {
+      const unsub = (
+        window as unknown as { jarvisDesktop: { onToggleOrbMode: (cb: () => void) => () => void } }
+      ).jarvisDesktop.onToggleOrbMode(() => {
+        toggleOrbMode();
+      });
+      return unsub;
+    }
+  }, [toggleOrbMode]);
+
   // Escuta comandos de voz para abrir/fechar/alternar painéis do HUD em tempo real
   useEffect(() => {
     if (!room) return;
@@ -889,7 +904,7 @@ export const SessionView = ({
                         ...(isElectron ? {} : orbDragStyle),
                         width: '5cm',
                         height: '5cm',
-                        opacity: 0.39,
+                        opacity: 0.50,
                         WebkitAppRegion: isElectron ? 'drag' : undefined,
                       } as React.CSSProperties)
                     : orbDragStyle

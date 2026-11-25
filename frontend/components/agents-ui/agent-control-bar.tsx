@@ -521,25 +521,27 @@ export function AgentControlBar({
             <AgentDisconnectButton
               variant="outline"
               size="icon"
-              title="Encerrar chamada (Shift+Clique para desligar servidores)"
-              aria-label="Encerrar chamada"
+              title="Desligar e fechar o Jarvis"
+              aria-label="Desligar e fechar o Jarvis"
               icon={<Power className="size-4" />}
               disabled={!isConnected}
               onClick={async (e) => {
-                if (e?.shiftKey) {
-                  (window as unknown as { __jarvisShutDown?: boolean }).__jarvisShutDown = true;
-                  try {
-                    await fetch('/api/shutdown', { method: 'POST' });
-                  } catch {
-                    // Servidor já encerrou
-                  }
+                e?.stopPropagation?.();
+                (window as unknown as { __jarvisShutDown?: boolean }).__jarvisShutDown = true;
+                try {
+                  await fetch('/api/shutdown', { method: 'POST' });
+                } catch {}
+                try {
                   onDisconnect?.();
-                  setTimeout(() => {
-                    window.close();
-                  }, 600);
-                  return;
+                } catch {}
+                if (
+                  typeof window !== 'undefined' &&
+                  (window as unknown as { jarvisDesktop?: { closeWindow: () => void } }).jarvisDesktop?.closeWindow
+                ) {
+                  (window as unknown as { jarvisDesktop: { closeWindow: () => void } }).jarvisDesktop.closeWindow();
+                } else {
+                  window.close();
                 }
-                onDisconnect?.();
               }}
               className="size-9 rounded-full border-red-500/30 bg-red-500/15 text-red-400 hover:border-red-500/60 hover:bg-red-500/30 hover:text-red-200 focus:bg-red-500/30 shadow-none"
             >

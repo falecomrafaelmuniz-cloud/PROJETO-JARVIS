@@ -132,8 +132,7 @@ async function createWindow() {
 
   mainWindow.on('maximize', () => {
     mainWindow.unmaximize();
-    const primaryDisplay = screen.getPrimaryDisplay();
-    mainWindow.setBounds(primaryDisplay.workArea);
+    mainWindow.webContents.send('jarvis:toggle-orb-mode');
   });
 
   // Listener para alternar entre Modo Orb (200x200 flutuante) e Modo Completo
