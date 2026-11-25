@@ -337,9 +337,49 @@ def _update_session_location(
     logger_memoria.info("evento=localizacao status=disponivel_na_sessao")
 
 
+class MemoriaCurtoPrazo:
+    """Buffer circular com os últimos eventos da conversa (falas, respostas e ações)."""
+
+    def __init__(self, capacidade: int = 40):
+        from collections import deque
+        self._eventos = deque(maxlen=capacidade)
+        self._chamadas: dict[str, str] = {}
+
+    def registrar(self, tipo: str, texto: str) -> None:
+        texto = " ".join(str(texto or "").split())
+        if not texto:
+            return
+        if len(texto) > 280:
+            texto = texto[:280] + "…"
+        self._eventos.append((time.time(), tipo, texto))
+
+    def registrar_inicio_ferramenta(self, call_id: str, nome: str, argumentos: str) -> None:
+        if nome == "consultar_memoria_curto_prazo":
+            return
+        self._chamadas[call_id] = nome
+        self.registrar("ACAO", f"{nome}({argumentos})")
+
+    def registrar_fim_ferramenta(self, call_id: str, status: str) -> None:
+        nome = self._chamadas.pop(call_id, "")
+        if nome:
+            self.registrar("RESULTADO", f"{nome} -> {status}")
+
+    def resumo(self, ultimos: int = 15) -> str:
+        eventos = list(self._eventos)[-max(1, min(int(ultimos or 15), 40)):]
+        if not eventos:
+            return "Memória de curto prazo vazia: nada aconteceu ainda nesta sessão."
+        rotulos = {"USUARIO": "USUÁRIO", "JARVIS": "JARVIS", "ACAO": "AÇÃO", "RESULTADO": "RESULTADO"}
+        linhas = [
+            f"[{datetime.fromtimestamp(ts).strftime('%H:%M:%S')}] {rotulos.get(tipo, tipo)}: {txt}"
+            for ts, tipo, txt in eventos
+        ]
+        return "\n".join(linhas)
+
+
 class Assistant(Agent):
     def __init__(self, location_state: dict[str, float | str], room: rtc.Room) -> None:
         self.location_state = location_state
+        self._memoria_curta = MemoriaCurtoPrazo()
         self.board_room = room
         self._pesquisa_lock = asyncio.Lock()
         self._ultima_pesquisa_cache: tuple[str, float, str] | None = None
@@ -399,6 +439,18 @@ class Assistant(Agent):
             instructions=AGENT_INSTRUCTION,
             llm=google.beta.realtime.RealtimeModel(**realtime_kwargs),
         )
+
+    @function_tool(
+        description=(
+            "Consulta a MEMÓRIA DE CURTO PRAZO: os últimos eventos desta conversa (falas do usuário, "
+            "suas respostas e ações/ferramentas executadas, com horário). Use SEMPRE que o usuário se referir "
+            "ao que acabou de acontecer: 'o que você acabou de falar/abrir/fazer?', 'fecha ele', 'repete', "
+            "'aquilo', 'isso', 'o último', 'por que fez isso?', 'sobre o que estávamos falando?'. "
+            "Parâmetro `ultimos`: quantos eventos recentes ler (padrão 15)."
+        )
+    )
+    async def consultar_memoria_curto_prazo(self, ultimos: int = 15) -> str:
+        return self._memoria_curta.resumo(ultimos)
 
     def _carregar_alertas_email(self) -> list[dict]:
         try:
@@ -10242,7 +10294,22 @@ async def entrypoint(ctx: agents.JobContext):
             partes = getattr(item, "content", []) or []
             texto = " ".join(str(p) for p in partes if isinstance(p, str))
         logger_memoria.info("evento=conversation_item_added role=%s texto=%s", role, texto)
+        if role in ("user", "assistant"):
+            assistant._memoria_curta.registrar("USUARIO" if role == "user" else "JARVIS", str(texto))
         _verificar_texto_abrir_rascunho(str(texto), role == "user", assistant)
+
+    def _on_tool_event(ev):
+        try:
+            update = ev.update
+            if isinstance(update, ToolCallStarted):
+                fc = update.function_call
+                assistant._memoria_curta.registrar_inicio_ferramenta(
+                    fc.call_id, fc.name, str(getattr(fc, "arguments", "") or "")
+                )
+            elif isinstance(update, ToolCallEnded):
+                assistant._memoria_curta.registrar_fim_ferramenta(update.call_id, str(update.status))
+        except Exception as erro_mem:
+            logger_memoria.warning("evento=memoria_curta status=erro motivo=%s", erro_mem)
 
     def _on_session_close(ev):
         activity_events.put_nowait(None)
@@ -10278,6 +10345,7 @@ async def entrypoint(ctx: agents.JobContext):
     session.on("user_input_transcribed", _on_user_transcribed)
     session.on("conversation_item_added", _on_item_added)
     session.on("tool_execution_updated", activity_events.put_nowait)
+    session.on("tool_execution_updated", _on_tool_event)
     session.on("close", _on_session_close)
 
     # --- Diagnóstico e anti-travamento do estado do agente ---
