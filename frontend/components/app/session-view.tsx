@@ -37,6 +37,8 @@ import { TileLayout } from '@/components/app/tile-layout';
 import { WorkspaceFilesPanel } from '@/components/app/workspace-files-panel';
 import { QuantumParticleOrb } from '@/components/app/quantum-particle-orb';
 import { VideoStudioPanel } from '@/components/app/video-studio-panel';
+import { JarvisSidebar } from '@/components/app/jarvis-sidebar';
+import { DataSourcesPanel } from '@/components/app/data-sources-panel';
 import { useDraggableFloating } from '@/hooks/use-draggable-floating';
 import {
   calculateLayoutPositions,
@@ -305,6 +307,8 @@ export const SessionView = ({
   const { state: agentState } = useVoiceAssistant();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [dataSourcesOpen, setDataSourcesOpen] = useState(false);
   const [hudPanels, setHudPanels] = useState<HudPanelsState>(DEFAULT_HUD_PANELS);
   const hudPanelsRef = useRef<HudPanelsState>(DEFAULT_HUD_PANELS);
   useEffect(() => {
@@ -716,6 +720,60 @@ export const SessionView = ({
     }
   }, [hudPanels]);
 
+  const handleSidebarAction = useCallback(
+    (actionId: string) => {
+      switch (actionId) {
+        case 'chat':
+          setChatOpen((prev) => !prev);
+          break;
+        case 'jarvis':
+          setHudPanels({
+            system: false,
+            clock: true,
+            activity: false,
+            neural: false,
+            email: false,
+            automations: false,
+            trader: false,
+            videos: false,
+            reminders: false,
+            favorites: false,
+            files: false,
+            antigravity: false,
+          });
+          setDataSourcesOpen(false);
+          break;
+        case 'briefing':
+          setHudPanels((p) => ({ ...p, reminders: true, activity: true, clock: true }));
+          break;
+        case 'data-sources':
+          setDataSourcesOpen((prev) => !prev);
+          break;
+        case 'memory':
+          setHudPanels((p) => ({ ...p, neural: !p.neural }));
+          break;
+        case 'monitoring':
+          setHudPanels((p) => ({ ...p, system: !p.system }));
+          break;
+        case 'finance':
+          setHudPanels((p) => ({ ...p, trader: !p.trader }));
+          break;
+        case 'logs':
+          setHudPanels((p) => ({ ...p, activity: !p.activity }));
+          break;
+        case 'settings':
+          handleOpenNeuralConfig();
+          break;
+        case 'get-started':
+          handleResetHudLayout();
+          break;
+        default:
+          break;
+      }
+    },
+    [handleOpenNeuralConfig, handleResetHudLayout]
+  );
+
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const vantaEffectRef = useRef<VantaEffect | null>(null);
   const {
@@ -966,6 +1024,20 @@ export const SessionView = ({
         isOpen={!isOrbMode && hudPanels.antigravity}
         onClose={handleCloseAntigravity}
         onOpenRequest={handleOpenAntigravity}
+      />
+
+      {/* Menu Lateral de Navegação (HUD Completo) */}
+      <JarvisSidebar
+        isOpen={sidebarOpen}
+        onToggleOpen={() => setSidebarOpen((prev) => !prev)}
+        onSelectAction={handleSidebarAction}
+        isOrbMode={isOrbMode}
+      />
+
+      {/* Central de Fontes de Dados & MCP Hub */}
+      <DataSourcesPanel
+        isOpen={!isOrbMode && dataSourcesOpen}
+        onClose={() => setDataSourcesOpen(false)}
       />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
