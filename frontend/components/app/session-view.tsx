@@ -954,7 +954,7 @@ export const SessionView = ({
         "relative flex h-svh w-svw flex-col",
         isOrbMode
           ? "hud-orb-mode bg-transparent select-none pointer-events-none"
-          : "hud-full-mode bg-black pointer-events-auto overflow-hidden"
+          : "hud-full-mode bg-[#030712] pointer-events-auto overflow-hidden bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(14,165,233,0.15),rgba(255,255,255,0))] bg-[linear-gradient(to_right,#0ea5e90a_1px,transparent_1px),linear-gradient(to_bottom,#0ea5e90a_1px,transparent_1px)] bg-[size:40px_40px]"
       )}
       {...props}
     >
