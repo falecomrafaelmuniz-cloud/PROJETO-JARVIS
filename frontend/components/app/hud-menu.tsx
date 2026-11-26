@@ -211,76 +211,78 @@ export function HudMenu({
         <div
           data-no-drag="true"
           className={cn(
-            'w-[310px] rounded-xl border border-cyan-300/35 bg-slate-950/92 p-3 text-slate-100 shadow-[0_0_32px_rgba(34,211,238,0.24)] backdrop-blur-xl sm:w-[340px]',
+            'w-[350px] sm:w-[380px] rounded-xl border border-cyan-400/30 bg-slate-950/95 p-3.5 text-slate-100 shadow-[0_0_40px_rgba(34,211,238,0.25)] backdrop-blur-2xl select-none',
             docked
               ? 'absolute bottom-full left-1/2 z-[1100] mb-3 -translate-x-1/2'
               : 'mt-2 -translate-x-1/2'
           )}
           style={docked ? undefined : { marginLeft: '50%' }}
         >
-          <div className="mb-2.5 flex items-center justify-between border-b border-cyan-300/15 pb-2">
-            <div>
-              <p className="text-[10px] font-semibold tracking-[0.2em] text-cyan-200/85 uppercase">
-                Painéis do Jarvis
-              </p>
-              <p className="text-[10px] text-slate-400">
-                Ligue, arraste pela mãozinha ou ajuste pelas bordas
+          {/* Cabeçalho Limpo sem instruções redundantes */}
+          <div className="mb-2.5 flex items-center justify-between border-b border-cyan-400/20 pb-2">
+            <div className="flex items-center gap-2">
+              <span className="size-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#00f0ff] animate-pulse" />
+              <p className="text-[11px] font-mono font-bold tracking-[0.2em] text-cyan-200 uppercase">
+                PAINÉIS DO JARVIS
               </p>
             </div>
-            <div className="flex items-center gap-1.5">
-              {(onToggleOrbMode || onToggleCompactMode) && (
-                <button
-                  type="button"
-                  onClick={onToggleOrbMode || onToggleCompactMode}
-                  title={orbMode || compactMode ? "Expandir para ver o Jarvis completo" : "Ativar Modo Orb (apenas o Orb flutuante 5x5 cm)"}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition",
-                    (orbMode || compactMode)
-                      ? "border-amber-400/60 bg-amber-500/20 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
-                      : "border-cyan-300/25 bg-cyan-400/10 text-cyan-200 hover:border-cyan-300/50 hover:bg-cyan-400/20"
-                  )}
-                >
-                  <Sparkles className="h-3 w-3" />
-                  {(orbMode || compactMode) ? "Expandir" : "Modo Orb"}
-                </button>
-              )}
+            <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-mono font-semibold text-cyan-300">
+              {activeCount}/{MENU_ITEMS.length} ATIVOS
+            </span>
+          </div>
+
+          {/* Barra de Ações Rápidas: 100% Padronizada, Centralizada e Simétrica */}
+          <div className="grid grid-cols-4 gap-1.5 mb-3">
+            {(onToggleOrbMode || onToggleCompactMode) && (
               <button
                 type="button"
-                onClick={() => {
-                  onResetLayout();
-                }}
-                title="Restaurar as 3 janelas iniciais (Sistema, Relógio, Atividades) e fechar o restante"
-                className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-2 py-1 text-[10px] font-medium text-cyan-200 transition hover:border-cyan-300/50 hover:bg-cyan-400/20"
+                onClick={onToggleOrbMode || onToggleCompactMode}
+                title={orbMode || compactMode ? "Expandir para modo completo" : "Ativar Modo Orb (apenas o Orb flutuante 5x5 cm)"}
+                className={cn(
+                  "flex h-8 w-full items-center justify-center gap-1 rounded-lg border text-[10px] font-mono font-medium transition cursor-pointer px-1.5 text-center",
+                  (orbMode || compactMode)
+                    ? "border-amber-400/60 bg-amber-500/20 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+                    : "border-cyan-400/30 bg-cyan-500/10 text-cyan-200 hover:border-cyan-400/60 hover:bg-cyan-500/20"
+                )}
               >
-                <RotateCcw className="h-3 w-3" />
-                Padrão (3)
+                <Sparkles className="h-3 w-3 shrink-0" />
+                <span className="truncate">{(orbMode || compactMode) ? "Expandir" : "Modo Orb"}</span>
               </button>
-              {onOrganizeLayout && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOrganizeLayout();
-                  }}
-                  title="Distribuir painéis abertos lado a lado sem sobreposição"
-                  className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-2 py-1 text-[10px] font-medium text-cyan-200 transition hover:border-cyan-300/50 hover:bg-cyan-400/20"
-                >
-                  <LayoutGrid className="h-3 w-3" />
-                  Organizar
-                </button>
-              )}
-              {onToggleOrbStyle && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onToggleOrbStyle();
-                  }}
-                  title="Alternar estilo do Orb central: Clássico (Vanta) ou Rede de Partículas Quânticas"
-                  className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/30 bg-cyan-400/15 px-2 py-1 text-[10px] font-medium text-cyan-100 transition hover:border-cyan-300/60 hover:bg-cyan-400/25"
-                >
-                  <span>{orbStyle === 'quantum' ? '⚛️ Quântico' : '🌀 Clássico'}</span>
-                </button>
-              )}
-            </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onResetLayout}
+              title="Restaurar layout padrão de 3 janelas (Sistema, Relógio e Atividades)"
+              className="flex h-8 w-full items-center justify-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-1.5 text-[10px] font-mono font-medium text-cyan-200 transition hover:border-cyan-400/60 hover:bg-cyan-500/20 cursor-pointer text-center"
+            >
+              <RotateCcw className="h-3 w-3 shrink-0" />
+              <span className="truncate">Padrão</span>
+            </button>
+
+            {onOrganizeLayout && (
+              <button
+                type="button"
+                onClick={onOrganizeLayout}
+                title="Distribuir painéis abertos de forma organizada e sem sobreposição"
+                className="flex h-8 w-full items-center justify-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-1.5 text-[10px] font-mono font-medium text-cyan-200 transition hover:border-cyan-400/60 hover:bg-cyan-500/20 cursor-pointer text-center"
+              >
+                <LayoutGrid className="h-3 w-3 shrink-0" />
+                <span className="truncate">Organizar</span>
+              </button>
+            )}
+
+            {onToggleOrbStyle && (
+              <button
+                type="button"
+                onClick={onToggleOrbStyle}
+                title="Alternar estilo do Orb: Quântico ou Clássico"
+                className="flex h-8 w-full items-center justify-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/15 px-1.5 text-[10px] font-mono font-medium text-cyan-100 transition hover:border-cyan-400/60 hover:bg-cyan-500/25 cursor-pointer text-center"
+              >
+                <Sparkles className="h-3 w-3 shrink-0 text-cyan-300" />
+                <span className="truncate">{orbStyle === 'quantum' ? 'Quântico' : 'Clássico'}</span>
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-1.5">
