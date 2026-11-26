@@ -421,10 +421,10 @@ class Assistant(Agent):
             tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
             realtime_input_config=genai_types.RealtimeInputConfig(
                 automatic_activity_detection=genai_types.AutomaticActivityDetection(
-                    start_of_speech_sensitivity=genai_types.StartSensitivity.START_SENSITIVITY_HIGH,
-                    end_of_speech_sensitivity=genai_types.EndSensitivity.END_SENSITIVITY_LOW,
-                    prefix_padding_ms=200,
-                    silence_duration_ms=1000,
+                    start_of_speech_sensitivity=genai_types.StartSensitivity.START_SENSITIVITY_LOW,
+                    end_of_speech_sensitivity=genai_types.EndSensitivity.END_SENSITIVITY_HIGH,
+                    prefix_padding_ms=150,
+                    silence_duration_ms=650,
                 )
             ),
             context_window_compression=genai_types.ContextWindowCompressionConfig(
