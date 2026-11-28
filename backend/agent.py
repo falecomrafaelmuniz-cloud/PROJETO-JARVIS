@@ -456,11 +456,13 @@ class Assistant(Agent):
         self._estilo_voz: str = _carregar_estilo_voz()
         self._active_agent_session: AgentSession | None = None
         perfil_voz = PERFIS_VOZ_JARVIS.get(self._estilo_voz, PERFIS_VOZ_JARVIS["descolado"])
-        live_model = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.8-live")
+        live_model = os.environ.get("GEMINI_LIVE_MODEL") or str(
+            perfil_voz.get("model", "gemini-2.5-flash-native-audio-preview-12-2025")
+        )
         realtime_kwargs: dict = dict(
             model=live_model,
             voice=str(perfil_voz.get("voice", "Charon")),
-            temperature=float(perfil_voz.get("temperature", 0.65)),
+            temperature=float(perfil_voz.get("temperature", 0.60)),
             tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
             realtime_input_config=genai_types.RealtimeInputConfig(
                 automatic_activity_detection=genai_types.AutomaticActivityDetection(
@@ -501,30 +503,39 @@ class Assistant(Agent):
         self._estilo_voz = novo_estilo
         perfil_cfg = PERFIS_VOZ_JARVIS.get(novo_estilo, PERFIS_VOZ_JARVIS["descolado"])
         nova_instrucao = obter_agent_instruction(novo_estilo)
+        novo_modelo = os.environ.get("GEMINI_LIVE_MODEL") or str(
+            perfil_cfg.get("model", "gemini-2.5-flash-native-audio-preview-12-2025")
+        )
         nova_voz = str(perfil_cfg.get("voice", "Charon"))
-        nova_temp = float(perfil_cfg.get("temperature", 0.65))
+        nova_temp = float(perfil_cfg.get("temperature", 0.60))
 
         try:
             await self.update_instructions(nova_instrucao)
         except Exception as erro:
             logger_memoria.warning("evento=update_instructions_voz status=erro motivo=%s", erro)
 
-        # Reconecta a sessão de áudio nativo Gemini Live em menos de 1s com a nova temperatura e persona
+        # Reconecta a sessão de áudio nativo Gemini Live em menos de 1s trocando modelo (timbre), temperatura e persona
         try:
             sessoes_ativas = list(getattr(self.llm, "_sessions", []))
             for rt_sess in sessoes_ativas:
                 rt_sess._session_resumption_handle = None
+                rt_sess._opts.model = novo_modelo
                 rt_sess._opts.instructions = nova_instrucao
                 rt_sess._opts.voice = nova_voz
                 rt_sess._opts.temperature = nova_temp
+                if "2.5" in novo_modelo:
+                    rt_sess._opts.thinking_config = genai_types.ThinkingConfig(thinking_budget=0)
+                else:
+                    rt_sess._opts.thinking_config = lk_google_realtime.NOT_GIVEN
                 rt_sess._mark_restart_needed()
         except Exception as erro:
             logger_memoria.warning("evento=hotswap_voz_gemini status=erro motivo=%s", erro)
 
         await self._publicar_estilo_voz_hud()
         logger_memoria.info(
-            "evento=estilo_voz_alterado estilo=%s temp=%s voz=%s",
+            "evento=estilo_voz_alterado estilo=%s modelo=%s temp=%s voz=%s",
             novo_estilo,
+            novo_modelo,
             nova_temp,
             nova_voz,
         )

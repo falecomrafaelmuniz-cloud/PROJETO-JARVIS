@@ -10,12 +10,14 @@ PERFIS_VOZ_JARVIS = {
     "descolado": {
         "id": "descolado",
         "rotulo": "Descolada (Original)",
+        "model": "gemini-2.5-flash-native-audio-preview-12-2025",
         "voice": "Charon",
-        "temperature": 0.65,
+        "temperature": 0.60,
     },
     "executivo": {
         "id": "executivo",
         "rotulo": "Executiva (Séria)",
+        "model": "gemini-3.8-live",
         "voice": "Charon",
         "temperature": 0.30,
     },
