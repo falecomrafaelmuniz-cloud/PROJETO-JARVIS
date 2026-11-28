@@ -68,6 +68,8 @@ interface HudMenuProps {
   onOrganizeLayout?: () => void;
   orbStyle?: 'vanta' | 'quantum';
   onToggleOrbStyle?: () => void;
+  voiceStyle?: 'descolado' | 'executivo';
+  onChangeVoiceStyle?: (style: 'descolado' | 'executivo') => void;
   themeHex?: string;
   onChangeThemeHex?: (hex: string) => void;
   docked?: boolean;
@@ -107,6 +109,8 @@ export function HudMenu({
   onOrganizeLayout,
   orbStyle = 'vanta',
   onToggleOrbStyle,
+  voiceStyle = 'descolado',
+  onChangeVoiceStyle,
   themeHex = DEFAULT_JARVIS_THEME_HEX,
   onChangeThemeHex,
   docked = false,
@@ -339,6 +343,49 @@ export function HudMenu({
               );
             })}
           </div>
+
+          {onChangeVoiceStyle && (
+            <div className="mt-3 border-t border-cyan-300/15 pt-2.5">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold tracking-[0.16em] text-cyan-200/85 uppercase">
+                  Voz e Estilo do Jarvis
+                </span>
+                <span className="text-[9px] font-mono text-cyan-300/70">
+                  {voiceStyle === 'descolado' ? 'Original Ativa' : 'Executiva Ativa'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onChangeVoiceStyle('descolado')}
+                  title="Voz e jeito descontraído do primeiro Jarvis (parceiro próximo, expressivo e humor fino)"
+                  className={cn(
+                    'flex h-8 items-center justify-center gap-1.5 rounded-lg border px-2 text-[10px] font-mono font-semibold transition cursor-pointer',
+                    voiceStyle === 'descolado'
+                      ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-100 shadow-[0_0_12px_rgba(16,185,129,0.28)]'
+                      : 'border-slate-700/70 bg-slate-900/70 text-slate-300 hover:border-cyan-300/40 hover:text-cyan-100'
+                  )}
+                >
+                  <span>😎</span>
+                  <span className="truncate">Descolada (Original)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChangeVoiceStyle('executivo')}
+                  title="Voz séria, calma e reservada (mantida salva para reverter quando quiser)"
+                  className={cn(
+                    'flex h-8 items-center justify-center gap-1.5 rounded-lg border px-2 text-[10px] font-mono font-semibold transition cursor-pointer',
+                    voiceStyle === 'executivo'
+                      ? 'border-cyan-300/70 bg-cyan-500/25 text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.28)]'
+                      : 'border-slate-700/70 bg-slate-900/70 text-slate-300 hover:border-cyan-300/40 hover:text-cyan-100'
+                  )}
+                >
+                  <span>🎩</span>
+                  <span className="truncate">Executiva (Séria)</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {onChangeThemeHex && (
             <div className="mt-3 border-t border-cyan-300/15 pt-2.5">

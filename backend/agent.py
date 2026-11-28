@@ -192,7 +192,47 @@ lk_google_realtime.RealtimeSession._main_task = _robust_gemini_main_task
 from google_workspace import GoogleWorkspaceError, google_workspace
 from jarvis_automacoes import gerenciador_automacoes
 from jarvis_browser import JarvisBrowserError, jarvis_chrome
-from prompts import AGENT_INSTRUCTION, SESSION_INSTRUCTION
+from prompts import (
+    AGENT_INSTRUCTION,
+    PERFIS_VOZ_JARVIS,
+    SESSION_INSTRUCTION,
+    normalizar_estilo_voz,
+    obter_agent_instruction,
+    obter_session_instruction,
+)
+
+_CAMINHO_CONFIG_VOZ = os.path.join(_backend_dir, "jarvis_voz_config.json")
+
+
+def _carregar_estilo_voz() -> str:
+    try:
+        if os.path.exists(_CAMINHO_CONFIG_VOZ):
+            with open(_CAMINHO_CONFIG_VOZ, "r", encoding="utf-8") as fp:
+                dados = json.load(fp)
+            return normalizar_estilo_voz(str(dados.get("style") or "descolado"))
+    except Exception:
+        pass
+    return "descolado"
+
+
+def _salvar_estilo_voz(estilo: str) -> str:
+    chave = normalizar_estilo_voz(estilo)
+    try:
+        with open(_CAMINHO_CONFIG_VOZ, "w", encoding="utf-8") as fp:
+            json.dump(
+                {
+                    "style": chave,
+                    "updated_at": datetime.now(ZoneInfo("America/Sao_Paulo")).isoformat(),
+                },
+                fp,
+                ensure_ascii=False,
+                indent=2,
+            )
+    except Exception as erro:
+        logging.getLogger("jarvis.memoria").warning(
+            "evento=salvar_estilo_voz status=erro motivo=%s", erro
+        )
+    return chave
 
 load_dotenv()
 
@@ -413,11 +453,14 @@ class Assistant(Agent):
         self._active_notebook_id: str = "geral"
         self._workspace_panel_open: bool = False
         self._ultimo_texto_notebook_transcrito: str = ""
+        self._estilo_voz: str = _carregar_estilo_voz()
+        self._active_agent_session: AgentSession | None = None
+        perfil_voz = PERFIS_VOZ_JARVIS.get(self._estilo_voz, PERFIS_VOZ_JARVIS["descolado"])
         live_model = os.environ.get("GEMINI_LIVE_MODEL", "gemini-3.8-live")
         realtime_kwargs: dict = dict(
             model=live_model,
-            voice="Charon",
-            temperature=0.3,
+            voice=str(perfil_voz.get("voice", "Charon")),
+            temperature=float(perfil_voz.get("temperature", 0.65)),
             tool_response_scheduling=genai_types.FunctionResponseScheduling.INTERRUPT,
             realtime_input_config=genai_types.RealtimeInputConfig(
                 automatic_activity_detection=genai_types.AutomaticActivityDetection(
@@ -436,9 +479,93 @@ class Assistant(Agent):
             realtime_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=0)
 
         super().__init__(
-            instructions=AGENT_INSTRUCTION,
+            instructions=obter_agent_instruction(self._estilo_voz),
             llm=google.beta.realtime.RealtimeModel(**realtime_kwargs),
         )
+
+    async def _publicar_estilo_voz_hud(self) -> None:
+        if not self.board_room or not self.board_room.local_participant:
+            return
+        try:
+            payload = json.dumps(
+                {"type": "jarvis_voice_style_sync", "style": self._estilo_voz}
+            ).encode("utf-8")
+            await self.board_room.local_participant.publish_data(
+                payload, reliable=True, topic="jarvis.hud"
+            )
+        except Exception as erro:
+            logger_memoria.warning("evento=sync_estilo_voz_hud status=erro motivo=%s", erro)
+
+    async def aplicar_estilo_voz(self, estilo: str, falar_confirmacao: bool = True) -> str:
+        novo_estilo = _salvar_estilo_voz(estilo)
+        self._estilo_voz = novo_estilo
+        perfil_cfg = PERFIS_VOZ_JARVIS.get(novo_estilo, PERFIS_VOZ_JARVIS["descolado"])
+        nova_instrucao = obter_agent_instruction(novo_estilo)
+        nova_voz = str(perfil_cfg.get("voice", "Charon"))
+        nova_temp = float(perfil_cfg.get("temperature", 0.65))
+
+        try:
+            await self.update_instructions(nova_instrucao)
+        except Exception as erro:
+            logger_memoria.warning("evento=update_instructions_voz status=erro motivo=%s", erro)
+
+        # Reconecta a sessão de áudio nativo Gemini Live em menos de 1s com a nova temperatura e persona
+        try:
+            sessoes_ativas = list(getattr(self.llm, "_sessions", []))
+            for rt_sess in sessoes_ativas:
+                rt_sess._session_resumption_handle = None
+                rt_sess._opts.instructions = nova_instrucao
+                rt_sess._opts.voice = nova_voz
+                rt_sess._opts.temperature = nova_temp
+                rt_sess._mark_restart_needed()
+        except Exception as erro:
+            logger_memoria.warning("evento=hotswap_voz_gemini status=erro motivo=%s", erro)
+
+        await self._publicar_estilo_voz_hud()
+        logger_memoria.info(
+            "evento=estilo_voz_alterado estilo=%s temp=%s voz=%s",
+            novo_estilo,
+            nova_temp,
+            nova_voz,
+        )
+
+        if falar_confirmacao and self._active_agent_session is not None:
+            async def _confirmar_troca():
+                try:
+                    await asyncio.sleep(1.1)
+                    if novo_estilo == "descolado":
+                        await self._active_agent_session.generate_reply(
+                            user_input=(
+                                "O usuário acabou de ativar sua voz Descolada Original! "
+                                "Fale imediatamente em Português do Brasil em 1 frase curta, animada, parceira e com carisma: "
+                                "Opa, parceiro! Voz descolada original ativada — bora mandar ver, chefe!"
+                            )
+                        )
+                    else:
+                        await self._active_agent_session.generate_reply(
+                            user_input=(
+                                "O usuário acabou de ativar seu Modo Executivo Sério. "
+                                "Fale imediatamente em Português do Brasil em 1 frase curta, calma e executiva: "
+                                "Modo executivo ativado, chefe. Às ordens."
+                            )
+                        )
+                except Exception as erro_fala:
+                    logger_memoria.warning("evento=confirmacao_voz status=erro motivo=%s", erro_fala)
+
+            asyncio.create_task(_confirmar_troca())
+
+        rotulo = perfil_cfg.get("rotulo", novo_estilo)
+        return f"Estilo de voz do Jarvis alterado com sucesso para: {rotulo}."
+
+    @function_tool(
+        description=(
+            "Alterna imediatamente o estilo de voz e personalidade do Jarvis entre "
+            "'descolado' (Voz Descolada Original: parceiro próximo, descontraído, humor fino e entonação viva) e "
+            "'executivo' (Voz Executiva Séria: calma, reservada e formal, mantida salva para reverter quando quiser)."
+        )
+    )
+    async def alterar_estilo_voz_jarvis(self, estilo: str = "descolado") -> str:
+        return await self.aplicar_estilo_voz(estilo, falar_confirmacao=False)
 
     @function_tool(
         description=(
@@ -10043,6 +10170,15 @@ def _handle_room_data(
     if data_packet.topic == "jarvis.location":
         _update_session_location(data_packet, location_state)
         return
+    if data_packet.topic == "jarvis.hud":
+        try:
+            payload = json.loads(data_packet.data)
+        except Exception:
+            return
+        if payload.get("type") == "jarvis_set_voice_style":
+            estilo_req = str(payload.get("style") or "descolado")
+            asyncio.create_task(agent.aplicar_estilo_voz(estilo_req, falar_confirmacao=True))
+        return
     if data_packet.topic == "jarvis.email":
         try:
             payload = json.loads(data_packet.data)
@@ -10323,6 +10459,7 @@ async def entrypoint(ctx: agents.JobContext):
     location_state: dict[str, float | str] = {}
     activity_events: asyncio.Queue[ToolExecutionUpdatedEvent | None] = asyncio.Queue()
     assistant = Assistant(location_state, ctx.room)
+    assistant._active_agent_session = session
     ctx.room.on(
         "data_received",
         lambda data_packet: _handle_room_data(data_packet, location_state, assistant),
@@ -10478,9 +10615,13 @@ async def entrypoint(ctx: agents.JobContext):
                 if ctx.room.remote_participants:
                     break
         await asyncio.sleep(0.4)
-        await session.generate_reply(
-            user_input="Inicialização concluída. Fale imediatamente em voz alta em Português do Brasil: Sistemas online, chefe."
+        await assistant._publicar_estilo_voz_hud()
+        saudacao_prompt = (
+            "Inicialização concluída. Fale imediatamente em voz alta em Português do Brasil com tom descontraído, vivo e parceiro (1 frase curta): E aí, chefe! Sistemas online, tudo pronto por aqui."
+            if assistant._estilo_voz == "descolado"
+            else "Inicialização concluída. Fale imediatamente em voz alta em Português do Brasil: Sistemas online, chefe."
         )
+        await session.generate_reply(user_input=saudacao_prompt)
     except Exception as erro_saudacao:
         logger_memoria.warning("evento=saudacao_inicial status=erro motivo=%s", erro_saudacao)
 

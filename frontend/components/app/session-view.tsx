@@ -316,7 +316,60 @@ export const SessionView = ({
   }, [hudPanels]);
   const [neuralConfigSignal, setNeuralConfigSignal] = useState(0);
   const [orbStyle, setOrbStyle] = useState<'vanta' | 'quantum'>('quantum');
+  const [voiceStyle, setVoiceStyle] = useState<'descolado' | 'executivo'>('descolado');
   const [themeHex, setThemeHex] = useState<string>(DEFAULT_JARVIS_THEME_HEX);
+
+  useEffect(() => {
+    let active = true;
+    try {
+      const cached = localStorage.getItem('jarvis-voice-style-v1');
+      if (cached === 'descolado' || cached === 'executivo') {
+        setVoiceStyle(cached);
+      }
+    } catch {}
+    fetch('/api/voice-style', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!active || !data?.style) return;
+        const nextStyle = data.style === 'executivo' ? 'executivo' : 'descolado';
+        setVoiceStyle(nextStyle);
+        try {
+          localStorage.setItem('jarvis-voice-style-v1', nextStyle);
+        } catch {}
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleChangeVoiceStyle = useCallback(
+    async (nextStyle: 'descolado' | 'executivo') => {
+      setVoiceStyle(nextStyle);
+      try {
+        localStorage.setItem('jarvis-voice-style-v1', nextStyle);
+      } catch {}
+      try {
+        await fetch('/api/voice-style', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ style: nextStyle }),
+        });
+      } catch {}
+      try {
+        if (room?.localParticipant) {
+          const payload = new TextEncoder().encode(
+            JSON.stringify({ type: 'jarvis_set_voice_style', style: nextStyle })
+          );
+          await room.localParticipant.publishData(payload, {
+            reliable: true,
+            topic: 'jarvis.hud',
+          });
+        }
+      } catch {}
+    },
+    [room]
+  );
 
   useEffect(() => {
     const savedTheme = loadJarvisThemeHex();
@@ -394,6 +447,14 @@ export const SessionView = ({
       if (topic !== 'jarvis.hud' && topic !== 'jarvis.workspace') return;
       try {
         const packet = JSON.parse(new TextDecoder().decode(payload));
+        if (packet?.type === 'jarvis_voice_style_sync') {
+          const synced = packet.style === 'executivo' ? 'executivo' : 'descolado';
+          setVoiceStyle(synced);
+          try {
+            localStorage.setItem('jarvis-voice-style-v1', synced);
+          } catch {}
+          return;
+        }
         if (packet?.type === 'jarvis_hud_orb_mode' || packet?.type === 'jarvis_hud_compact_mode') {
           const force = packet.orbMode !== undefined ? packet.orbMode : packet.compact;
           setIsOrbMode((prev) => {
@@ -1182,6 +1243,8 @@ export const SessionView = ({
                   onOrganizeLayout={handleOrganizeHudLayout}
                   orbStyle={orbStyle}
                   onToggleOrbStyle={toggleOrbStyle}
+                  voiceStyle={voiceStyle}
+                  onChangeVoiceStyle={handleChangeVoiceStyle}
                   themeHex={themeHex}
                   onChangeThemeHex={handleChangeThemeHex}
                   orbMode={isOrbMode}
