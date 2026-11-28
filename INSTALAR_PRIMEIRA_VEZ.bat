@@ -43,15 +43,16 @@ if %errorlevel% neq 0 (
     call npm install -g pnpm >nul 2>&1
 )
 
-:: 4. Canal de Atualizações Automáticas (Git)
+:: 4. Canal de Atualizações Automáticas (Git - branch main oficial)
 git --version >nul 2>&1
 if %errorlevel% equ 0 (
     if not exist ".git" (
         echo [*] Configurando canal de atualizações automáticas...
-        git init >nul 2>&1
+        git init -b main >nul 2>&1
         git remote add origin https://github.com/falecomrafaelmuniz-cloud/PROJETO-JARVIS.git >nul 2>&1
-        git fetch origin main --depth=1 >nul 2>&1
-        git reset --soft origin/main >nul 2>&1
+        git fetch origin main >nul 2>&1
+        git checkout -f -B main origin/main >nul 2>&1
+        git branch --set-upstream-to=origin/main main >nul 2>&1
     )
 )
 

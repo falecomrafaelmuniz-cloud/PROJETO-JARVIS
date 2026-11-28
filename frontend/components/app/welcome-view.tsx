@@ -56,10 +56,37 @@ export const WelcomeView = ({
     void checkUpdateSilently();
   }, [checkUpdateSilently]);
 
+  const waitForRestartAndReload = async (isElectron?: boolean) => {
+    if (isElectron) {
+      // No Electron Desktop, o script restart_jarvis_update.ps1 fecha e reabre a janela automaticamente
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 3500));
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      try {
+        const check = await fetch('/api/connection-details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+          cache: 'no-store',
+        });
+        if (check.ok) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // Aguardando servidor web reiniciar com código limpo
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    window.location.reload();
+  };
+
   const handleUpdateJarvis = async () => {
     if (updateState === 'updating') return;
     setUpdateState('updating');
-    setUpdateMessage('Buscando melhorias no GitHub e atualizando sistemas...');
+    setUpdateMessage('Sincronizando tudo do GitHub, instalando pacotes e limpando cache...');
 
     try {
       const response = await fetch('/api/update', { method: 'POST' });
@@ -72,11 +99,9 @@ export const WelcomeView = ({
       setUpdateState('success');
       if (data.version) setVersion(data.version);
       setUpdateAvailable(false);
-      setUpdateMessage(data.message || 'Jarvis atualizado com sucesso!');
+      setUpdateMessage(data.message || 'Jarvis atualizado com sucesso! Reiniciando...');
 
-      setTimeout(() => {
-        window.location.reload();
-      }, 1600);
+      void waitForRestartAndReload(Boolean(data.isElectron));
     } catch (error) {
       setUpdateState('error');
       setUpdateMessage(
@@ -147,12 +172,14 @@ export const WelcomeView = ({
           {updateState === 'updating' ? (
             <div className="flex items-center justify-center gap-2 font-mono text-[11px] text-orange-300">
               <RefreshCw className="size-3 animate-spin text-[#ff5500]" />
-              <span>Baixando atualização ({remoteVersion || 'nova versão'})...</span>
+              <span>
+                {updateMessage || `Sincronizando atualização (${remoteVersion || 'GitHub'})...`}
+              </span>
             </div>
           ) : updateState === 'success' ? (
             <div className="flex items-center justify-center gap-1.5 font-mono text-[11px] text-emerald-400">
               <Check className="size-3 text-emerald-400" />
-              <span>Sistema atualizado! Reiniciando...</span>
+              <span>{updateMessage || 'Sistema atualizado! Reiniciando todos os serviços...'}</span>
             </div>
           ) : updateAvailable ? (
             <div className="flex items-center justify-center gap-1.5 font-mono text-[11px]">
@@ -167,7 +194,7 @@ export const WelcomeView = ({
                   className="ml-1 inline-flex items-center gap-1 rounded bg-amber-500/30 hover:bg-amber-500/50 px-2 py-0.5 text-[10px] font-bold text-amber-100 transition-colors cursor-pointer uppercase tracking-wider"
                 >
                   <ArrowUpCircle className="size-3 text-amber-200" />
-                  Atualizar
+                  Atualizar Tudo
                 </button>
               </span>
             </div>
@@ -181,12 +208,13 @@ export const WelcomeView = ({
               </span>
               <button
                 type="button"
-                onClick={checkUpdateSilently}
-                title="Checar atualizações no GitHub"
+                onClick={handleUpdateJarvis}
+                title="Forçar sincronização completa com o GitHub (arquivos, pacotes e cache)"
                 disabled={isChecking}
-                className="text-orange-400/40 hover:text-orange-300 transition-colors p-0.5 cursor-pointer ml-0.5"
+                className="inline-flex items-center gap-1 rounded border border-orange-400/25 bg-orange-500/10 hover:bg-orange-500/25 hover:text-orange-200 text-orange-300/80 transition-colors px-1.5 py-0.5 text-[10px] cursor-pointer ml-0.5"
               >
-                <RefreshCw className={`size-3 ${isChecking ? 'animate-spin text-orange-400' : ''}`} />
+                <RefreshCw className={`size-2.5 ${isChecking ? 'animate-spin text-orange-400' : ''}`} />
+                <span>Atualizar</span>
               </button>
             </div>
           )}

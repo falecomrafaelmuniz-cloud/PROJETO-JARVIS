@@ -1,3 +1,8 @@
+param(
+    [switch]$SkipElectron,
+    [switch]$SkipAutoUpdate
+)
+
 $ErrorActionPreference = 'Stop'
 $env:ELECTRON_RUN_AS_NODE = $null
 
@@ -8,6 +13,7 @@ $pythonExe = Join-Path $agentDirectory '.venv\Scripts\python.exe'
 $livekitExe = Join-Path $agentDirectory 'bin\livekit-server.exe'
 $webDirectory = Join-Path $agentDirectory 'frontend'
 $webUrl = 'http://localhost:3000'
+$roamingDir = Join-Path $env:APPDATA 'JARVIS'
 
 function Get-JarvisWorkers {
     $allPy = @(Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
@@ -64,16 +70,72 @@ try {
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host ""
 
-    # 0. Verificação e Auto-Update Silencioso via Servidor Central (GitHub)
-    if (Test-Path -LiteralPath (Join-Path $agentDirectory '.git')) {
+    $wasUpdatedOnStartup = $false
+
+    # 0. Verificação e Auto-Update Completo via Servidor Central (GitHub - branch main)
+    if ((-not $SkipAutoUpdate) -and (Test-Path -LiteralPath (Join-Path $agentDirectory '.git'))) {
         try {
             Write-Host "[Update] Verificando atualizacoes no servidor central..." -ForegroundColor DarkCyan
-            & git -C $agentDirectory fetch origin main --quiet 2>$null
+            & git -C $agentDirectory fetch origin main --prune --quiet 2>$null
+            $currentBranch = (& git -C $agentDirectory rev-parse --abbrev-ref HEAD 2>$null)
             $localSha = (& git -C $agentDirectory rev-parse HEAD 2>$null)
             $remoteSha = (& git -C $agentDirectory rev-parse origin/main 2>$null)
+
+            $behindCount = 0
             if ($localSha -and $remoteSha -and ($localSha.Trim() -ne $remoteSha.Trim())) {
-                Write-Host "[Update] Nova versao detectada! Atualizando o Jarvis automaticamente..." -ForegroundColor Green
-                & git -C $agentDirectory pull --autostash origin main --quiet 2>$null
+                $behindStr = (& git -C $agentDirectory rev-list --count "$($localSha.Trim())..$($remoteSha.Trim())" 2>$null)
+                if ($behindStr) { $behindCount = [int]$behindStr.Trim() }
+            }
+
+            if ($remoteSha -and ($behindCount -gt 0)) {
+                Write-Host "[Update] Nova versao detectada! Sincronizando tudo do GitHub..." -ForegroundColor Green
+
+                # Para processos antigos antes de atualizar arquivos e pacotes
+                Get-Process -Name 'electron' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -match 'agent\.py' } |
+                    ForEach-Object { & taskkill /F /T /PID $_.ProcessId 2>$null | Out-Null }
+                Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -match 'next|pnpm' } |
+                    ForEach-Object { & taskkill /F /T /PID $_.ProcessId 2>$null | Out-Null }
+                Start-Sleep -Milliseconds 800
+
+                $dirty = (& git -C $agentDirectory status --porcelain --untracked-files=no 2>$null)
+                if ($dirty) {
+                    & git -C $agentDirectory stash push -m "jarvis-startup-backup" --quiet 2>$null
+                }
+                & git -C $agentDirectory checkout -f -B main origin/main --quiet 2>$null
+                & git -C $agentDirectory reset --hard origin/main --quiet 2>$null
+                & git -C $agentDirectory branch --set-upstream-to=origin/main main 2>$null | Out-Null
+
+                # Atualiza pacotes Python do .venv
+                $reqFile = Join-Path $backendDirectory 'requirements.txt'
+                if ((Test-Path -LiteralPath $pythonExe) -and (Test-Path -LiteralPath $reqFile)) {
+                    Write-Host "[Update] Sincronizando pacotes Python (.venv)..." -ForegroundColor Yellow
+                    & $pythonExe -m pip install -r $reqFile --quiet 2>$null
+                }
+
+                # Atualiza pacotes do frontend e limpa caches antigos
+                Push-Location $webDirectory
+                try {
+                    if (Get-Command pnpm.cmd -ErrorAction SilentlyContinue) {
+                        & pnpm.cmd install --prefer-offline 2>$null | Out-Null
+                    }
+                } finally {
+                    Pop-Location
+                }
+
+                if (Test-Path -LiteralPath (Join-Path $webDirectory '.next')) {
+                    Remove-Item -LiteralPath (Join-Path $webDirectory '.next') -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                foreach ($cacheFolder in @('Cache', 'Code Cache', 'GPUCache')) {
+                    $targetCache = Join-Path $roamingDir $cacheFolder
+                    if (Test-Path -LiteralPath $targetCache) {
+                        Remove-Item -LiteralPath $targetCache -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                }
+
+                $wasUpdatedOnStartup = $true
                 Write-Host "[Update] Jarvis atualizado com sucesso para a versao mais recente!" -ForegroundColor Green
             }
         } catch {
@@ -144,12 +206,12 @@ try {
         Write-Host "  -> Cérebro conectado com sucesso!" -ForegroundColor Green
     }
 
-    # Se o frontend estiver rodando com configuração antiga (LiveKit Cloud), reinicia o node
-    if ((Test-JarvisWeb) -and (-not (Test-JarvisWebConfig))) {
-        Write-Host "Atualizando configuração do servidor web para o LiveKit Local..." -ForegroundColor Yellow
+    # Se o frontend estiver rodando com configuração antiga ou se atualizou agora, reinicia o node
+    if ((Test-JarvisWeb) -and ($wasUpdatedOnStartup -or (-not (Test-JarvisWebConfig)))) {
+        Write-Host "Reiniciando servidor web para aplicar atualizações..." -ForegroundColor Yellow
         Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
             Where-Object { $_.CommandLine -match 'next' -or $_.CommandLine -match 'pnpm' } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            ForEach-Object { & taskkill /F /T /PID $_.ProcessId 2>$null | Out-Null }
         Start-Sleep -Seconds 1
     }
 
@@ -163,7 +225,7 @@ try {
         Start-Sleep -Seconds 1
     }
 
-    # 2. Inicia o Servidor Web (Frontend Next.js) em janela CMD visível
+    # 2. Inicia o Servidor Web (Frontend Next.js) em modo silencioso
     if (Test-JarvisWeb) {
         Write-Host "[2/3] Interface web do Jarvis já está ativa e respondendo." -ForegroundColor Green
     }
@@ -175,7 +237,7 @@ try {
             -WorkingDirectory $webDirectory `
             -WindowStyle Hidden | Out-Null
 
-        $deadline = (Get-Date).AddSeconds(45)
+        $deadline = (Get-Date).AddSeconds(60)
         while ((Get-Date) -lt $deadline) {
             Start-Sleep -Milliseconds 800
             if (Test-JarvisWeb) {
@@ -189,15 +251,17 @@ try {
         }
     }
 
-    # 3. Abre na Janela Desktop Nativa do Jarvis
-    Write-Host "[3/3] Abrindo a Janela Desktop do Jarvis..." -ForegroundColor Cyan
-    Get-Process -Name 'electron' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-    Push-Location $webDirectory
-    try {
-        & node desktop/run.cjs
-    } finally {
-        Pop-Location
+    # 3. Abre na Janela Desktop Nativa do Jarvis (exceto quando -SkipElectron é informado)
+    if (-not $SkipElectron) {
+        Write-Host "[3/3] Abrindo a Janela Desktop do Jarvis..." -ForegroundColor Cyan
+        Get-Process -Name 'electron' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+        Push-Location $webDirectory
+        try {
+            & node desktop/run.cjs
+        } finally {
+            Pop-Location
+        }
     }
     Write-Host "Jarvis pronto para uso!" -ForegroundColor Green
     Start-Sleep -Seconds 2

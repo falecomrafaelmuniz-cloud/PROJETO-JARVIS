@@ -102,11 +102,34 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
   const [locationCoordinates, setLocationCoordinates] = useState<DashboardCoordinates | null>(null);
   const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [versionInfo, setVersionInfo] = useState<{
+    version: string;
+    remoteVersion: string;
+    updateAvailable: boolean;
+  }>({ version: '', remoteVersion: '', updateAvailable: false });
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/update', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!active || !data) return;
+        setVersionInfo({
+          version: data.version || '',
+          remoteVersion: data.remoteVersion || '',
+          updateAvailable: Boolean(data.updateAvailable),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleUpdateClick = async () => {
     if (updateState === 'updating') return;
     setUpdateState('updating');
-    setUpdateMsg('Atualizando pelo GitHub...');
+    setUpdateMsg('Sincronizando tudo do GitHub, instalando pacotes e limpando cache...');
     try {
       const res = await fetch('/api/update', { method: 'POST' });
       const data = await res.json();
@@ -114,17 +137,42 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
         throw new Error(data.message || 'Erro ao atualizar');
       }
       setUpdateState('success');
-      setUpdateMsg(data.message || 'Atualizado!');
-      setTimeout(() => {
+      setUpdateMsg(data.message || 'Atualizado! Reiniciando sistemas...');
+      setVersionInfo((prev) => ({
+        ...prev,
+        version: data.version || prev.version,
+        updateAvailable: false,
+      }));
+
+      if (!data.isElectron) {
+        await new Promise((r) => setTimeout(r, 3500));
+        const deadline = Date.now() + 90_000;
+        while (Date.now() < deadline) {
+          try {
+            const check = await fetch('/api/connection-details', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}',
+              cache: 'no-store',
+            });
+            if (check.ok) {
+              window.location.reload();
+              return;
+            }
+          } catch {
+            // Aguardando servidor web reiniciar
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
         window.location.reload();
-      }, 1500);
+      }
     } catch (err) {
       setUpdateState('error');
       setUpdateMsg(err instanceof Error ? err.message : 'Falha na atualização');
       setTimeout(() => {
         setUpdateState('idle');
         setUpdateMsg(null);
-      }, 4000);
+      }, 5000);
     }
   };
 
@@ -217,7 +265,9 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3.5 py-2.5">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-wide text-white uppercase">Painéis do Jarvis</h2>
-          <p className="mt-0.5 text-[11px] text-white/60">Monitoramento desta sessão</p>
+          <p className="mt-0.5 text-[11px] text-white/60">
+            Monitoramento desta sessão{versionInfo.version ? ` · ${versionInfo.version}` : ''}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
@@ -225,14 +275,20 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
             data-no-drag="true"
             onClick={handleUpdateClick}
             disabled={updateState === 'updating'}
-            title="Buscar atualizações do Jarvis no GitHub"
+            title={
+              versionInfo.updateAvailable
+                ? `Nova versão ${versionInfo.remoteVersion} disponível! Clique para sincronizar tudo do GitHub`
+                : 'Sincronizar tudo do GitHub (código, pacotes, cache e reinício completo)'
+            }
             className={cn(
-              'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition',
+              'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition cursor-pointer',
               updateState === 'updating'
                 ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200'
                 : updateState === 'success'
                   ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-200'
-                  : 'border-white/15 bg-white/5 text-white/80 hover:border-cyan-400/40 hover:text-cyan-200'
+                  : versionInfo.updateAvailable
+                    ? 'border-amber-400/70 bg-amber-500/25 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.3)] animate-pulse'
+                    : 'border-white/15 bg-white/5 text-white/80 hover:border-cyan-400/40 hover:text-cyan-200'
             )}
           >
             {updateState === 'updating' ? (
@@ -242,7 +298,13 @@ export function SystemDashboard({ isOpen = true, onClose }: SystemDashboardProps
             ) : (
               <RefreshCw className="size-3" />
             )}
-            <span>{updateState === 'updating' ? 'Atualizando...' : 'Atualizar'}</span>
+            <span>
+              {updateState === 'updating'
+                ? 'Atualizando...'
+                : versionInfo.updateAvailable
+                  ? `Atualizar (${versionInfo.remoteVersion})`
+                  : 'Atualizar'}
+            </span>
           </button>
           <span className="hidden items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-300 sm:flex">
             <span className="size-1.5 animate-pulse rounded-full bg-cyan-400" />
